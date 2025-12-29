@@ -1,3 +1,4 @@
+const { vanillaExtractPlugin } = require('@vanilla-extract/esbuild-plugin');
 const esbuild = require('esbuild');
 const path = require('path');
 const fs = require('fs');
@@ -24,7 +25,8 @@ async function build() {
         },
         define: {
             'process.env.NODE_ENV': isServe ? '"development"' : '"production"'
-        }
+        },
+        plugins: [vanillaExtractPlugin()]
     });
 
     // Simple index.html copy plugin or manual copy
