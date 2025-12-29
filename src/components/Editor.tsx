@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import * as monaco from 'monaco-editor';
 import { observer } from 'mobx-react-lite';
+import { reaction } from 'mobx';
 import { editorStore } from '../store/EditorStore';
+import { themeStore } from '../store/ThemeStore';
 import { registerAsciiDoc } from '../utils/asciidocMode';
 
 const Editor: React.FC = observer(() => {
@@ -16,7 +18,7 @@ const Editor: React.FC = observer(() => {
         monacoRef.current = monaco.editor.create(editorRef.current, {
             value: editorStore.content,
             language: 'asciidoc',
-            theme: 'vs-dark',
+            theme: themeStore.theme === 'light' ? 'vs' : 'vs-dark',
             automaticLayout: true,
             minimap: { enabled: false }
         });
@@ -29,6 +31,26 @@ const Editor: React.FC = observer(() => {
         return () => {
             monacoRef.current?.dispose();
         };
+    }, []);
+
+    useEffect(() => {
+        if (!monacoRef.current) return;
+
+        // values from store might have changed while component was unmounted
+        const updateTheme = (theme: string) => {
+            monaco.editor.setTheme(theme === 'light' ? 'vs' : 'vs-dark');
+        }
+
+        // specific initialization
+        updateTheme(themeStore.theme);
+
+        // React to future changes
+        const dispose = reaction(
+            () => themeStore.theme,
+            (theme) => updateTheme(theme)
+        );
+
+        return () => dispose();
     }, []);
 
     return (
