@@ -1,12 +1,9 @@
-import { makeAutoObservable } from "mobx";
+import { observable, action } from "mobx";
 
 class EditorStore {
-    content: string = "= Hello AsciiDoc\n\n* List item 1\n* List item 2\n\n[source,javascript]\n----\nconsole.log('Hello');\n----";
+    @observable accessor content: string = "= Hello AsciiDoc\n\n* List item 1\n* List item 2\n\n[source,javascript]\n----\nconsole.log('Hello');\n----";
 
-    constructor() {
-        makeAutoObservable(this);
-    }
-
+    @action
     setContent(newContent: string) {
         this.content = newContent;
     }

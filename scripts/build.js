@@ -19,6 +19,7 @@ async function build() {
         outdir: 'dist',
         sourcemap: true,
         minify: !isServe,
+        target: 'es2020',
         loader: {
             '.ttf': 'file',
             '.css': 'css'
@@ -41,9 +42,17 @@ async function build() {
 
     if (isServe) {
         await context.watch();
-        const { host, port } = await context.serve({
+        const server = await context.serve({
             servedir: 'dist',
+            host: '127.0.0.1'
         });
+
+        if (!server.hosts || server.hosts.length === 0) {
+            throw new Error("Server started but no hosts were returned. This indicates a network binding issue.");
+        }
+
+        const host = server.hosts[0];
+        const port = server.port;
         console.log(`Serving at http://${host}:${port}`);
     } else {
         await context.rebuild();

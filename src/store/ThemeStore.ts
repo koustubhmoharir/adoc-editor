@@ -1,18 +1,18 @@
-import { makeAutoObservable } from "mobx";
+import { observable, action } from "mobx";
 
 type Theme = 'light' | 'dark';
 
 class ThemeStore {
-    theme: Theme = 'light';
+    @observable accessor theme: Theme = 'light';
 
     constructor() {
-        makeAutoObservable(this);
         const savedTheme = localStorage.getItem('app-theme') as Theme | null;
         if (savedTheme) {
             this.theme = savedTheme;
         }
     }
 
+    @action
     toggleTheme = () => {
         this.theme = this.theme === 'light' ? 'dark' : 'light';
         localStorage.setItem('app-theme', this.theme);
