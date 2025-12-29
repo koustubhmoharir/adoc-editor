@@ -17,7 +17,7 @@ const App: React.FC = observer(() => {
                 </button>
             </header>
             <main className={styles.main}>
-                <Editor />
+                <Editor theme={themeStore.theme === 'light' ? 'vs' : 'vs-dark'} />
             </main>
         </div>
     );
