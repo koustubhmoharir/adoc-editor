@@ -1,6 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { editorStore } from '../store/EditorStore';
+import * as monaco from 'monaco-editor';
+
+// @ts-ignore
+window.monaco = monaco;
 
 interface EditorProps {
     theme: string;
