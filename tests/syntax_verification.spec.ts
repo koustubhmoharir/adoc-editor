@@ -119,7 +119,7 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
                 const startIndex = (lastMatchIndices.get(lineIndex) ?? -1) + 1;
                 let foundTokenIndex = -1;
-                let foundToken: any = null;
+                let foundToken: Token | null = null;
 
                 // Find the first token *after* startIndex that matches the content
                 for (let i = startIndex; i < lineTokens.length; i++) {
@@ -134,7 +134,15 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
                     }
                 }
 
-                if (foundTokenIndex === -1) {
+                if (foundToken) {
+                    // Verify types
+                    const typeMatch = check.tokenTypes.some(t => foundToken.type.includes(t));
+                    expect(typeMatch, `Expected token "${check.tokenContent}" to have one of types [${check.tokenTypes.join(', ')}], but got "${foundToken.type}"`).toBeTruthy();
+
+                    // Update last match index for this line
+                    lastMatchIndices.set(lineIndex, foundTokenIndex);
+                }
+                else {
                     // Check debug info
                     console.log(`Failed to find token "${check.tokenContent}" on line ${lineIndex} starting after index ${startIndex}. Available tokens:`);
                     lineTokens.forEach((t, i) => {
@@ -142,16 +150,9 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
                         const txt = lineText.substring(t.offset, nextOffset);
                         console.log(`Token ${i}: text="${txt}", type="${t.type}"`);
                     });
+
+                    expect(foundToken, `Could not find token with content "${check.tokenContent}" on line ${lineIndex} after previous check`).not.toBe(null);
                 }
-
-                expect(foundTokenIndex, `Could not find token with content "${check.tokenContent}" on line ${lineIndex} after previous check`).not.toBe(-1);
-
-                // Verify types
-                const typeMatch = check.tokenTypes.some(t => foundToken.type.includes(t));
-                expect(typeMatch, `Expected token "${check.tokenContent}" to have one of types [${check.tokenTypes.join(', ')}], but got "${foundToken.type}"`).toBeTruthy();
-
-                // Update last match index for this line
-                lastMatchIndices.set(lineIndex, foundTokenIndex);
             }
         });
     }
