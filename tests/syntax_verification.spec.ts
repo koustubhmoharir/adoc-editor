@@ -44,7 +44,8 @@ interface TestFixture {
 }
 
 const fixturesDir = path.join(__dirname, 'fixtures');
-const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.json'));
+const repoRoot = path.join(__dirname, '..');
+const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.adoc'));
 
 test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
@@ -61,30 +62,50 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
     });
 
     for (const file of files) {
-        const fixturePath = path.join(fixturesDir, file);
-        const fixture: TestFixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'));
-        const adocPath = fixturePath.replace('.json', '.adoc');
-        const tokensPath = fixturePath.replace('.json', '-tokens.json');
-
-        if (!fs.existsSync(adocPath)) {
-            console.warn(`Skipping fixture ${file}: missing .adoc file`);
-            continue;
-        }
-
+        const adocPath = path.join(fixturesDir, file);
+        const fixturePath = adocPath.replace('.adoc', '.json');
+        const tokensPath = adocPath.replace('.adoc', '-tokens.json');
         const adocContent = fs.readFileSync(adocPath, 'utf-8');
+        const testName = path.basename(file, '.adoc') + ' Highlighting'; // Use a derived name or just filename
 
-        test(fixture.description, async ({ page }) => {
+        test(testName, async ({ page }) => {
             const tokens = await getTokens(page, adocContent);
             const lines = adocContent.split(/\r?\n/);
 
-            // 1. Generate {test_name}-tokens.json
-            fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
+            // 1. Generate {test_name}-tokens.json with rich structure
+            const richTokens = tokens.map((lineTokens, lineIndex) => {
+                const lineText = lines[lineIndex];
+                return {
+                    lineIndex: lineIndex,
+                    lineText: lineText,
+                    tokens: lineTokens.map((token, index) => {
+                        const nextOffset = index < lineTokens.length - 1 ? lineTokens[index + 1].offset : lineText.length;
+                        const tokenText = lineText.substring(token.offset, nextOffset);
+                        return {
+                            type: token.type,
+                            offset: token.offset,
+                            text: tokenText
+                        };
+                    })
+                };
+            });
+
+            fs.writeFileSync(tokensPath, JSON.stringify(richTokens, null, 2));
+
+            // 2. Check for existence of checks file
+            if (!fs.existsSync(fixturePath)) {
+                const relativeFixturePath = path.relative(repoRoot, fixturePath);
+                const relativeTokensPath = path.relative(repoRoot, tokensPath);
+                throw new Error(`Fixture checks file '${relativeFixturePath}' is missing. Please inspect the generated tokens file '${relativeTokensPath}' and create the checks file.`);
+            }
+
+            const fixture: TestFixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'));
 
             // Track the last matched token index for each line to assume sequential checks
             const lastMatchIndices = new Map<number, number>();
 
             for (const check of fixture.checks) {
-                const lineIndex = check.line; // lines are 0-indexed in tokens array logic as well as the checks json
+                const lineIndex = check.line;
 
                 const lineTokens = tokens[lineIndex];
                 const lineText = lines[lineIndex];
