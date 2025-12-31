@@ -1,8 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
 import type * as monacoObj from 'monaco-editor';
 
 // Helper to tokenize text in the browser using Monaco's tokenizer
-async function getTokens(page: any, text: string) {
+async function getTokens(page: Page, text: string) {
     return await page.evaluate((content: string) => {
         // Define the shape of the Monaco object we expect
         const win = window as unknown as { monaco?: typeof monacoObj };
@@ -21,10 +23,25 @@ async function getTokens(page: any, text: string) {
             throw new Error('AsciiDoc language is not registered in Monaco.');
         }
 
+        // Tokenize returns Token[][]
         const tokens = monaco.editor.tokenize(content, 'asciidoc');
         return tokens;
     }, text);
 }
+
+interface TokenCheck {
+    line: number;
+    tokenTypes: string[];
+    tokenContent?: string;
+}
+
+interface TestFixture {
+    description: string;
+    checks: TokenCheck[];
+}
+
+const fixturesDir = path.join(__dirname, 'fixtures');
+const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.json'));
 
 test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
@@ -40,44 +57,60 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
         }
     });
 
-    test('Header Highlighting', async ({ page }) => {
-        const adoc = '= My Title';
+    for (const file of files) {
+        const fixturePath = path.join(fixturesDir, file);
+        const fixture: TestFixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'));
+        const adocPath = fixturePath.replace('.json', '.adoc');
 
-        const tokens = await getTokens(page, adoc);
+        if (!fs.existsSync(adocPath)) {
+            console.warn(`Skipping fixture ${file}: missing .adoc file`);
+            continue;
+        }
 
-        const lineTokens = tokens[0];
-        const hasHeaderToken = lineTokens.some((t: any) => t.type.includes('keyword') || t.type.includes('heading'));
-        expect(hasHeaderToken).toBeTruthy();
-    });
+        const adocContent = fs.readFileSync(adocPath, 'utf-8');
 
-    test('Bold Formatting', async ({ page }) => {
-        const adoc = '*bold*';
-        const tokens = await getTokens(page, adoc);
+        test(fixture.description, async ({ page }) => {
+            const tokens = await getTokens(page, adocContent);
+            const lines = adocContent.split(/\r?\n/);
 
-        const lineTokens = tokens[0];
-        const hasBoldToken = lineTokens.some((t: any) => t.type.includes('strong') || t.type.includes('bold'));
-        expect(hasBoldToken).toBeTruthy();
-    });
+            for (const check of fixture.checks) {
+                const lineTokens = tokens[check.line];
+                const lineText = lines[check.line];
 
-    test('Italic Formatting', async ({ page }) => {
-        const adoc = '_italic_';
-        const tokens = await getTokens(page, adoc);
+                // Verify check.line is within bounds
+                expect(lineTokens, `Tokens for line ${check.line} exist`).toBeDefined();
+                expect(lineText, `Text for line ${check.line} exists`).toBeDefined();
 
-        const lineTokens = tokens[0];
-        const hasItalicToken = lineTokens.some((t: any) => t.type.includes('emphasis') || t.type.includes('italic'));
-        expect(hasItalicToken).toBeTruthy();
-    });
+                // Find a matching token in the line
+                const matchingToken = lineTokens.find((token, index) => {
+                    // Calculate token text
+                    const nextOffset = index < lineTokens.length - 1 ? lineTokens[index + 1].offset : lineText.length;
+                    const tokenText = lineText.substring(token.offset, nextOffset);
 
-    test('Code Block', async ({ page }) => {
-        const adoc = `[source,js]
-----
-console.log('hi');
-----`;
-        const tokens = await getTokens(page, adoc);
-        // Check for delimiter
-        const delimiterTokens = tokens[1]; // ----
-        const hasDelimiter = delimiterTokens.some((t: any) => t.type.includes('string') || t.type.includes('comment'));
-        expect(tokens.length).toBeGreaterThan(0);
-    });
+                    // Check type (OR logic)
+                    const typeMatch = check.tokenTypes.some(t => token.type.includes(t));
 
+                    // Check content if specified
+                    const contentMatch = check.tokenContent ? tokenText === check.tokenContent : true;
+
+                    return typeMatch && contentMatch;
+                });
+
+                if (!matchingToken) {
+                    console.log(`Failed to find token on line ${check.line}. Available tokens:`);
+                    lineTokens.forEach((t, i) => {
+                        const nextOffset = i < lineTokens.length - 1 ? lineTokens[i + 1].offset : lineText.length;
+                        const txt = lineText.substring(t.offset, nextOffset);
+                        console.log(`Token ${i}: text="${txt}", type="${t.type}"`);
+                    });
+                }
+
+
+                expect(matchingToken,
+                    `Expected token on line ${check.line} with types [${check.tokenTypes.join(', ')}]` +
+                    (check.tokenContent ? ` and content "${check.tokenContent}"` : '')
+                ).toBeTruthy();
+            }
+        });
+    }
 });

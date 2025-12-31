@@ -1,0 +1,13 @@
+{
+    "description": "Bold Highlighting",
+    "checks": [
+        {
+            "line": 0,
+            "tokenContent": "*bold*",
+            "tokenTypes": [
+                "strong",
+                "bold"
+            ]
+        }
+    ]
+}

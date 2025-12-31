@@ -1,0 +1,13 @@
+{
+    "description": "Code Block Highlighting",
+    "checks": [
+        {
+            "line": 1,
+            "tokenContent": "----",
+            "tokenTypes": [
+                "string",
+                "comment"
+            ]
+        }
+    ]
+}
