@@ -136,8 +136,10 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
                 if (foundToken) {
                     // Verify types
-                    const typeMatch = check.tokenTypes.some(t => foundToken.type.includes(t));
-                    expect(typeMatch, `Expected token "${check.tokenContent}" to have one of types [${check.tokenTypes.join(', ')}], but got "${foundToken.type}"`).toBeTruthy();
+                    const tokenParts = foundToken.type.split('.');
+                    // Check that ALL expected types are present in the token parts (AND logic)
+                    const typeMatch = check.tokenTypes.every(t => tokenParts.includes(t));
+                    expect(typeMatch, `Expected token "${check.tokenContent}" to have ALL types [${check.tokenTypes.join(', ')}], but got "${foundToken.type}"`).toBeTruthy();
 
                     // Update last match index for this line
                     lastMatchIndices.set(lineIndex, foundTokenIndex);

@@ -5,8 +5,7 @@
             "line": 1,
             "tokenContent": "----",
             "tokenTypes": [
-                "string",
-                "comment"
+                "string"
             ]
         }
     ]

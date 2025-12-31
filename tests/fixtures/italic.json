@@ -5,8 +5,7 @@
             "line": 0,
             "tokenContent": "_italic_",
             "tokenTypes": [
-                "emphasis",
-                "italic"
+                "emphasis"
             ]
         }
     ]
