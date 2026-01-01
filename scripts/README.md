@@ -34,7 +34,7 @@ Standalone script to generate token files (`*-tokens.json`) using Playwright. Us
 node scripts/generate_tokens.ts file1.adoc file2.adoc
 ```
 
-**Note**: Requires the dev server to be running (`npm start`) on a supported port (8000, 3000, 8080).
+**Note**: The dev server will be started (`npm start`) on the configured port (default 8000, configurable via `PORT` env var) if it is not already running and in that case it will be shut down after the generation is complete.
 
 ### `analyze_adoc.ts`
 

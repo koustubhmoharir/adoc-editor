@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { getTokens, enrichTokens } from '../tests/helpers/monaco_helpers.ts';
+import { SERVER_URL, SERVER_PORT, SERVER_HOST } from './devserver.config.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,27 +20,62 @@ export async function generateTokens(files: string[]) {
 
     try {
         // Go to app
-        const ports = [8000, 8001, 8002, 8003, 3000, 3001, 3002, 8080];
+        const url = SERVER_URL;
         let connected = false;
 
-        for (const port of ports) {
-            const url = `http://127.0.0.1:${port}`;
-            try {
-                console.log(`Trying ${url}...`);
-                await page.goto(url, { timeout: 10000 }); // Increase to 10s to be safe
-                // If we get here, check if we have the editor or just some random page?
-                // The app root should load. We wait for selector later.
-                connected = true;
-                console.log(`Connected to ${url}`);
-                break;
-            } catch (e: any) {
-                console.log(`Failed ${url}: ${e.message}`);
-                // Ignore and try next
-            }
+        try {
+            console.log(`Trying ${url}...`);
+            await page.goto(url, { timeout: 4000 });
+            connected = true;
+            console.log(`Connected to ${url}`);
+        } catch (e: any) {
+            // Check failed
         }
 
         if (!connected) {
-            console.error('Failed to connect to dev server on monitored ports (8000-8003, 3000-3002, 8080). Is it running?');
+            console.log('No running server found. Starting dev server...');
+            const { spawn, execSync } = await import('child_process');
+
+            // Start the server
+            const serverProcess = spawn('npm', ['start'], {
+                detached: true,
+                stdio: 'ignore',
+                shell: true
+            });
+
+            // Allow the script to exit even if this process is running
+            serverProcess.unref();
+
+            // Wait for it to be ready
+            console.log('Waiting for server to become available...');
+            const maxRetries = 30;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    await new Promise(r => setTimeout(r, 1000));
+                    await page.goto(SERVER_URL, { timeout: 4000 });
+                    connected = true;
+                    console.log(`Server started and connected on port ${SERVER_PORT}`);
+
+                    // Register cleanup
+                    process.on('exit', () => {
+                        try {
+                            if (process.platform === 'win32') {
+                                execSync(`taskkill /pid ${serverProcess.pid} /T /F`);
+                            } else {
+                                process.kill(-serverProcess.pid!, 'SIGTERM');
+                            }
+                        } catch (e) { /* ignore */ }
+                    });
+                    break;
+                } catch (e) {
+                    process.stdout.write('.');
+                }
+            }
+            console.log('');
+        }
+
+        if (!connected) {
+            console.error('Failed to start or connect to dev server.');
             throw new Error('Connection failed');
         }
 

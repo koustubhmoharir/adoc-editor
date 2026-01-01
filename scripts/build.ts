@@ -5,6 +5,8 @@ import * as http from 'http';
 import * as path from 'path';
 import { injectWelcome } from './inject_welcome.ts';
 
+import { SERVER_PORT, SERVER_HOST } from './devserver.config.ts';
+
 const isServe = process.argv.includes('--serve');
 const isWatch = process.argv.includes('--watch');
 const isShowTokens = process.argv.includes('--show-tokens');
@@ -82,8 +84,7 @@ async function build() {
     await runRebuild();
 
     if (isServe) {
-        const portArg = process.argv.find(arg => arg.startsWith('--port='));
-        const port = portArg ? parseInt(portArg.split('=')[1]) : 8000;
+        const port = SERVER_PORT;
 
         const server = http.createServer((req, res) => {
             // SSE Endpoint
@@ -161,8 +162,8 @@ async function build() {
             }
         });
 
-        server.listen(port, () => {
-            console.log(`Serving at http://localhost:${port}`);
+        server.listen(port, SERVER_HOST, () => {
+            console.log(`Serving at http://${SERVER_HOST}:${port}`);
         });
     }
 

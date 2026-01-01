@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { SERVER_URL } from './scripts/devserver.config.ts';
 
 export default defineConfig({
     testDir: './tests',
@@ -8,7 +9,7 @@ export default defineConfig({
     workers: process.env.CI ? 1 : undefined,
     reporter: 'line',
     use: {
-        baseURL: 'http://127.0.0.1:8000',
+        baseURL: SERVER_URL,
         trace: 'on-first-retry',
     },
     projects: [
@@ -19,7 +20,7 @@ export default defineConfig({
     ],
     webServer: {
         command: 'npm start',
-        url: 'http://127.0.0.1:8000',
+        url: SERVER_URL,
         reuseExistingServer: true,
     },
 });
