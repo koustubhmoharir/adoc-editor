@@ -9,7 +9,12 @@ class EditorStore {
 
     @action
     setContent(newContent: string) {
-        this.content = newContent;
+        if (this.content !== newContent) {
+            this.content = newContent;
+            if (this.editor && this.editor.getValue() !== newContent) {
+                this.editor.setValue(newContent);
+            }
+        }
     }
 
     @action
