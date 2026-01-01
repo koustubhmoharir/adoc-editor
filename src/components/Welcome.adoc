@@ -1,0 +1,10 @@
+= AsciiDoc Editor
+
+Welcome to the AsciiDoc Editor!
+
+== Features
+* Syntax highlighting
+* File system integration
+* Auto-save functionality
+
+Click the "Help" icon in the title bar to see this message again.

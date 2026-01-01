@@ -158,6 +158,22 @@ class FileSystemStore {
         this.startAutoSave();
     }
 
+    async clearSelection() {
+        if (this.currentFileHandle && this.dirty) {
+            await this.saveFile();
+        }
+
+        runInAction(() => {
+            this.currentFileHandle = null;
+            this.dirty = false;
+        });
+
+        if (this.saveInterval) {
+            clearInterval(this.saveInterval);
+            this.saveInterval = null;
+        }
+    }
+
     async saveFile() {
         if (!this.currentFileHandle) return;
 

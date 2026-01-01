@@ -4,8 +4,8 @@
     "description": "AsciiDoc Editor with Monaco and MobX",
     "type": "module",
     "scripts": {
-        "start": "node scripts/build.ts --serve",
-        "build": "node scripts/build.ts"
+        "start": "node scripts/inject_welcome.ts && node scripts/build.ts --serve",
+        "build": "node scripts/inject_welcome.ts && node scripts/build.ts"
     },
     "keywords": [],
     "author": "",

@@ -2,8 +2,24 @@ import { observable, action } from "mobx";
 import * as monaco from 'monaco-editor';
 import { registerAsciiDoc } from '../utils/asciidocMode';
 
+// MARKER: WELCOME_CONTENT_START
+const WELCOME_CONTENT = `
+= AsciiDoc Editor
+
+Welcome to the AsciiDoc Editor!
+
+== Features
+* Syntax highlighting
+* File system integration
+* Auto-save functionality
+
+Click the "Help" icon in the title bar to see this message again.
+
+`;
+// MARKER: WELCOME_CONTENT_END
+
 class EditorStore {
-    @observable accessor content: string = "= Hello AsciiDoc\n\n* List item 1\n* List item 2\n\n[source,javascript]\n----\nconsole.log('Hello');\n----";
+    @observable accessor content: string = WELCOME_CONTENT;
     editor: monaco.editor.IStandaloneCodeEditor | null = null;
     disposers: (() => void)[] = [];
 
@@ -15,6 +31,11 @@ class EditorStore {
                 this.editor.setValue(newContent);
             }
         }
+    }
+
+    @action
+    showHelp() {
+        this.setContent(WELCOME_CONTENT);
     }
 
     @action
