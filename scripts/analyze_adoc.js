@@ -12,8 +12,15 @@ const PATTERNS = {
     'strong': /(\*[^*]+\*|\*\*[^*]+\*\*)/g, // *foo* or **foo**
     'emphasis': /(_[^_]+_|_{2}[^_]+_{2})/g,
     'string': /(`[^`]+`|`{2}[^`]+`{2}|\+[^+]+\+)/g,
-    'annotation': /(image::|video::|audio::|include::|link:|icon:|http:|https:|ftp:|mailto:|xref:|<<|>>)/g,
-    'delimiter': /^\s*([\*\.\-]+)\s+|^\s*(\d+\.)\s+/, // List markers
+    'annotation': /(image::|video::|audio::|include::|link:|icon:|http:|https:|ftp:|mailto:|xref:|<<|>>)/g
+};
+
+// Patterns handled explicitly:
+// - delimiter (List markers)
+// - attribute_def (:attr:)
+// - attribute_ref ({attr})
+const SPECIAL_PATTERNS = {
+    'delimiter': /^\s*([\*\.\-]+)\s+|^\s*(\d+\.)\s+/,
     'attribute_def': /^:[\w\-]+:/,
     'attribute_ref': /\{[\w\-]+\}/g
 };
@@ -170,8 +177,22 @@ function analyzeFile(filename) {
                     }
                 }
             }
+
+            // Special Patterns (Attributes, Delimiters)
+            for (const match of text.matchAll(SPECIAL_PATTERNS['attribute_ref'])) {
+                addExp(lineIdx, match[0], 'attribute');
+            }
+            // Attribute definitions usually strictly at start of line, handled by fallback if not in block?
+            // But Asciidoctor validation might swallow them.
+            // If it is a paragraph, it might be text.
+            // Let's check anyway.
+            let attrDef = text.match(SPECIAL_PATTERNS['attribute_def']);
+            if (attrDef) {
+                addExp(lineIdx, attrDef[0], 'type.identifier');
+            }
+
             // List Delimiters
-            let delimMatch = text.match(PATTERNS['delimiter']);
+            let delimMatch = text.match(SPECIAL_PATTERNS['delimiter']);
             if (delimMatch) {
                 // Determine which group matched (1 or 2)
                 const text = delimMatch[1] || delimMatch[2];
@@ -225,15 +246,15 @@ function analyzeFile(filename) {
                 addExp(idx, match[0], 'annotation');
             }
             // Attributes
-            let attrDef = line.match(PATTERNS['attribute_def']);
+            let attrDef = line.match(SPECIAL_PATTERNS['attribute_def']);
             if (attrDef) {
                 addExp(idx, attrDef[0], 'type.identifier');
             }
-            for (const match of line.matchAll(PATTERNS['attribute_ref'])) {
+            for (const match of line.matchAll(SPECIAL_PATTERNS['attribute_ref'])) {
                 addExp(idx, match[0], 'attribute');
             }
             // List Delimiters
-            let delimMatch = line.match(PATTERNS['delimiter']);
+            let delimMatch = line.match(SPECIAL_PATTERNS['delimiter']);
             if (delimMatch) {
                 // Determine which group matched (1 or 2)
                 const text = delimMatch[1] || delimMatch[2];
