@@ -1,7 +1,6 @@
-const { vanillaExtractPlugin } = require('@vanilla-extract/esbuild-plugin');
-const esbuild = require('esbuild');
-const path = require('path');
-const fs = require('fs');
+import { vanillaExtractPlugin } from '@vanilla-extract/esbuild-plugin';
+import * as esbuild from 'esbuild';
+import * as fs from 'fs';
 
 const isServe = process.argv.includes('--serve');
 

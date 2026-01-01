@@ -2,9 +2,10 @@
     "name": "adoc-editor",
     "version": "1.0.0",
     "description": "AsciiDoc Editor with Monaco and MobX",
+    "type": "module",
     "scripts": {
-        "start": "node scripts/build.js --serve",
-        "build": "node scripts/build.js"
+        "start": "node scripts/build.ts --serve",
+        "build": "node scripts/build.ts"
     },
     "keywords": [],
     "author": "",
@@ -19,6 +20,7 @@
     },
     "devDependencies": {
         "@playwright/test": "^1.57.0",
+        "@types/node": "^25.0.3",
         "@types/react": "^18.2.0",
         "@types/react-dom": "^18.2.0",
         "@vanilla-extract/css": "^1.18.0",

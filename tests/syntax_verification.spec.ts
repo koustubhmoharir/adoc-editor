@@ -43,6 +43,11 @@ interface TestFixture {
     checks: TokenCheck[];
 }
 
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const fixturesDir = path.join(__dirname, 'fixtures');
 const repoRoot = path.join(__dirname, '..');
 const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.adoc'));

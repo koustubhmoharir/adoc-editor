@@ -1,6 +1,10 @@
-const { execSync } = require('child_process');
-const path = require('path');
-const fs = require('fs');
+import { execSync } from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const filename = process.argv[2];
 
@@ -15,7 +19,7 @@ const tokensPath = path.join(fixturesDir, `${baseName}-tokens.json`);
 
 console.log(`\n--- Step 1: Analyzing ${baseName}.adoc ---`);
 try {
-    execSync(`node scripts/analyze_adoc.js ${filename}`, { stdio: 'inherit' });
+    execSync(`node scripts/analyze_adoc.ts ${filename}`, { stdio: 'inherit' });
 } catch (e) {
     console.error('Analysis failed.');
     process.exit(1);
@@ -41,7 +45,7 @@ try {
 
 console.log(`\n--- Step 3: Generating Expectations ---`);
 try {
-    execSync(`node scripts/generate_expectations.js ${filename}`, { stdio: 'inherit' });
+    execSync(`node scripts/generate_expectations.ts ${filename}`, { stdio: 'inherit' });
 } catch (e) {
     console.error('Expectation generation failed.');
     process.exit(1);
