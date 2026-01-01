@@ -13,9 +13,6 @@ export const TitleBar: React.FC = observer(() => {
         <header className={styles.header}>
             <div className={styles.leftSection}>
                 <h3 className={styles.title}>AsciiDoc Editor</h3>
-                <button className={styles.button} onClick={() => fileSystemStore.openDirectory()}>
-                    Open Folder
-                </button>
             </div>
 
             <div className={styles.centerSection}>
@@ -28,6 +25,6 @@ export const TitleBar: React.FC = observer(() => {
                     {themeStore.theme === 'light' ? '🌙' : '☀️'}
                 </button>
             </div>
-        </header>
+        </header >
     );
 });

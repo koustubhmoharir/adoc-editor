@@ -36,15 +36,38 @@ const FileTreeItem: React.FC<{ node: FileNode; level?: number }> = observer(({ n
 });
 
 export const Sidebar: React.FC = observer(() => {
+    const hasDirectory = !!fileSystemStore.directoryHandle;
+
     return (
         <div className={styles.sidebar}>
-            {fileSystemStore.fileTree.length === 0 ? (
-                <div className={styles.emptyState}>No folder opened</div>
+            {hasDirectory && (
+                <div
+                    className={styles.header}
+                    title={fileSystemStore.directoryHandle?.name}
+                    onClick={() => fileSystemStore.openDirectory()}
+                >
+                    {fileSystemStore.directoryHandle?.name}
+                </div>
+            )}
+            {!hasDirectory ? (
+                <div className={styles.emptyState}>
+                    <div>No folder opened</div>
+                    <button
+                        className={styles.actionButton}
+                        onClick={() => fileSystemStore.openDirectory()}
+                    >
+                        Open Folder
+                    </button>
+                </div>
             ) : (
                 <div className={styles.treeContainer}>
-                    {fileSystemStore.fileTree.map((node, i) => (
-                        <FileTreeItem key={i} node={node} />
-                    ))}
+                    {fileSystemStore.fileTree.length === 0 ? (
+                        <div className={styles.emptyState}>Empty folder</div>
+                    ) : (
+                        fileSystemStore.fileTree.map((node, i) => (
+                            <FileTreeItem key={i} node={node} />
+                        ))
+                    )}
                 </div>
             )}
         </div>

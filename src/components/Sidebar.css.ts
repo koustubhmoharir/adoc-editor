@@ -55,3 +55,39 @@ export const icon = style({
     marginRight: '6px',
     opacity: 0.8
 });
+
+export const header = style({
+    padding: '10px 16px',
+    fontWeight: 600,
+    fontSize: '12px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    color: themeVars.color.textSecondary,
+    borderBottom: `1px solid ${themeVars.color.border}`,
+    display: 'flex',
+    alignItems: 'center',
+    marginBottom: '4px',
+    // Handle long names
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    cursor: 'pointer',
+    ':hover': {
+        color: themeVars.color.text,
+        backgroundColor: themeVars.color.hoverBackground
+    }
+});
+
+export const actionButton = style({
+    marginTop: '8px',
+    backgroundColor: 'transparent',
+    border: `1px solid ${themeVars.color.border}`,
+    color: themeVars.color.text,
+    borderRadius: '4px',
+    padding: '6px 12px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    ':hover': {
+        backgroundColor: themeVars.color.hoverBackground
+    }
+});
