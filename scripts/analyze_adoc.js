@@ -180,7 +180,7 @@ function analyzeFile(filename) {
 
             // Special Patterns (Attributes, Delimiters)
             for (const match of text.matchAll(SPECIAL_PATTERNS['attribute_ref'])) {
-                addExp(lineIdx, match[0], 'attribute');
+                addExp(lineIdx, match[0], 'variable.predefined');
             }
             // Attribute definitions usually strictly at start of line, handled by fallback if not in block?
             // But Asciidoctor validation might swallow them.
@@ -188,7 +188,7 @@ function analyzeFile(filename) {
             // Let's check anyway.
             let attrDef = text.match(SPECIAL_PATTERNS['attribute_def']);
             if (attrDef) {
-                addExp(lineIdx, attrDef[0], 'type.identifier');
+                addExp(lineIdx, attrDef[0], 'variable');
             }
 
             // List Delimiters
@@ -248,10 +248,10 @@ function analyzeFile(filename) {
             // Attributes
             let attrDef = line.match(SPECIAL_PATTERNS['attribute_def']);
             if (attrDef) {
-                addExp(idx, attrDef[0], 'type.identifier');
+                addExp(idx, attrDef[0], 'variable');
             }
             for (const match of line.matchAll(SPECIAL_PATTERNS['attribute_ref'])) {
-                addExp(idx, match[0], 'attribute');
+                addExp(idx, match[0], 'variable.predefined');
             }
             // List Delimiters
             let delimMatch = line.match(SPECIAL_PATTERNS['delimiter']);

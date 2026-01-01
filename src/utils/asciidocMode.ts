@@ -66,7 +66,7 @@ export function registerAsciiDoc() {
                 { include: '@formatting' },
 
                 // General Text
-                [/[^=\*_\`\[\]\:\/\<\>]+/, '']
+                [/[^=\*_\`\[\]\:\/\<\>\{\}]+/, '']
             ],
 
             headers: [
@@ -125,8 +125,8 @@ export function registerAsciiDoc() {
             ],
 
             macros: [
-                [/(image|video|audio|include)::[^\[]+\[.*?\]/, 'annotation'],
-                [/(link|http|https|ftp|mailto):[^\[]+\[.*?\]/, 'annotation'],
+                [/(image|video|audio|include|icon)::[^\[]+\[.*?\]/, 'annotation'],
+                [/(link|icon|http|https|ftp|mailto):[^\[]+\[.*?\]/, 'annotation'],
                 [/<<.*?>>/, 'annotation'] // Cross references
             ],
 
