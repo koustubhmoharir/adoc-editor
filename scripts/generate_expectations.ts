@@ -16,6 +16,7 @@ interface AnalysisItem {
 interface Token {
     type: string;
     text: string;
+    offset: number;
 }
 
 interface TokenLine {
@@ -79,10 +80,20 @@ function generateExpectations(filename: string) {
                 checks.push({
                     line: exp.line,
                     tokenContent: bestToken.text,
-                    tokenTypes: types
+                    tokenTypes: types,
+                    _offset: bestToken.offset // Temporary for sorting
                 });
             }
         });
+
+        // SORT CHECKS BY LINE AND OFFSET
+        checks.sort((a, b) => {
+            if (a.line !== b.line) return a.line - b.line;
+            return a._offset - b._offset;
+        });
+
+        // Remove temporary offset
+        checks.forEach(c => delete c._offset);
 
         // Write output
         const out = { checks };

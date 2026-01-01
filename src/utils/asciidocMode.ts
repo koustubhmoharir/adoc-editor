@@ -139,18 +139,71 @@ export function registerAsciiDoc() {
             ],
 
             formatting: [
-                // Bold: *text* or **text**
-                [/\*\*.*?\*\*/, 'strong'],
-                [/\*.*?\*/, 'strong'],
-                // Italic: _text_ or __text__
-                [/__.*?__/, 'emphasis'],
-                [/_.*?_/, 'emphasis'],
-                // Monospace: `text` or ``text`` or +text+
-                [/``.*?``/, 'string'],
-                [/`.*?`/, 'string'],
-                [/\+.*?\+/, 'string'],
+                // Bold: **text** or *text*
+                [/\*\*/, { token: 'strong', next: '@strongDouble' }],
+                [/\*/, { token: 'strong', next: '@strongSingle' }],
+                // Italic: __text__ or _text_
+                [/__/, { token: 'emphasis', next: '@emphasisDouble' }],
+                [/_/, { token: 'emphasis', next: '@emphasisSingle' }],
+                // Monospace: ``text`` or `text` or +text+
+                [/``/, { token: 'string', next: '@monospaceDouble' }],
+                [/`/, { token: 'string', next: '@monospaceSingle' }],
+                [/\+/, { token: 'string', next: '@monospacePlus' }],
                 // Highlight: #text#
-                [/#.*?#/, 'variable'] // using variable for highlight
+                [/#/, { token: 'variable', next: '@highlightSingle' }],
+            ],
+
+            strongDouble: [
+                [/\*\*/, { token: 'strong', next: '@pop' }],
+                { include: '@formatting' },
+                [/[^*_`#]+/, 'strong'],
+                [/./, 'strong']
+            ],
+
+            strongSingle: [
+                [/\*/, { token: 'strong', next: '@pop' }],
+                { include: '@formatting' },
+                [/[^*_`#]+/, 'strong'],
+                [/./, 'strong']
+            ],
+
+            emphasisDouble: [
+                [/__/, { token: 'emphasis', next: '@pop' }],
+                { include: '@formatting' },
+                [/[^*_`#]+/, 'emphasis'],
+                [/./, 'emphasis']
+            ],
+
+            emphasisSingle: [
+                [/_/, { token: 'emphasis', next: '@pop' }],
+                { include: '@formatting' },
+                [/[^*_`#]+/, 'emphasis'],
+                [/./, 'emphasis']
+            ],
+
+            monospaceDouble: [
+                [/``/, { token: 'string', next: '@pop' }],
+                [/[^`]+/, 'string'],
+                [/./, 'string']
+            ],
+
+            monospaceSingle: [
+                [/`/, { token: 'string', next: '@pop' }],
+                [/[^`]+/, 'string'],
+                [/./, 'string']
+            ],
+
+            monospacePlus: [
+                [/\+/, { token: 'string', next: '@pop' }],
+                [/[^+]+/, 'string'],
+                [/./, 'string']
+            ],
+
+            highlightSingle: [
+                [/#/, { token: 'variable', next: '@pop' }],
+                { include: '@formatting' },
+                [/[^*_`#]+/, 'variable'], // using variable for highlight
+                [/./, 'variable']
             ]
         }
     });

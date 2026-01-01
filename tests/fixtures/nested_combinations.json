@@ -2,16 +2,30 @@
   "checks": [
     {
       "line": 0,
-      "tokenContent": "*bold _italic_ bold*",
+      "tokenContent": "*bold ",
       "tokenTypes": [
         "strong"
       ]
     },
     {
-      "line": 1,
-      "tokenContent": "_italic *bold* italic_",
+      "line": 0,
+      "tokenContent": "_italic_",
       "tokenTypes": [
         "emphasis"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": "_italic ",
+      "tokenTypes": [
+        "emphasis"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": "*bold*",
+      "tokenTypes": [
+        "strong"
       ]
     },
     {
