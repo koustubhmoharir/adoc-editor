@@ -72,3 +72,13 @@ The expectations file defines a list of checks. Each check verifies a specific t
 - **`line`**: The line number where the token appears (starting from 0).
 - **`tokenContent`**: The exact substring of the text that this token covers.
 - **`tokenTypes`**: A list of strings. The test verifies that the actual token's type string contains *all* of these strings. For example, if `tokenTypes` is `["bold"]`, it will match `strong.bold` or `bold.text`.
+
+## Visual Debugging
+
+When writing new tests or debugging failing ones, it is often helpful to see exactly how Monaco is tokenizing the content.
+
+1.  Start the development server: `npm start`
+2.  Paste the content of your failing test case into the editor.
+3.  Observe the **Tokens Visualization** sidebar on the right.
+4.  Click on the problematic tokens to see their exact Type and Content.
+5.  Use this information to update your `.json` expectation file or fix the tokenizer logic in `src/utils/asciidocMode.ts`.

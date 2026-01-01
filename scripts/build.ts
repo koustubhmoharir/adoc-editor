@@ -7,6 +7,7 @@ import { injectWelcome } from './inject_welcome.ts';
 
 const isServe = process.argv.includes('--serve');
 const isWatch = process.argv.includes('--watch');
+const isShowTokens = process.argv.includes('--show-tokens');
 
 const clients: http.ServerResponse[] = [];
 
@@ -138,14 +139,15 @@ async function build() {
                         return;
                     }
                     const injected = data.replace(
-                        '</body>',
+                        '</head>',
                         `<script>
     new EventSource('/_reload').onmessage = function(e) {
         if (e.data === 'update') location.reload();
     };
     console.log('Live reload enabled');
+    ${isShowTokens ? 'window.__SHOW_TOKENS__ = true;' : ''}
 </script>
-</body>`
+</head>`
                     );
                     res.writeHead(200, { 'Content-Type': contentType });
                     res.end(injected);

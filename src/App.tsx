@@ -2,6 +2,7 @@ import React from 'react';
 import Editor from './components/Editor';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
+import { TokensSidebar } from './components/TokensSidebar';
 import { observer } from 'mobx-react-lite';
 import { themeStore } from './store/ThemeStore';
 import { lightTheme, darkTheme } from './theme.css';
@@ -18,6 +19,7 @@ const App: React.FC = observer(() => {
                 <main className={styles.main}>
                     <Editor theme={themeStore.theme === 'light' ? 'vs' : 'vs-dark'} />
                 </main>
+                <TokensSidebar />
             </div>
         </div>
     );
