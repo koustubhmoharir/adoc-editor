@@ -1,22 +1,29 @@
 {
   "checks": [
     {
+      "line": 0,
+      "tokenContent": "`monospace text`",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
       "line": 1,
-      "tokenContent": "----",
+      "tokenContent": "``double mono``",
       "tokenTypes": [
         "string"
       ]
     },
     {
       "line": 2,
-      "tokenContent": "console.log('hi');",
+      "tokenContent": "+plus mono+",
       "tokenTypes": [
         "string"
       ]
     },
     {
       "line": 3,
-      "tokenContent": "----",
+      "tokenContent": "`mono`",
       "tokenTypes": [
         "string"
       ]

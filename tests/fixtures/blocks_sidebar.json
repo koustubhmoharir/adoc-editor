@@ -1,22 +1,22 @@
 {
   "checks": [
     {
+      "line": 0,
+      "tokenContent": "****",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
       "line": 1,
-      "tokenContent": "----",
+      "tokenContent": "This is a sidebar.",
       "tokenTypes": [
         "string"
       ]
     },
     {
       "line": 2,
-      "tokenContent": "console.log('hi');",
-      "tokenTypes": [
-        "string"
-      ]
-    },
-    {
-      "line": 3,
-      "tokenContent": "----",
+      "tokenContent": "It has multiple lines.",
       "tokenTypes": [
         "string"
       ]

@@ -1,0 +1,25 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "_italic text_",
+      "tokenTypes": [
+        "emphasis"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": "__double italic__",
+      "tokenTypes": [
+        "emphasis"
+      ]
+    },
+    {
+      "line": 2,
+      "tokenContent": "_italic_",
+      "tokenTypes": [
+        "emphasis"
+      ]
+    }
+  ]
+}

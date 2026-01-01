@@ -1,0 +1,46 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "=",
+      "tokenTypes": [
+        "keyword"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": "==",
+      "tokenTypes": [
+        "keyword"
+      ]
+    },
+    {
+      "line": 2,
+      "tokenContent": "===",
+      "tokenTypes": [
+        "keyword"
+      ]
+    },
+    {
+      "line": 3,
+      "tokenContent": "====",
+      "tokenTypes": [
+        "keyword"
+      ]
+    },
+    {
+      "line": 4,
+      "tokenContent": "=====",
+      "tokenTypes": [
+        "keyword"
+      ]
+    },
+    {
+      "line": 5,
+      "tokenContent": "======",
+      "tokenTypes": [
+        "keyword"
+      ]
+    }
+  ]
+}

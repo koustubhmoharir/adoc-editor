@@ -1,0 +1,46 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": "console.log('hello');",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 2,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 5,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 6,
+      "tokenContent": "const x = 1;",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 7,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    }
+  ]
+}

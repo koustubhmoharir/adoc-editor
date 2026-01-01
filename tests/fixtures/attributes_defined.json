@@ -1,0 +1,34 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": ":author:",
+      "tokenTypes": [
+        "variable"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": ":version:",
+      "tokenTypes": [
+        "variable"
+      ]
+    },
+    {
+      "line": 3,
+      "tokenContent": "{author}",
+      "tokenTypes": [
+        "variable",
+        "predefined"
+      ]
+    },
+    {
+      "line": 4,
+      "tokenContent": "{version}",
+      "tokenTypes": [
+        "variable",
+        "predefined"
+      ]
+    }
+  ]
+}

@@ -28,7 +28,7 @@ try {
     // Run playwright ONLY for this test file
     // We expect it to fail, so we wrap in try-catch and ignore the error, 
     // provided the tokens file is created.
-    execSync(`npx playwright test -g "${baseName} Highlighting"`, { stdio: 'inherit' });
+    execSync(`npx playwright test -g "\\b${baseName} Highlighting"`, { stdio: 'inherit' });
 } catch (e) {
     // Check if tokens file exists
     if (fs.existsSync(tokensPath)) {
@@ -49,7 +49,7 @@ try {
 
 console.log(`\n--- Step 4: Verifying (Running Playwright Again) ---`);
 try {
-    execSync(`npx playwright test -g "${baseName} Highlighting"`, { stdio: 'inherit' });
+    execSync(`npx playwright test -g "\\b${baseName} Highlighting"`, { stdio: 'inherit' });
     console.log(`\nSUCCESS: Test data generated and verified for ${filename}`);
 } catch (e) {
     console.error(`\nFAILURE: Verification failed for ${filename}. Check the output above.`);

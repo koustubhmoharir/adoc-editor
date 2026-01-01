@@ -1,12 +1,11 @@
 {
-    "description": "Header Highlighting",
-    "checks": [
-        {
-            "line": 0,
-            "tokenContent": "=",
-            "tokenTypes": [
-                "keyword"
-            ]
-        }
-    ]
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "=",
+      "tokenTypes": [
+        "keyword"
+      ]
+    }
+  ]
 }

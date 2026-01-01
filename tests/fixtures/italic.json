@@ -1,12 +1,11 @@
 {
-    "description": "Italic Highlighting",
-    "checks": [
-        {
-            "line": 0,
-            "tokenContent": "_italic_",
-            "tokenTypes": [
-                "emphasis"
-            ]
-        }
-    ]
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "_italic_",
+      "tokenTypes": [
+        "emphasis"
+      ]
+    }
+  ]
 }

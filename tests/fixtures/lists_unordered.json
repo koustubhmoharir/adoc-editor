@@ -1,0 +1,39 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "* ",
+      "tokenTypes": [
+        "delimiter"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": "* ",
+      "tokenTypes": [
+        "delimiter"
+      ]
+    },
+    {
+      "line": 2,
+      "tokenContent": "** ",
+      "tokenTypes": [
+        "delimiter"
+      ]
+    },
+    {
+      "line": 3,
+      "tokenContent": "- ",
+      "tokenTypes": [
+        "delimiter"
+      ]
+    },
+    {
+      "line": 4,
+      "tokenContent": ". ",
+      "tokenTypes": [
+        "delimiter"
+      ]
+    }
+  ]
+}

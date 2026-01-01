@@ -1,0 +1,25 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "image::logo.png[]",
+      "tokenTypes": [
+        "annotation"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": "image::diagram.svg[Diagram, 200, 100]",
+      "tokenTypes": [
+        "annotation"
+      ]
+    },
+    {
+      "line": 2,
+      "tokenContent": "icon:heart[]",
+      "tokenTypes": [
+        "annotation"
+      ]
+    }
+  ]
+}

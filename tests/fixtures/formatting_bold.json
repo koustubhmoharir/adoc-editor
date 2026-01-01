@@ -1,0 +1,25 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "*bold text*",
+      "tokenTypes": [
+        "strong"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": "**double bold**",
+      "tokenTypes": [
+        "strong"
+      ]
+    },
+    {
+      "line": 2,
+      "tokenContent": "*bold*",
+      "tokenTypes": [
+        "strong"
+      ]
+    }
+  ]
+}

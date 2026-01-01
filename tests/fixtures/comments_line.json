@@ -1,0 +1,18 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "// This is a comment",
+      "tokenTypes": [
+        "comment"
+      ]
+    },
+    {
+      "line": 2,
+      "tokenContent": "// Another comment",
+      "tokenTypes": [
+        "comment"
+      ]
+    }
+  ]
+}
