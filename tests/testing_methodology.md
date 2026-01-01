@@ -33,14 +33,17 @@ The verification process for each test case is as follows:
 To add a new syntax highlighting test:
 
 1.  **Create Input**: Create a new file in `tests/fixtures/` with the `.adoc` extension (e.g., `my_feature.adoc`) and add the AsciiDoc content you want to test.
-2.  **Generate Tokens**: Run the tests using `npx playwright test`.
-    - The test for `my_feature` will fail because the expectations file (`my_feature.json`) does not exist yet.
-    - However, the test runner will automatically generate a `my_feature-tokens.json` file in the same directory.
-3.  **Inspect & Create Expectations**:
-    - Open the generated `my_feature-tokens.json` file. This file contains the raw token output from Monaco.
-    - Create a new file named `my_feature.json` in `tests/fixtures/`.
-    - based on the correct tokens found in the debug file, define your test expectations using the format below.
-4.  **Verify**: Run `npx playwright test` again. The test should now pass.
+2.  **Generate Test Data**: Run the automated generation script:
+    ```bash
+    node scripts/generate_test_data.js my_feature.adoc
+    ```
+    This script will automatically:
+    - **Analyze** the `.adoc` file to determine high-level token expectations.
+    - **Run Playwright** to generate the raw tokens from Monaco.
+    - **Generate Expectations** by merging the analysis and raw tokens into `my_feature.json`.
+    - **Verify** the test by running Playwright again.
+
+3.  **Review**: Inspect the generated `my_feature.json` to ensure the expectations are correct.
 
 ## Expectation File Format (`.json`)
 
