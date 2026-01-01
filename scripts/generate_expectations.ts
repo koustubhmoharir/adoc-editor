@@ -77,19 +77,26 @@ function generateExpectations(filename) {
     }
 }
 
-const targetArg = process.argv[2];
+export { generateExpectations };
 
-if (targetArg) {
-    const fileName = path.basename(targetArg);
-    if (fileName.endsWith('.adoc')) {
-        generateExpectations(fileName);
-    } else {
-        console.error('File must end with .adoc');
-    }
-} else {
-    fs.readdirSync(FIXTURES_DIR).forEach(file => {
-        if (file.endsWith('.adoc')) {
-            generateExpectations(file);
+// CLI Execution Support
+import { pathToFileURL } from 'url';
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+    const targetArg = process.argv[2];
+
+    if (targetArg) {
+        const fileName = path.basename(targetArg);
+        if (fileName.endsWith('.adoc')) {
+            generateExpectations(fileName);
+        } else {
+            console.error('File must end with .adoc');
         }
-    });
+    } else {
+        fs.readdirSync(FIXTURES_DIR).forEach(file => {
+            if (file.endsWith('.adoc')) {
+                generateExpectations(file);
+            }
+        });
+    }
 }

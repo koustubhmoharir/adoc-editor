@@ -277,19 +277,27 @@ function analyzeFile(filename) {
     fs.writeFileSync(outputPath, JSON.stringify(expectations, null, 2));
 }
 
-const targetArg = process.argv[2];
+// Export the function
+export { analyzeFile };
 
-if (targetArg) {
-    const fileName = path.basename(targetArg);
-    if (fileName.endsWith('.adoc')) {
-        analyzeFile(fileName);
-    } else {
-        console.error('File must end with .adoc');
-    }
-} else {
-    fs.readdirSync(FIXTURES_DIR).forEach(file => {
-        if (file.endsWith('.adoc')) {
-            analyzeFile(file);
+// CLI Execution Support
+import { pathToFileURL } from 'url';
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+    const targetArg = process.argv[2];
+
+    if (targetArg) {
+        const fileName = path.basename(targetArg);
+        if (fileName.endsWith('.adoc')) {
+            analyzeFile(fileName);
+        } else {
+            console.error('File must end with .adoc');
         }
-    });
+    } else {
+        fs.readdirSync(FIXTURES_DIR).forEach(file => {
+            if (file.endsWith('.adoc')) {
+                analyzeFile(file);
+            }
+        });
+    }
 }

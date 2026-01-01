@@ -1,36 +1,11 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import type * as monacoObj from 'monaco-editor';
 import type { Token } from 'monaco-editor';
-
-type Monaco = typeof monacoObj;
-
-// Helper to tokenize text in the browser using Monaco's tokenizer
-async function getTokens(page: Page, text: string): Promise<Token[][]> {
-    return await page.evaluate((content: string) => {
-        // Define the shape of the Monaco object we expect
-        const win = window as unknown as { monaco?: Monaco };
-
-        const monaco = win.monaco;
-        if (!monaco) {
-            throw new Error('Monaco global not found on window. Ensure the editor is loaded.');
-        }
-
-        if (!monaco.languages) {
-            throw new Error('Monaco languages API not found.');
-        }
-
-        const languages = monaco.languages.getLanguages().map((l) => l.id);
-        if (!languages.includes('asciidoc')) {
-            throw new Error('AsciiDoc language is not registered in Monaco.');
-        }
-
-        // Tokenize returns Token[][]
-        const tokens = monaco.editor.tokenize(content, 'asciidoc');
-        return tokens;
-    }, text);
-}
+// Import shared helpers. Note .js extension for resolution if needed, or rely on toolchain.
+// Since this is Playwright (TS), .ts import usually fine or .js if ESM.
+// Given strict browser/node separation in previous steps, let's try .js for consistency.
+import { getTokens, enrichTokens } from './helpers/monaco_helpers.ts';
 
 interface TokenCheck {
     line: number;
@@ -71,29 +46,14 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
         const fixturePath = adocPath.replace('.adoc', '.json');
         const tokensPath = adocPath.replace('.adoc', '-tokens.json');
         const adocContent = fs.readFileSync(adocPath, 'utf-8');
-        const testName = path.basename(file, '.adoc') + ' Highlighting'; // Use a derived name or just filename
+        const testName = path.basename(file, '.adoc') + ' Highlighting';
 
         test(testName, async ({ page }) => {
             const tokens = await getTokens(page, adocContent);
             const lines = adocContent.split(/\r?\n/);
 
-            // 1. Generate {test_name}-tokens.json with rich structure
-            const richTokens = tokens.map((lineTokens, lineIndex) => {
-                const lineText = lines[lineIndex];
-                return {
-                    lineIndex: lineIndex,
-                    lineText: lineText,
-                    tokens: lineTokens.map((token, index) => {
-                        const nextOffset = index < lineTokens.length - 1 ? lineTokens[index + 1].offset : lineText.length;
-                        const tokenText = lineText.substring(token.offset, nextOffset);
-                        return {
-                            type: token.type,
-                            offset: token.offset,
-                            text: tokenText
-                        };
-                    })
-                };
-            });
+            // 1. Generate {test_name}-tokens.json with rich structure using helper
+            const richTokens = enrichTokens(tokens, lines);
 
             fs.writeFileSync(tokensPath, JSON.stringify(richTokens, null, 2));
 
