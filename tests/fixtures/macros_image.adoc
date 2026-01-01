@@ -1,0 +1,3 @@
+image::logo.png[]
+image::diagram.svg[Diagram, 200, 100]
+icon:heart[]

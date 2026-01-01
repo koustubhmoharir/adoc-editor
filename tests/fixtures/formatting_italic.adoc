@@ -1,0 +1,3 @@
+_italic text_
+__double italic__
+Normal _italic_ text.

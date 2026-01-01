@@ -1,0 +1,8 @@
+----
+console.log('hello');
+----
+
+[source,javascript]
+----
+const x = 1;
+----

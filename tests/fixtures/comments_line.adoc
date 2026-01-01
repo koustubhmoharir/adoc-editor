@@ -1,0 +1,3 @@
+// This is a comment
+Normal text // Not a comment
+// Another comment

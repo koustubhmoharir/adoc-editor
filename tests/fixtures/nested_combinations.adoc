@@ -1,0 +1,4 @@
+*bold _italic_ bold*
+_italic *bold* italic_
+`mono *bold* mono`
+**double *nested* double**

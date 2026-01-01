@@ -1,0 +1,5 @@
+:author: John Doe
+:version: 1.0
+
+My name is {author}.
+Version {version}.

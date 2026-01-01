@@ -1,0 +1,3 @@
+*bold text*
+**double bold**
+Normal *bold* text.

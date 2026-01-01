@@ -1,0 +1,4 @@
+`monospace text`
+``double mono``
++plus mono+
+Normal `mono` text.

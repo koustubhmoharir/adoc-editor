@@ -1,0 +1,4 @@
+****
+This is a sidebar.
+It has multiple lines.
+****
