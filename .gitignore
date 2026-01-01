@@ -5,6 +5,7 @@ node_modules
 
 # Testing
 coverage
+/test-results
 
 # Production
 dist
@@ -34,3 +35,4 @@ yarn-error.log*
 
 # Test fixtures generated files
 tests/fixtures/*-tokens.json
+tests/fixtures/*-analysis.json

@@ -5,16 +5,21 @@ export const container = style({
     display: 'flex',
     flexDirection: 'column',
     height: '100vh',
-    fontFamily: 'Inter, system-ui, sans-serif'
+    width: '100vw',
+    overflow: 'hidden',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    backgroundColor: vars.color.background,
+    color: vars.color.text
 });
 
-export const header = style({
-    padding: vars.space.small,
-    background: vars.color.headerBackground,
-    color: vars.color.headerText
+export const workspace = style({
+    display: 'flex',
+    flex: 1,
+    overflow: 'hidden'
 });
 
 export const main = style({
     flex: 1,
-    overflow: 'hidden'
+    overflow: 'hidden',
+    position: 'relative'
 });

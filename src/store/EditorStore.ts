@@ -33,7 +33,10 @@ class EditorStore {
         const model = this.editor.getModel();
         if (model) {
             const contentDisposable = model.onDidChangeContent(() => {
-                this.setContent(model.getValue());
+                const value = model.getValue();
+                if (value !== this.content) {
+                    this.setContent(value);
+                }
             });
             this.disposers.push(() => contentDisposable.dispose());
         }
