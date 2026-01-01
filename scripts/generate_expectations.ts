@@ -7,7 +7,23 @@ const __dirname = path.dirname(__filename);
 
 const FIXTURES_DIR = path.join(__dirname, '../tests/fixtures');
 
-function generateExpectations(filename) {
+interface AnalysisItem {
+    line: number;
+    textContent: string;
+    tokenType: string;
+}
+
+interface Token {
+    type: string;
+    text: string;
+}
+
+interface TokenLine {
+    lineIndex: number;
+    tokens: Token[];
+}
+
+function generateExpectations(filename: string) {
     const baseName = filename.replace('.adoc', '');
     const analysisPath = path.join(FIXTURES_DIR, `${baseName}-analysis.json`);
     const tokensPath = path.join(FIXTURES_DIR, `${baseName}-tokens.json`);
@@ -23,10 +39,10 @@ function generateExpectations(filename) {
     }
 
     try {
-        const analysis = JSON.parse(fs.readFileSync(analysisPath, 'utf8'));
-        const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf8'));
+        const analysis: AnalysisItem[] = JSON.parse(fs.readFileSync(analysisPath, 'utf8'));
+        const tokens: TokenLine[] = JSON.parse(fs.readFileSync(tokensPath, 'utf8'));
 
-        const checks = [];
+        const checks: any[] = [];
 
         // Analysis gives: { line: 0, textContent: 'foo', tokenType: 'strong' }
         // Tokens gives: [ [ { startIndex: 0, type: '...', text: '...' } ] ] (Array of Array of Token)
@@ -44,7 +60,7 @@ function generateExpectations(filename) {
             }
             const lineTokens = lineItem.tokens;
 
-            const matchingTokens = lineTokens.map((t, i) => ({ token: t, index: i })).filter(({ token: t, index: i }) => {
+            const matchingTokens = lineTokens.map((t, i) => ({ token: t, index: i })).filter(({ token: t, index: i }: { token: Token, index: number }) => {
                 if (matchedTokens.has(`${exp.line}:${i}`)) return false;
 
                 // Check type first
@@ -72,7 +88,7 @@ function generateExpectations(filename) {
         const out = { checks };
         fs.writeFileSync(outputPath, JSON.stringify(out, null, 2));
         console.log(`Generated ${outputPath} with ${checks.length} checks`);
-    } catch (err) {
+    } catch (err: any) {
         console.error(`Error processing ${filename}:`, err.message);
     }
 }

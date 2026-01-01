@@ -65,7 +65,7 @@ export async function generateTokens(files: string[]) {
                 const tokenPath = path.join(FIXTURES_DIR, file.replace('.adoc', '-tokens.json'));
                 fs.writeFileSync(tokenPath, JSON.stringify(richTokens, null, 2));
                 successCount++;
-            } catch (err) {
+            } catch (err: any) {
                 console.error(`Error processing ${file}:`, err);
                 failCount++;
             }

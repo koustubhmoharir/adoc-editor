@@ -6,6 +6,22 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+interface Expectation {
+    line: number;
+    textContent: string;
+    tokenType: string;
+}
+
+// Minimal type definitions for Asciidoctor blocks to avoid complex type setup
+interface AbstractBlock {
+    context: string;
+    getNodeName(): string;
+    getLineNumber(): number;
+    getLines(): string[];
+    lines: string[];
+    getParent(): AbstractBlock | undefined;
+}
+
 const asciidoctor = Asciidoctor();
 
 const FIXTURES_DIR = path.join(__dirname, '../tests/fixtures');
@@ -31,7 +47,7 @@ const SPECIAL_PATTERNS = {
     'attribute_ref': /\{[\w\-]+\}/g
 };
 
-function analyzeFile(filename) {
+function analyzeFile(filename: string) {
     // ...
     console.log(`Analyzing ${filename}...`);
     const filePath = path.join(FIXTURES_DIR, filename);
@@ -41,10 +57,10 @@ function analyzeFile(filename) {
     // Load with sourcemap
     const doc = asciidoctor.load(content, { sourcemap: true, safe: 'safe' });
 
-    const expectations = [];
+    const expectations: Expectation[] = [];
 
     // Helper to add expectation
-    const addExp = (line, text, type) => {
+    const addExp = (line: number, text: string, type: string) => {
         if (line >= 0 && line < lines.length) {
             expectations.push({
                 line: line,
@@ -59,10 +75,10 @@ function analyzeFile(filename) {
     // The AST helps us avoid false positives (e.g. * in code block).
     // So we use AST to whitelist lines that are NOT code/literal.
 
-    const codeLines = new Set();
-    const processedLines = new Set();
-    const blocks = doc.findBy((b) => true);
-    blocks.forEach(block => {
+    const codeLines = new Set<number>();
+    const processedLines = new Set<number>();
+    const blocks = doc.findBy(() => true);
+    blocks.forEach((block: any) => {
         const type = block.getNodeName();
         if (['listing', 'literal', 'sidebar', 'example', 'quote'].includes(type)) {
             const start = block.getLineNumber();

@@ -69,7 +69,7 @@ async function main() {
             execSync(`npx playwright test -g "\\b${baseName} Highlighting"`, { stdio: 'inherit' });
         }
         console.log(`\nSUCCESS: Test data generated and verified.`);
-    } catch (e) {
+    } catch (e: any) {
         console.error('\nFAILURE: Verification failed.');
         process.exit(1);
     }
