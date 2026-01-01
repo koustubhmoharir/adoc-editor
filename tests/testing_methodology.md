@@ -35,13 +35,13 @@ To add a new syntax highlighting test:
 1.  **Create Input**: Create a new file in `tests/fixtures/` with the `.adoc` extension (e.g., `my_feature.adoc`) and add the AsciiDoc content you want to test.
 2.  **Generate Test Data**: Run the automated generation script:
     ```bash
-    node scripts/generate_test_data.js my_feature.adoc
+    node scripts/generate_test_data.ts my_feature.adoc
     ```
     This script will automatically:
     - **Analyze** the `.adoc` file to determine high-level token expectations.
-    - **Run Playwright** to generate the raw tokens from Monaco.
+    - **Generate Tokens** using a dedicated Playwright script (re-using the browser if running in batch with `--all`).
     - **Generate Expectations** by merging the analysis and raw tokens into `my_feature.json`.
-    - **Verify** the test by running Playwright again.
+    - **Verify** the test by running the verification suite.
 
 3.  **Review**: Inspect the generated `my_feature.json` to ensure the expectations are correct.
 
