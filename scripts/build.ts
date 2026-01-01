@@ -82,6 +82,9 @@ async function build() {
     await runRebuild();
 
     if (isServe) {
+        const portArg = process.argv.find(arg => arg.startsWith('--port='));
+        const port = portArg ? parseInt(portArg.split('=')[1]) : 8000;
+
         const server = http.createServer((req, res) => {
             // SSE Endpoint
             if (isWatch && req.url === '/_reload') {
@@ -158,8 +161,8 @@ async function build() {
             }
         });
 
-        server.listen(8000, () => {
-            console.log('Serving at http://localhost:8000');
+        server.listen(port, () => {
+            console.log(`Serving at http://localhost:${port}`);
         });
     }
 

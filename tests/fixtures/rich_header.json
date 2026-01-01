@@ -1,0 +1,47 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "=",
+      "tokenTypes": [
+        "keyword"
+      ]
+    },
+    {
+      "line": 0,
+      "tokenContent": "*Title*",
+      "tokenTypes": [
+        "strong"
+      ]
+    },
+    {
+      "line": 1,
+      "tokenContent": "{version}",
+      "tokenTypes": [
+        "variable",
+        "predefined"
+      ]
+    },
+    {
+      "line": 2,
+      "tokenContent": "_Italic_",
+      "tokenTypes": [
+        "emphasis"
+      ]
+    },
+    {
+      "line": 2,
+      "tokenContent": "`Monospace`",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 3,
+      "tokenContent": "<<xref>>",
+      "tokenTypes": [
+        "annotation"
+      ]
+    }
+  ]
+}

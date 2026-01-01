@@ -1,0 +1,4 @@
+= Main *Title*
+== Subtitle with {version}
+=== Header with _Italic_ and `Monospace`
+==== Header with <<xref>>

@@ -70,8 +70,16 @@ export function registerAsciiDoc() {
             ],
 
             headers: [
-                [/^=+(?=\s)/, 'keyword'],
-                [/^=+$/, 'keyword'] // header underlines (setext style, simplified)
+                [/^(=+)(\s+)/, ['keyword', { token: 'white', next: '@header' }]],
+            ],
+
+            header: [
+                { include: '@formatting' },
+                { include: '@macros' },
+                [/\{[a-zA-Z0-9_\-]+\}/, 'variable.predefined'],
+                [/[^=\n*_\`#\[<\{]+/, 'keyword'], // Text that isn't formatting-like
+                [/[*_\`#\[<\{]/, 'keyword'], // Fallback for characters that look like formatting but aren't
+                [/^=+$|$/, { token: '', next: '@pop' }] // End of header line
             ],
 
             comments: [

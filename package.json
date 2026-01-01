@@ -6,7 +6,8 @@
     "scripts": {
         "start": "node scripts/inject_welcome.ts && node scripts/build.ts --serve --watch --show-tokens",
         "serve": "node scripts/inject_welcome.ts && node scripts/build.ts --serve",
-        "build": "node scripts/inject_welcome.ts && node scripts/build.ts"
+        "build": "node scripts/inject_welcome.ts && node scripts/build.ts",
+        "test": "npx playwright test"
     },
     "keywords": [],
     "author": "",
