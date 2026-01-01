@@ -18,7 +18,7 @@ The application features a "Welcome" / "Help" screen that is displayed when no f
     const WELCOME_CONTENT = `...`;
     // MARKER: WELCOME_CONTENT_END
     ```
-- **Consequence**: If you modify `Welcome.adoc`, you **must** restart the development server or run the injection script manualy for changes to take effect if the watcher doesn't pick up the pre-step (currently it relies on `npm start` restart).
+- **Consequence**: `Welcome.adoc` is monitored by the custom watcher. Modifying it triggers `inject_welcome.ts` followed by a rebuild and browser reload automatically.
 
 ## 2. File System Access & State Management
 
@@ -45,6 +45,11 @@ The editor interacts directly with the user's local file system using the [File 
 
 ## 5. Build System
 - We use **esbuild** directly (via `scripts/build.ts`) instead of Vite or Webpack.
+- **Custom Watch & Serve**:
+  - We do not use esbuild's built-in `watch` or `serve` modes.
+  - Instead, we use `fs.watch` (recursive) on the `src` directory to detect changes.
+  - We run a custom Node.js `http` server to serve the `dist` directory.
+  - **Live Reload**: We check for changes and use Server-Sent Events (SSE) to notify the browser to reload when a build completes.
 - **Worker Handling**: Monaco Editor workers are explicitly bundled as separate entry points:
   ```typescript
   entryPoints: {
