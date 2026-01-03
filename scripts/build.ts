@@ -45,7 +45,10 @@ async function build() {
         minify: !isServe, // Only minify in production/non-serve mode? Or maybe just keep it simple.
         target: 'es2020',
         loader: {
-            '.ttf': 'file',
+            '.ttf': 'dataurl',
+            '.woff': 'dataurl',
+            '.woff2': 'dataurl',
+            '.eot': 'dataurl',
             '.css': 'css'
         },
         define: {

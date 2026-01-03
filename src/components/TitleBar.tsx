@@ -23,17 +23,20 @@ export const TitleBar: React.FC = observer(() => {
 
             <div className={styles.rightSection}>
                 <button
-                    className={styles.button}
+                    className={themeStore.theme === 'light' ? styles.themeButtonDark : styles.themeButtonLight}
+                    onClick={() => themeStore.toggleTheme()}
+                >
+                    {themeStore.theme === 'light' ? <i className="fa-solid fa-moon"></i> : <i className="fa-regular fa-moon"></i>}
+                </button>
+                <button
+                    className={styles.helpButton}
                     onClick={async () => {
                         await fileSystemStore.clearSelection();
                         editorStore.showHelp();
                     }}
                     title="Help"
                 >
-                    Help
-                </button>
-                <button className={styles.button} onClick={() => themeStore.toggleTheme()}>
-                    {themeStore.theme === 'light' ? '🌙' : '☀️'}
+                    <i className="fa-solid fa-circle-question"></i>
                 </button>
             </div>
         </header >

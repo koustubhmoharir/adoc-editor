@@ -8,7 +8,7 @@ export const header = style({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '0 16px',
+    padding: '0 0 0 16px',
     borderBottom: `1px solid ${vars.color.border}`,
     flexShrink: 0
 });
@@ -27,7 +27,7 @@ export const centerSection = style({
 
 export const rightSection = style({
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
 });
 
 export const title = style({
@@ -46,14 +46,30 @@ export const dirtyIndicator = style({
 });
 
 export const button = style({
+    border: 'none',
     backgroundColor: 'transparent',
-    border: `1px solid ${vars.color.border}`,
     color: 'inherit',
-    borderRadius: '4px',
-    padding: '4px 8px',
+    padding: '8px',
     cursor: 'pointer',
-    fontSize: '12px',
+    fontSize: '20px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     ':hover': {
         backgroundColor: vars.color.hoverBackground
     }
 });
+
+// Specific styles for theme states
+export const themeButtonDark = style([button, {
+    color: '#4b5563', // Dark gray for moon (switching to dark mode)
+}]);
+
+export const themeButtonLight = style([button, {
+    color: '#fde047', // Lighter yellow for sun (switching to light mode)
+}]);
+
+export const helpButton = style([button, {
+    color: '#0ea5e9', // Sky blue
+}]);
+
