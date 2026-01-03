@@ -1,95 +1,22 @@
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Helper to create a temporary directory unique to the test
-const createTempDir = () => {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'adoc-editor-test-'));
-};
+import { FsTestSetup } from './helpers/fs_test_setup';
 
 test.describe('Editor Functionality', () => {
-    let tempDir1: string;
-    let tempDir2: string;
+    let fsSetup: FsTestSetup;
 
     test.beforeEach(async ({ page }) => {
-        tempDir1 = createTempDir();
-        tempDir2 = createTempDir();
-        console.log(`Test running in temp dirs: ${tempDir1}, ${tempDir2}`);
+        fsSetup = new FsTestSetup();
 
-        // Populate temp dir 1
-        fs.writeFileSync(path.join(tempDir1, 'file1.adoc'), '== File 1\nContent of file 1.');
-        fs.writeFileSync(path.join(tempDir1, 'file2.adoc'), '== File 2\nContent of file 2.');
-        fs.mkdirSync(path.join(tempDir1, 'subdir'));
-        fs.writeFileSync(path.join(tempDir1, 'subdir', 'nested.adoc'), '== Nested\nContent of nested file.');
-        fs.writeFileSync(path.join(tempDir1, 'other.txt'), 'Ignored file');
+        // Populate setup
+        fsSetup.createFile('dir1', 'file1.adoc', '== File 1\nContent of file 1.');
+        fsSetup.createFile('dir1', 'file2.adoc', '== File 2\nContent of file 2.');
+        fsSetup.createFile('dir1', 'subdir/nested.adoc', '== Nested\nContent of nested file.');
+        fsSetup.createFile('dir1', 'other.txt', 'Ignored file');
+        fsSetup.createFile('dir2', 'dir2_file.adoc', '== Dir2 File\nContent of dir2 file.');
 
-        // Populate temp dir 2
-        fs.writeFileSync(path.join(tempDir2, 'dir2_file.adoc'), '== Dir2 File\nContent of dir2 file.');
-
-        // Helper to resolve path based on prefix (dir1 or dir2)
-        const resolvePath = (virtualPath: string) => {
-            // Paths from mock come as "dir1/file...", "dir2/file..." or "dir1" (if root listing)
-            // Sometimes relative paths might be passed if internal logic differs, but our mock sends "rootname/path" structure
-            // Mock uses format: "{name}/{entryName}" for children.
-            // But root handle path is just "dir1".
-            // listing "dir1" -> read tempDir1.
-
-            const parts = virtualPath.split(/[/\\]/);
-            const root = parts[0];
-            const rest = parts.slice(1).join(path.sep);
-
-            if (root === 'dir1') return path.join(tempDir1, rest);
-            if (root === 'dir2') return path.join(tempDir2, rest);
-
-            // Fallback or error?
-            // If path is just '.' (old mock default), map to dir1?
-            if (virtualPath === '.') return tempDir1;
-
-            // Should not happen with new mock config
-            throw new Error(`Unknown virtual path root: ${root} in ${virtualPath}`);
-        };
-
-        // Expose bindings to bridge the mocked FS access in browser to Node fs
-        await page.exposeFunction('__fs_readDir', async (dirPath: string) => {
-            const fullPath = resolvePath(dirPath);
-            if (!fs.existsSync(fullPath)) return [];
-            const entries = fs.readdirSync(fullPath, { withFileTypes: true });
-            return entries.map(e => ({
-                name: e.name,
-                kind: e.isDirectory() ? 'directory' : 'file'
-            }));
-        });
-
-        await page.exposeFunction('__fs_readFile', async (filePath: string) => {
-            const fullPath = resolvePath(filePath);
-            return fs.readFileSync(fullPath, 'utf8');
-        });
-
-        await page.exposeFunction('__fs_writeFile', async (filePath: string, content: string) => {
-            const fullPath = resolvePath(filePath);
-            const dir = path.dirname(fullPath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(fullPath, content);
-        });
-
-        await page.exposeFunction('__fs_stat', async (filePath: string) => {
-            const fullPath = resolvePath(filePath);
-            try {
-                const s = fs.statSync(fullPath);
-                return { isDirectory: s.isDirectory(), isFile: s.isFile() };
-            } catch (e) {
-                throw new Error(`File not found: ${filePath} (resolved: ${fullPath})`);
-            }
-        });
-
-        // Inject the mock implementation
-        await page.addInitScript('window.__ENABLE_TEST_GLOBALS__ = true;');
-        await page.addInitScript({ path: path.join(__dirname, 'helpers', 'fs_mock.js') });
+        await fsSetup.init(page);
 
         await page.goto('/?skip_restore=true');
 
@@ -98,12 +25,7 @@ test.describe('Editor Functionality', () => {
     });
 
     test.afterEach(() => {
-        try {
-            fs.rmSync(tempDir1, { recursive: true, force: true });
-            fs.rmSync(tempDir2, { recursive: true, force: true });
-        } catch (e) {
-            console.error(`Failed to cleanup temp dirs`, e);
-        }
+        fsSetup.cleanup();
     });
 
     test('Opening a directory shows all adoc files within it recursively', async ({ page }) => {
@@ -161,7 +83,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('header')).toContainText('dir2_file.adoc');
 
         // Check disk content of file1 in dir1 was not changed
-        const content = fs.readFileSync(path.join(tempDir1, 'file1.adoc'), 'utf8');
+        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
         expect(content).toBe('== File 1\nContent of file 1.');
     });
 
@@ -174,7 +96,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('header')).toContainText('file2.adoc');
 
         // Check file1 content intact
-        const content = fs.readFileSync(path.join(tempDir1, 'file1.adoc'), 'utf8');
+        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
         expect(content).toBe('== File 1\nContent of file 1.');
     });
 
@@ -200,7 +122,7 @@ test.describe('Editor Functionality', () => {
         await page.waitForTimeout(5500);
 
         // Check disk content
-        const content = fs.readFileSync(path.join(tempDir1, 'file1.adoc'), 'utf8');
+        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
         expect(content).toBe('Updated content.');
 
         // Check dirty indicator gone
@@ -226,7 +148,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('header')).toContainText('file2.adoc');
 
         // Verify file 1 saved
-        const content = fs.readFileSync(path.join(tempDir1, 'file1.adoc'), 'utf8');
+        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
         expect(content).toBe('Modified content before switch.');
     });
 
@@ -246,7 +168,7 @@ test.describe('Editor Functionality', () => {
         await page.reload();
 
         // Verify file 1 saved
-        const content = fs.readFileSync(path.join(tempDir1, 'file1.adoc'), 'utf8');
+        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
         expect(content).toBe('Modified content before refresh.');
     });
 
@@ -271,7 +193,7 @@ test.describe('Editor Functionality', () => {
 
     test('Nested directory states are persisted correctly', async ({ page }) => {
         // Setup deep structure in tempDir1
-        const level1 = path.join(tempDir1, 'level1');
+        const level1 = path.join(fsSetup.tempDir1, 'level1');
         const level2 = path.join(level1, 'level2');
         const level3 = path.join(level2, 'level3');
         fs.mkdirSync(level3, { recursive: true });
@@ -339,7 +261,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('header')).toContainText('new-1.adoc');
 
         // Check file exists on disk
-        const newFilePath = path.join(tempDir1, 'new-1.adoc');
+        const newFilePath = path.join(fsSetup.tempDir1, 'new-1.adoc');
         expect(fs.existsSync(newFilePath)).toBe(true);
 
         // Check sidebar has new file selected
@@ -359,8 +281,8 @@ test.describe('Editor Functionality', () => {
         await page.click('header [title="New File in dir1"]');
         await expect(page.locator('header')).toContainText('new-2.adoc');
 
-        const path1 = path.join(tempDir1, 'new-1.adoc');
-        const path2 = path.join(tempDir1, 'new-2.adoc');
+        const path1 = path.join(fsSetup.tempDir1, 'new-1.adoc');
+        const path2 = path.join(fsSetup.tempDir1, 'new-2.adoc');
         expect(fs.existsSync(path1)).toBe(true);
         expect(fs.existsSync(path2)).toBe(true);
     });
@@ -381,7 +303,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('header')).toContainText('new-1.adoc');
 
         // Check existing file content
-        const content = fs.readFileSync(path.join(tempDir1, 'file1.adoc'), 'utf8');
+        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
         expect(content).toBe('Modified content.');
     });
 
@@ -411,7 +333,7 @@ test.describe('Editor Functionality', () => {
         await newFileBtn.click({ force: true });
 
         // Should create new-1.adoc INSIDE subdir
-        const newFilePath = path.join(tempDir1, 'subdir', 'new-1.adoc');
+        const newFilePath = path.join(fsSetup.tempDir1, 'subdir', 'new-1.adoc');
 
         // Allow operation to complete
         await expect(async () => {
