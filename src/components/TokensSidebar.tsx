@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { editorStore } from '../store/EditorStore';
 import * as styles from './TokensSidebar.css';
 import * as monaco from 'monaco-editor';
+import { fileSystemStore } from '../store/FileSystemStore';
 
 interface TokenInfo {
     line: number;
@@ -12,15 +13,62 @@ interface TokenInfo {
     endColumn: number;
 }
 
+interface TokenCheck {
+    line: number;
+    tokenContent: string;
+    tokenTypes: string[];
+}
+
+interface Expectation {
+    checks: TokenCheck[];
+}
+
 export const TokensSidebar: React.FC = observer(() => {
     const [tokens, setTokens] = useState<TokenInfo[]>([]);
     const [activeTokenIndex, setActiveTokenIndex] = useState<number | null>(null);
+    const [expectations, setExpectations] = useState<Expectation | null>(null);
     const listRef = useRef<HTMLDivElement>(null);
 
     // Check if feature is enabled
     if (!window.__SHOW_TOKENS__) {
         return null;
     }
+
+    useEffect(() => {
+        const loadExpectations = async () => {
+            const handle = fileSystemStore.currentFileHandle;
+            if (!handle) {
+                setExpectations(null);
+                return;
+            }
+
+            const name = handle.name;
+            if (!name.endsWith('.adoc')) {
+                setExpectations(null);
+                return;
+            }
+
+            const jsonName = name.replace(/\.adoc$/, '.json');
+            const jsonHandle = await fileSystemStore.findSiblingFile(handle, jsonName);
+
+            if (!jsonHandle) {
+                setExpectations(null);
+                return;
+            }
+
+            try {
+                const file = await jsonHandle.getFile();
+                const text = await file.text();
+                const json = JSON.parse(text);
+                setExpectations(json);
+            } catch (e) {
+                console.error('Error loading expectations', e);
+                setExpectations(null);
+            }
+        };
+
+        loadExpectations();
+    }, [fileSystemStore.currentFileHandle]);
 
     const updateTokens = () => {
         const editor = editorStore.editor;
@@ -30,12 +78,12 @@ export const TokensSidebar: React.FC = observer(() => {
         if (!model) return;
 
         // Use monaco.editor.tokenize to get tokens
-        // This is a rough approximation as it tokenizes from scratch
-        // but for visualization it's usually sufficient and easier than decoding binary metadata
         const rawTokens = monaco.editor.tokenize(model.getValue(), 'asciidoc');
 
         const flatTokens: TokenInfo[] = [];
-        const lines = model.getValue().split('\n');
+        // ...
+
+        const lines = model.getLinesContent();
 
         rawTokens.forEach((lineTokens, lineIndex) => {
             const lineNumber = lineIndex + 1;
@@ -124,6 +172,56 @@ export const TokensSidebar: React.FC = observer(() => {
         }
     };
 
+    const checkedTokenIndices = React.useMemo(() => {
+        if (!expectations || tokens.length === 0) return new Set<number>();
+
+        const matched = new Set<number>();
+        const checks = expectations.checks;
+
+
+
+        const checksByLine = new Map<number, TokenCheck[]>();
+        checks.forEach(c => {
+            if (!checksByLine.has(c.line)) checksByLine.set(c.line, []);
+            checksByLine.get(c.line)!.push(c);
+        });
+
+        const tokensByLine = new Map<number, { token: TokenInfo, index: number }[]>();
+        tokens.forEach((t, i) => {
+            const l = t.line - 1;
+            if (!tokensByLine.has(l)) tokensByLine.set(l, []);
+            tokensByLine.get(l)!.push({ token: t, index: i });
+        });
+
+        checksByLine.forEach((lineChecks, lineNum) => {
+            const lineTokens = tokensByLine.get(lineNum);
+            if (!lineTokens) {
+
+                return;
+            }
+
+
+
+            let tokenCursor = 0;
+            lineChecks.forEach(check => {
+                while (tokenCursor < lineTokens.length) {
+                    const { token, index } = lineTokens[tokenCursor];
+                    tokenCursor++;
+
+
+                    if (token.text === check.tokenContent) {
+
+                        matched.add(index);
+                        // Check strictly one match per check? Yes, consistent with sequential verification.
+                        break;
+                    }
+                }
+            });
+        });
+
+        return matched;
+    }, [tokens, expectations]);
+
     return (
         <div className={styles.sidebar}>
             <div className={styles.header}>
@@ -142,6 +240,9 @@ export const TokensSidebar: React.FC = observer(() => {
                             <span className={styles.tokenType} title={token.type}>{token.type}</span>
                             <span className={styles.tokenText} title={token.text}>{token.text}</span>
                         </div>
+                        {checkedTokenIndices.has(index) && (
+                            <span className={styles.checkIcon} title="Valid test case">✓</span>
+                        )}
                     </div>
                 ))}
             </div>

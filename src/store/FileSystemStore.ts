@@ -201,6 +201,44 @@ class FileSystemStore {
         }, 5000); // 5 seconds
     }
 
+    findParentDirectory(targetHandle: FileSystemHandle): FileSystemDirectoryHandle | null {
+        if (!this.directoryHandle) return null;
+
+        // Check root level
+        if (this.fileTree.some(n => n.handle === targetHandle)) {
+            return this.directoryHandle;
+        }
+
+        // Check recursively
+        return this.findParentRecursive(this.fileTree, targetHandle);
+    }
+
+    findParentRecursive(nodes: FileNode[], target: FileSystemHandle): FileSystemDirectoryHandle | null {
+        for (const node of nodes) {
+            if (node.kind === 'directory' && node.children) {
+                // Is target a child of this node?
+                if (node.children.some(child => child.handle === target)) {
+                    return node.handle as FileSystemDirectoryHandle;
+                }
+                // Recurse
+                const found = this.findParentRecursive(node.children, target);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    async findSiblingFile(handle: FileSystemFileHandle, siblingName: string): Promise<FileSystemFileHandle | null> {
+        const parentHandle = this.findParentDirectory(handle);
+        if (!parentHandle) return null;
+
+        try {
+            return await parentHandle.getFileHandle(siblingName);
+        } catch (e) {
+            return null;
+        }
+    }
+
     setDirty(isDirty: boolean) {
         this.dirty = isDirty;
     }

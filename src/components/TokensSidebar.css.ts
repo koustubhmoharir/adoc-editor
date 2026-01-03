@@ -82,3 +82,10 @@ export const tokenText = style({
     color: themeVars.color.text,
     minHeight: '16px' // Ensure height for descenders
 });
+
+export const checkIcon = style({
+    color: '#4caf50', // Green
+    marginLeft: '8px',
+    fontSize: '16px',
+    alignSelf: 'center'
+});
