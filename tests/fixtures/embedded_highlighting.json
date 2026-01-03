@@ -62,6 +62,48 @@
       "tokenTypes": [
         "string"
       ]
+    },
+    {
+      "line": 37,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 39,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 42,
+      "tokenContent": "....",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 44,
+      "tokenContent": "....",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 47,
+      "tokenContent": "-----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 50,
+      "tokenContent": "-----",
+      "tokenTypes": [
+        "string"
+      ]
     }
   ]
 }

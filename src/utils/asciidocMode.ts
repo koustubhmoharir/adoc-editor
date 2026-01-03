@@ -246,32 +246,50 @@ function getEmbeddedLanguageRules() {
         const escapedAliases = aliases.map(a => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         const aliasPattern = escapedAliases.join('|');
         const stateNameWait = `block_wait_${langId}`;
-        const stateNameBody = `block_body_${langId}`;
 
-        // 1. Root rule: Detect [source, lang]
+        // 1. Root rule: Detect [source, lang] with optional attributes
         rootRules.push([
             new RegExp(`^/\\/\\/\\s*.*$`), // Ignore comments before checking source block
             'comment'
         ]);
 
-        // Match [source, language] or just [language] if it's a common pattern (but usually it's [source,lang])
-        // We focus on [source, lang]
+        // Match [source, language] or [source, language, attributes...]
+        // We relax the end check to allow optional comma/bracket and trailing text
         rootRules.push([
-            new RegExp(`^\\[source,\\s*(${aliasPattern})\\s*\\]$`),
+            new RegExp(`^\\[source,\\s*(${aliasPattern})(?:[\\]\\,].*)?$`, 'i'),
             { token: 'keyword', next: `@${stateNameWait}` }
         ]);
 
-        // 2. Waiting state: waiting for ----
-        stateDefinitions[stateNameWait] = [
-            [/^----\s*$/, { token: 'string', next: `@${stateNameBody}`, nextEmbedded: langId }],
-            [/\s+/, { token: '' }], // whitespace allowed
-            [/^.*$/, { token: '@rematch', next: '@pop' }] // Anything else? Abort wait.
-        ];
+        // 2. Waiting state: waiting for delimiters of length 4-8
+        // We need to support both ---- and ....
+        const waitRules: any[] = [];
 
-        // 3. Body state: inside the block, look for exit
-        stateDefinitions[stateNameBody] = [
-            [/^----$/, { token: 'string', next: '@pop', nextEmbedded: '@pop' }]
-        ];
+        const keyChars = ['-', '.'];
+
+        keyChars.forEach(char => {
+            const charName = char === '-' ? 'dash' : 'dot';
+            const escapedChar = char === '.' ? '\\.' : char;
+
+            for (let len = 4; len <= 8; len++) {
+                const bodyStateName = `block_body_${langId}_${charName}_${len}`;
+
+                // Rule to enter the block
+                waitRules.push([
+                    new RegExp(`^${escapedChar}{${len}}\\s*$`),
+                    { token: 'string', next: `@${bodyStateName}`, nextEmbedded: langId }
+                ]);
+
+                // 3. Body state: specific to this delimiter char and length
+                stateDefinitions[bodyStateName] = [
+                    [new RegExp(`^${escapedChar}{${len}}$`), { token: 'string', next: '@pop', nextEmbedded: '@pop' }]
+                ];
+            }
+        });
+
+        waitRules.push([/\s+/, { token: '' }]); // whitespace allowed
+        waitRules.push([/^.*$/, { token: '@rematch', next: '@pop' }]); // Anything else? Abort wait.
+
+        stateDefinitions[stateNameWait] = waitRules;
     });
 
     return { rootRules, stateDefinitions };

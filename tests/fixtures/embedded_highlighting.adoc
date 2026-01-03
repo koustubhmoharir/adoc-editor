@@ -34,4 +34,20 @@ class Program {
 }
 ----
 
+[source, bash, subs="attributes"]
+----
+echo "Hello with attributes"
+----
+
+[source, javascript]
+....
+console.log("Dots delimiter");
+....
+
+[source, python]
+-----
+def five_dashes():
+    return True
+-----
+
 End of document.
