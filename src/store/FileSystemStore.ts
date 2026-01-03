@@ -47,7 +47,11 @@ class FileSystemStore {
             runInAction(() => {
                 this.directoryHandle = handle;
             });
-            await set('directoryHandle', handle);
+            try {
+                await set('directoryHandle', handle);
+            } catch (e) {
+                console.warn('Failed to persist directory handle:', e);
+            }
             await this.refreshTree();
         } catch (error) {
             console.error('Error opening directory:', error);
@@ -76,16 +80,10 @@ class FileSystemStore {
                 const perm = await this.directoryHandle!.queryPermission({ mode: 'read' });
                 if (perm === 'granted') {
                     await this.refreshTree();
-                    this.restoreCollapsedPaths();
+                    await this.restoreCollapsedPaths();
                     await this.restoreLastFile();
                 } else {
                     // We maintain the handle but can't list files yet.
-                    // The UI should show a button to "Restore Access" or "Reload Directory" which matches a user gesture.
-                    // For now, we'll try to refresh, if it fails, we handle it?
-                    // actually verifyPermission logic below handles requestPermission which needs gesture.
-                    // We'll leave it to the user to click "Open Directory" (which might start fresh) or a generic "Refresh" 
-                    // mechanism. However, let's try to prompt if possible? No, browsers block prompt on load.
-                    // We'll trust that the user clicks something.
                 }
             }
         } catch (error) {
@@ -230,7 +228,11 @@ class FileSystemStore {
         // For reading, we might need permission too? usually strictly nested files inherit permission.
 
         // Persist file handle
-        await set('lastOpenFile', fileHandle);
+        try {
+            await set('lastOpenFile', fileHandle);
+        } catch (e) {
+            console.warn('Failed to persist file handle:', e);
+        }
 
         const file = await fileHandle.getFile();
         const content = await file.text();
@@ -342,7 +344,11 @@ class FileSystemStore {
             this.collapsedPaths.add(path);
         }
         // Trigger generic reaction/persist
-        set('collapsedPaths', Array.from(this.collapsedPaths));
+        try {
+            set('collapsedPaths', Array.from(this.collapsedPaths));
+        } catch (e) {
+            console.warn('Failed to persist collapsed paths:', e);
+        }
     }
 
     isCollapsed(path: string) {

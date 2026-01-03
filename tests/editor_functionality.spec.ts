@@ -269,4 +269,56 @@ test.describe('Editor Functionality', () => {
         }).toPass();
     });
 
+    test('Nested directory states are persisted correctly', async ({ page }) => {
+        // Setup deep structure in tempDir1
+        const level1 = path.join(tempDir1, 'level1');
+        const level2 = path.join(level1, 'level2');
+        const level3 = path.join(level2, 'level3');
+        fs.mkdirSync(level3, { recursive: true });
+        fs.writeFileSync(path.join(level3, 'deep_file.adoc'), '== Deep File');
+
+        // Refresh file explorer by opening folder again (or just start here)
+        await page.click('button:has-text("Open Folder")');
+
+        // Verify initial state: All expanded by default
+        // level1 visible in Sidebar
+        await expect(page.locator('text=level1')).toBeVisible();
+        // level2 visible
+        await expect(page.locator('text=level2')).toBeVisible();
+        // level3 visible
+        await expect(page.locator('text=level3')).toBeVisible();
+        // deep_file visible
+        await expect(page.locator('text=deep_file.adoc')).toBeVisible();
+
+        // Collapse level3. (State: level1=Open, level2=Open, level3=Collapsed)
+        await page.click('text=level3');
+        // deep_file should hide
+        await expect(page.locator('text=deep_file.adoc')).not.toBeVisible();
+
+        // Collapse level1. (State: level1=Collapsed, level2=? (hidden), level3=Collapsed)
+        await page.click('text=level1');
+        // level2 should hide
+        await expect(page.locator('text=level2')).not.toBeVisible();
+
+        // Simulate reload without skip_restore
+        await page.goto('/');
+
+        // Wait for restoration
+        await expect(page.locator('text=level1')).toBeVisible();
+
+        // Verify level1 is collapsed immediately after load
+        await expect(page.locator('text=level2')).not.toBeVisible();
+
+        // Expand level1
+        await page.click('text=level1');
+
+        // Verify level2 is visible and expanded (children visible)
+        await expect(page.locator('text=level2')).toBeVisible();
+        await expect(page.locator('text=level3')).toBeVisible();
+
+        // Verify level3 is visible but collapsed (children NOT visible)
+        // deep_file should still be hidden
+        await expect(page.locator('text=deep_file.adoc')).not.toBeVisible();
+    });
+
 });
