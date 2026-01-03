@@ -571,27 +571,46 @@ class FileSystemStore {
         } else if (e.key === 'Enter') {
             e.preventDefault();
             this.openHighlighted();
+        } else if (e.key === 'PageDown') {
+            e.preventDefault();
+            this.moveHighlight(this.getPageSize());
+        } else if (e.key === 'PageUp') {
+            e.preventDefault();
+            this.moveHighlight(-this.getPageSize());
         }
     }
 
+    getPageSize(): number {
+        const first = this.searchResults[0];
+        if (!first || !first.ref.current) return 10;
+
+        const itemHeight = first.ref.current.offsetHeight;
+        // The container is the offsetParent
+        const container = first.ref.current.offsetParent as HTMLElement;
+        if (!container) return 10;
+
+        const height = container.clientHeight;
+        if (height === 0 || itemHeight === 0) return 10;
+
+        return Math.floor(height / itemHeight);
+    }
+
     @action
-    moveHighlight(direction: 1 | -1) {
+    moveHighlight(delta: number) {
         const results = this.searchResults;
         if (results.length === 0) return;
 
         const currentIndex = results.findIndex(r => r.isHighlighted);
-        let newIndex = currentIndex;
 
-        if (currentIndex === -1) {
-            if (direction === 1) newIndex = 0;
-            // if direction -1, do nothing (stay unhighlighted)
-        } else {
-            newIndex = currentIndex + direction;
-        }
+        // Calculate new index
+        // If nothing selected (-1), start from -1. 
+        // For ArrowDown (delta=1): -1 + 1 = 0
+        // For PageDown (delta=10): -1 + 10 = 9
+        let newIndex = currentIndex + delta;
 
         // Boundary checks
         if (newIndex < 0) {
-            // Moving up from 0 -> clear highlight
+            // Moving up past top -> clear highlight
             if (currentIndex !== -1) {
                 results[currentIndex].setHighlight(false);
             }
