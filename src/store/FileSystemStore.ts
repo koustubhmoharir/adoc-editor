@@ -331,6 +331,38 @@ class FileSystemStore {
         return null;
     }
 
+    get currentDirectoryPath(): string {
+        if (!this.directoryHandle) return '';
+        const rootName = this.directoryHandle.name;
+
+        if (!this.currentFileHandle) return rootName;
+
+        // Find path of current file in tree
+        const findPath = (nodes: FileNode[]): string | null => {
+            for (const node of nodes) {
+                if (node.kind === 'file') {
+                    // Optimized check? node.handle is same as currentFileHandle?
+                    // We can check reference equality first
+                    if (node.handle === this.currentFileHandle) return node.path;
+                    // Fallback to isSameEntry async? computed properties shouldn't be async.
+                    // relying on reference equality assuming syncSelectedFileWithTree updated it.
+                } else if (node.children) {
+                    const found = findPath(node.children);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+
+        const path = findPath(this.fileTree);
+        if (!path) return rootName; // Fallback
+
+        const lastSlash = path.lastIndexOf('/');
+        if (lastSlash === -1) return rootName;
+
+        return `${rootName}/${path.substring(0, lastSlash)}`;
+    }
+
     async createNewFile(parentDirectory?: FileSystemDirectoryHandle) {
         if (!this.directoryHandle) {
             alert('Please open a directory first.');

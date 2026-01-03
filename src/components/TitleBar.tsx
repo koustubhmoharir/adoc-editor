@@ -17,7 +17,7 @@ export const TitleBar: React.FC = observer(() => {
                 <button
                     className={styles.newFileButton}
                     onClick={() => fileSystemStore.createNewFile()}
-                    title="New File"
+                    title={`New File in ${fileSystemStore.currentDirectoryPath}`}
                 >
                     <i className="fa-solid fa-file-circle-plus"></i>
                 </button>

@@ -44,7 +44,7 @@ const FileTreeItem: React.FC<{ node: FileNode; level?: number }> = observer(({ n
                         e.stopPropagation();
                         fileSystemStore.createNewFile(node.handle as FileSystemDirectoryHandle);
                     }}
-                    title="New File"
+                    title={`New File in ${fileSystemStore.directoryHandle?.name}/${node.path}`}
                 >
                     <i className="fas fa-file-circle-plus" />
                 </button>
@@ -75,7 +75,7 @@ export const Sidebar: React.FC = observer(() => {
                             e.stopPropagation();
                             fileSystemStore.createNewFile(fileSystemStore.directoryHandle!);
                         }}
-                        title="New File"
+                        title={`New File in ${fileSystemStore.directoryHandle?.name}`}
                     >
                         <i className="fas fa-file-circle-plus" />
                     </button>

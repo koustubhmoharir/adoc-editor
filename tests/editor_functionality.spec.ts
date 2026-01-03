@@ -328,9 +328,12 @@ test.describe('Editor Functionality', () => {
         // Wait for file tree to load
         await expect(page.locator('text=file1.adoc')).toBeVisible();
 
+        const title = await page.locator('header [title^="New File"]').getAttribute('title');
+        expect(title).toBe('New File in dir1');
+
         // Initially in root, no file selected.
         // Click New File button in Title Bar.
-        await page.click('header [title="New File"]');
+        await page.click('header [title^="New File in"]');
 
         // Should create new-1.adoc
         await expect(page.locator('header')).toContainText('new-1.adoc');
@@ -340,20 +343,20 @@ test.describe('Editor Functionality', () => {
         expect(fs.existsSync(newFilePath)).toBe(true);
 
         // Check sidebar has new file selected
-        await expect(page.locator('text=new-1.adoc')).toBeVisible();
+        await expect(page.locator('[class*="Sidebar_fileItem"]').filter({ hasText: 'new-1.adoc' })).toBeVisible();
     });
 
     test('Creating multiple new files increments counter', async ({ page }) => {
         await page.click('button:has-text("Open Folder")');
         await expect(page.locator('text=file1.adoc')).toBeVisible();
 
-        await page.click('header [title="New File"]');
+        await page.click('header [title="New File in dir1"]');
         await expect(page.locator('header')).toContainText('new-1.adoc');
 
         // Allow some time for state to settle/save
         await page.waitForTimeout(500);
 
-        await page.click('header [title="New File"]');
+        await page.click('header [title="New File in dir1"]');
         await expect(page.locator('header')).toContainText('new-2.adoc');
 
         const path1 = path.join(tempDir1, 'new-1.adoc');
@@ -374,7 +377,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('header span', { hasText: '*' })).toBeVisible();
 
         // Create new file
-        await page.click('header [title="New File"]');
+        await page.click('header [title="New File in dir1"]');
         await expect(page.locator('header')).toContainText('new-1.adoc');
 
         // Check existing file content
@@ -393,12 +396,15 @@ test.describe('Editor Functionality', () => {
         // We filter for a div that directly contains the text "subdir" to avoid matching children or parents vaguely
         const subdirItem = page.locator('div', { has: page.locator('span', { hasText: 'subdir' }) }).last();
 
-        const newFileBtn = subdirItem.locator('button[title="New File"]');
+        const newFileBtn = subdirItem.locator('button[title^="New File in"]');
 
         // Force hover
         await subdirItem.hover();
         // Wait for opacity transition
         await page.waitForTimeout(300);
+
+        // Check tooltip
+        await expect(newFileBtn).toHaveAttribute('title', 'New File in dir1/subdir');
 
         // Click might need force if hidden? But hover should reveal it.
         // Let's force click just in case
@@ -414,6 +420,9 @@ test.describe('Editor Functionality', () => {
 
         // Check it is selected in title bar
         await expect(page.locator('header')).toContainText('new-1.adoc');
+
+        // Verify TitleBar tooltip updates to subdirectory
+        await expect(page.locator('header [title="New File in dir1/subdir"]')).toBeVisible();
     });
 
 });
