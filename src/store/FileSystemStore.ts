@@ -1,4 +1,4 @@
-import { makeAutoObservable, runInAction, reaction } from "mobx";
+import { observable, action, runInAction, reaction } from "mobx";
 import { get, set } from 'idb-keyval';
 import { editorStore } from './EditorStore';
 
@@ -10,15 +10,15 @@ export interface FileNode {
 }
 
 class FileSystemStore {
-    directoryHandle: FileSystemDirectoryHandle | null = null;
-    fileTree: FileNode[] = [];
-    currentFileHandle: FileSystemFileHandle | null = null;
-    dirty: boolean = false;
+    @observable accessor directoryHandle: FileSystemDirectoryHandle | null = null;
+    @observable accessor fileTree: FileNode[] = [];
+    @observable accessor currentFileHandle: FileSystemFileHandle | null = null;
+    @observable accessor dirty: boolean = false;
+    @observable accessor isLoading: boolean = false;
+
     saveInterval: number | null = null;
-    isLoading: boolean = false;
 
     constructor() {
-        makeAutoObservable(this);
         this.restoreDirectory();
 
         // React to editor content changes to set dirty state
@@ -239,6 +239,7 @@ class FileSystemStore {
         }
     }
 
+    @action
     setDirty(isDirty: boolean) {
         this.dirty = isDirty;
     }
