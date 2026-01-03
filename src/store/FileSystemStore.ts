@@ -47,6 +47,13 @@ class FileSystemStore {
 
     async restoreDirectory() {
         try {
+            // Check for skip_restore parameter
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('skip_restore') === 'true') {
+                console.log('Skipping directory restoration due to skip_restore flag');
+                return;
+            }
+
             const handle = await get('directoryHandle') as FileSystemDirectoryHandle | undefined;
             if (handle) {
                 runInAction(() => {

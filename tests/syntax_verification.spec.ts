@@ -30,7 +30,7 @@ const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.adoc'));
 test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
     test.beforeEach(async ({ page }) => {
-        await page.goto('/');
+        await page.goto('/?skip_restore=true');
         await page.waitForSelector('.monaco-editor');
 
         // Wait for monaco to be exposed

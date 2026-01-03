@@ -29,6 +29,7 @@ node scripts/generate_test_data.ts my_test_case.adoc
 ### `generate_tokens.ts`
 
 Standalone script to generate token files (`*-tokens.json`) using Playwright. Useful for debugging tokenization without running full verification.
+*   This script automatically appends `?skip_restore=true` to the URL to ensure the editor starts with a clean state, avoiding interference from previously opened files.
 
 ```bash
 node scripts/generate_tokens.ts file1.adoc file2.adoc

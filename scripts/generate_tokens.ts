@@ -20,7 +20,7 @@ export async function generateTokens(files: string[]) {
 
     try {
         // Go to app
-        const url = SERVER_URL;
+        const url = `${SERVER_URL}?skip_restore=true`;
         let connected = false;
 
         try {

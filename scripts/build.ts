@@ -104,7 +104,9 @@ async function build() {
             }
 
             // File Serving
-            let filePath = path.join('dist', req.url === '/' ? 'index.html' : req.url || 'index.html');
+            const parsedUrl = new URL(req.url || '/', `http://${req.headers.host}`);
+            const pathname = parsedUrl.pathname === '/' ? 'index.html' : parsedUrl.pathname;
+            let filePath = path.join('dist', pathname);
 
             // Security check to prevent traversing out of dist (basic)
             if (!filePath.startsWith('dist')) {

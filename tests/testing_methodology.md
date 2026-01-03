@@ -78,6 +78,7 @@ The expectations file defines a list of checks. Each check verifies a specific t
 When writing new tests or debugging failing ones, it is often helpful to see exactly how Monaco is tokenizing the content.
 
 1.  Start the development server: `npm start`
+    *   **Tip**: Use `http://localhost:8000/?skip_restore=true` to start with a clean state, avoiding any previously opened files which might interfere with your debugging.
 2.  Paste the content of your failing test case into the editor.
 3.  Observe the **Tokens Visualization** sidebar on the right.
 4.  Click on the problematic tokens to see their exact Type and Content.
