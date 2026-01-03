@@ -104,9 +104,10 @@ class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
 }
 
 // Override global
+window.__mockPickerConfig = { name: 'dir1', path: 'dir1' };
 window.showDirectoryPicker = async () => {
-    // Return a handle to the root of the "mounted" directory
-    return new MockFileSystemDirectoryHandle('root', '.');
+    const { name, path } = window.__mockPickerConfig;
+    return new MockFileSystemDirectoryHandle(name, path);
 };
 
 // Hydration helper for tests
