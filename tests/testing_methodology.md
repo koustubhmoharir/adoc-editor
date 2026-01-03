@@ -8,9 +8,22 @@ The project uses **Playwright** to run end-to-end tests that verify the correct 
 
 ## Test Structure
 
+### Syntax Highlighting (`test:syntax`)
+
 - **Test Runner used**: `tests/syntax_verification.spec.ts`
   - This file iterates through all `.adoc` files in the `tests/fixtures` directory.
   - For each `.adoc` file, it runs a dynamically generated test case.
+
+### Editor Functionality (`test:editor`)
+
+- **Test Runner used**: `tests/editor_functionality.spec.ts`
+- **Scope**: Verifies file system interactions, auto-saving, and UI state integrity.
+- **Mechanism**:
+  - Uses `tests/helpers/fs_mock.js` to intercept `window.showDirectoryPicker`.
+  - Bridges browser file operations to unique temporary directories on the host machine via Playwright bindings (`__fs_readFile`, etc.).
+  - This allows tests to run **in parallel** without race conditions on the file system.
+
+## Syntax Test Structure
 - **Fixtures Directory**: `tests/fixtures/`
   - Contains `.adoc` files (the input text).
   - Contains `.json` files (the expected token structure).

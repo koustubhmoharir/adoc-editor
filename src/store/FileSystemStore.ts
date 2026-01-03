@@ -30,6 +30,13 @@ class FileSystemStore {
                 }
             }
         );
+
+        // Save on close/refresh
+        window.addEventListener('beforeunload', () => {
+            if (this.dirty && this.currentFileHandle) {
+                this.saveFile(); // Attempt to save (best effort)
+            }
+        });
     }
 
     async openDirectory() {
@@ -57,12 +64,14 @@ class FileSystemStore {
             const handle = await get('directoryHandle') as FileSystemDirectoryHandle | undefined;
             if (handle) {
                 runInAction(() => {
-                    this.directoryHandle = handle;
+                    // Test support: Hydrate handle if it's a plain object (mock)
+                    const hydrator = (window as any).__hydrateHandle;
+                    this.directoryHandle = hydrator ? hydrator(handle) : handle;
                 });
 
                 // We cannot query permission immediately often without user gesture if 'prompt' is needed.
                 // But we can try querying.
-                const perm = await handle.queryPermission({ mode: 'read' });
+                const perm = await this.directoryHandle!.queryPermission({ mode: 'read' });
                 if (perm === 'granted') {
                     await this.refreshTree();
                     await this.restoreLastFile();
@@ -86,14 +95,17 @@ class FileSystemStore {
             const handle = await get('lastOpenFile') as FileSystemFileHandle | undefined;
             if (handle) {
                 // Verify permission for the file (should be inherited from directory usually, or re-verified)
-                const perm = await handle.queryPermission({ mode: 'read' });
+                const hydrator = (window as any).__hydrateHandle;
+                const hydratedHandle = hydrator ? hydrator(handle) : handle;
+
+                const perm = await hydratedHandle.queryPermission({ mode: 'read' });
 
                 if (perm === 'granted') {
-                    const file = await handle.getFile();
+                    const file = await hydratedHandle.getFile();
                     const content = await file.text();
 
                     runInAction(() => {
-                        this.currentFileHandle = handle;
+                        this.currentFileHandle = hydratedHandle;
                         this.isLoading = true;
                     });
 
@@ -318,3 +330,8 @@ class FileSystemStore {
 }
 
 export const fileSystemStore = new FileSystemStore();
+
+// Expose for testing/debugging
+if (typeof window !== 'undefined') {
+    (window as any).fileSystemStore = fileSystemStore;
+}

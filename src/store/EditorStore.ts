@@ -81,3 +81,9 @@ class EditorStore {
 }
 
 export const editorStore = new EditorStore();
+
+// Expose for testing/debugging
+if (typeof window !== 'undefined') {
+    (window as any).editorStore = editorStore;
+}
+

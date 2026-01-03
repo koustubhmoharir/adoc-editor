@@ -7,7 +7,9 @@
         "start": "node scripts/inject_welcome.ts && node scripts/build.ts --serve --watch --show-tokens",
         "serve": "node scripts/inject_welcome.ts && node scripts/build.ts --serve",
         "build": "node scripts/inject_welcome.ts && node scripts/build.ts",
-        "test": "npx playwright test"
+        "test": "npx playwright test",
+        "test:syntax": "npx playwright test tests/syntax_verification.spec.ts",
+        "test:editor": "npx playwright test tests/editor_functionality.spec.ts"
     },
     "keywords": [],
     "author": "",

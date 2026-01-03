@@ -45,6 +45,14 @@ The editor interacts directly with the user's local file system using the [File 
   - This generates `*-tokens.json` and expectation files.
   - See `tests/testing_methodology.md` for full details.
 
+
+### Test Scripts
+| Command | Description |
+| :--- | :--- |
+| `npm test` | Runs all Playwright tests. |
+| `npm run test:syntax` | Runs only syntax highlighting verification (`tests/syntax_verification.spec.ts`). |
+| `npm run test:editor` | Runs editor functionality tests (`tests/editor_functionality.spec.ts`). |
+
 ## 5. Build System
 - We use **esbuild** directly (via `scripts/build.ts`) instead of Vite or Webpack.
 - **Custom Watch & Serve**:
@@ -59,6 +67,17 @@ The editor interacts directly with the user's local file system using the [File 
       // ... other workers
   }
   ```
+
+  }
+  ```
+
+### Editor Functionality Tests (`test:editor`)
+We support end-to-end tests for file system interactions (opening folders, editing, auto-save).
+- **Parallel Execution**: Tests run in parallel using Playwright's persistent context isolation.
+- **File System Mocking**:
+  - We mock the `window.showDirectoryPicker` API in `tests/helpers/fs_mock.js`.
+  - File operations are bridged to the real file system via `page.exposeFunction` bindings.
+  - **Unique Temp Directories**: Each test case creates a unique temporary directory (e.g., `adoc-editor-test-<random>`) to ensure isolation and safe parallel execution.
 
 ## 6. Debugging Features
 
