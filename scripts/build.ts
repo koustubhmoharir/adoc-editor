@@ -67,7 +67,7 @@ async function build() {
                 fs.mkdirSync('dist');
             }
             fs.copyFileSync('src/index.html', 'dist/index.html');
-            console.log(`Build done in ${Date.now() - start}ms`);
+            console.log(`[${new Date().toLocaleTimeString()}] Build done in ${Date.now() - start}ms`);
 
             // Notify clients
             if (isServe && isWatch) {
