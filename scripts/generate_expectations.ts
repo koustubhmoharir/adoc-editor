@@ -61,6 +61,23 @@ function generateExpectations(filename: string) {
             }
             const lineTokens = lineItem.tokens;
 
+            if (exp.tokenType.startsWith('language:')) {
+                const expectedLang = exp.tokenType.split(':')[1];
+                const languageMatchToken = lineTokens.find(t => (t as any).language === expectedLang || (t as any).language === 'asciidoc');
+
+                if (languageMatchToken) {
+                    if (matchedTokens.has(`${exp.line}:lang`)) return;
+                    matchedTokens.add(`${exp.line}:lang`);
+
+                    checks.push({
+                        line: exp.line,
+                        tokenContent: languageMatchToken.text,
+                        tokenTypes: [`language:${expectedLang}`]
+                    });
+                }
+                return;
+            }
+
             const matchingTokens = lineTokens.map((t, i) => ({ token: t, index: i })).filter(({ token: t, index: i }: { token: Token, index: number }) => {
                 if (matchedTokens.has(`${exp.line}:${i}`)) return false;
 
@@ -81,7 +98,7 @@ function generateExpectations(filename: string) {
                     line: exp.line,
                     tokenContent: bestToken.text,
                     tokenTypes: types,
-                    _offset: bestToken.offset // Temporary for sorting
+                    _offset: (bestToken as any).offset // Temporary for sorting
                 });
             }
         });
@@ -89,11 +106,11 @@ function generateExpectations(filename: string) {
         // SORT CHECKS BY LINE AND OFFSET
         checks.sort((a, b) => {
             if (a.line !== b.line) return a.line - b.line;
-            return a._offset - b._offset;
+            return (a as any)._offset - (b as any)._offset;
         });
 
         // Remove temporary offset
-        checks.forEach(c => delete c._offset);
+        checks.forEach(c => delete (c as any)._offset);
 
         // Write output
         const out = { checks };

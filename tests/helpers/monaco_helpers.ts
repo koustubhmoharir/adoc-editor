@@ -18,13 +18,20 @@ export async function getTokens(page: Page, text: string): Promise<Token[][]> {
 
         // Fallback to static tokenization as model.getLineTokens is not reliably exposed in this context
         // This means embedded tokens might be simplified, but ensures consistency with test expectations.
-        const tokens = monaco.editor.tokenize(content, 'asciidoc');
-        return tokens;
+        const tokenLines = monaco.editor.tokenize(content, 'asciidoc');
+
+        // Explicitly map to plain objects to ensure 'language' property is serialized/transferred
+        return tokenLines.map(line => line.map(t => ({
+            type: t.type,
+            offset: t.offset,
+            language: t.language
+        }))) as any;
     }, text);
 }
 
 export interface RichToken {
     type: string;
+    language: string;
     offset: number;
     text: string;
 }
@@ -39,6 +46,9 @@ export interface LineTokens {
  * Enriches raw Monaco tokens with line text and substrings.
  */
 export function enrichTokens(tokens: Token[][], lineTextArray: string[]): LineTokens[] {
+    if (tokens.length > 0 && tokens[0].length > 0) {
+        console.log('Sample raw token in enrichTokens:', tokens[0][0]);
+    }
     return tokens.map((lineTokens, lineIndex) => {
         const lineText = lineTextArray[lineIndex];
         return {
@@ -49,6 +59,7 @@ export function enrichTokens(tokens: Token[][], lineTextArray: string[]): LineTo
                 const tokenText = lineText.substring(token.offset, nextOffset);
                 return {
                     type: token.type,
+                    language: (token as any).language || '',
                     offset: token.offset,
                     text: tokenText
                 };

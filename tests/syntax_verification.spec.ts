@@ -102,13 +102,25 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
                     if (foundToken) {
                         // Verify types
-                        const tokenParts = foundToken.type.split('.');
-                        // Check that ALL expected types are present in the token parts (AND logic)
-                        const typeMatch = check.tokenTypes.every(t => tokenParts.includes(t));
-                        if (!typeMatch) {
-                            console.error(`TYPE MISMATCH: Line ${lineIndex} Token "${check.tokenContent}". Expected [${check.tokenTypes}], Got "${foundToken.type}"`);
+                        if (check.tokenTypes.length === 1 && check.tokenTypes[0].startsWith('language:')) {
+                            // Special check: verify language mode
+                            const expectedLang = check.tokenTypes[0].split(':')[1];
+                            const actualLang = (foundToken as any).language;
+                            // Check for exact match or fallback to asciidoc if nested?
+                            // Ideally exact match.
+                            // Note: foundToken is RichToken from monaco_helpers which HAS language.
+                            // But locally typed as Token.
+
+                            expect(actualLang, `Expected token "${check.tokenContent}" to be language "${expectedLang}"`).toBe(expectedLang);
+                        } else {
+                            const tokenParts = foundToken.type.split('.');
+                            // Check that ALL expected types are present in the token parts (AND logic)
+                            const typeMatch = check.tokenTypes.every(t => tokenParts.includes(t));
+                            if (!typeMatch) {
+                                console.error(`TYPE MISMATCH: Line ${lineIndex} Token "${check.tokenContent}". Expected [${check.tokenTypes}], Got "${foundToken.type}"`);
+                            }
+                            expect(typeMatch, `Expected token "${check.tokenContent}" to have ALL types [${check.tokenTypes.join(', ')}], but got "${foundToken.type}"`).toBeTruthy();
                         }
-                        expect(typeMatch, `Expected token "${check.tokenContent}" to have ALL types [${check.tokenTypes.join(', ')}], but got "${foundToken.type}"`).toBeTruthy();
 
                         // Update last match index for this line
                         lastMatchIndices.set(lineIndex, foundTokenIndex);
