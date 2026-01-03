@@ -69,6 +69,15 @@ export const Sidebar: React.FC = observer(() => {
                 >
                     <i className={`fas fa-folder-open ${styles.icon} ${styles.folderIcon}`} />
                     <span className={styles.headerText}>{fileSystemStore.directoryHandle?.name}</span>
+
+                    <button
+                        className={styles.searchToggleButton}
+                        onClick={(e) => fileSystemStore.toggleSearch(e)}
+                        title="Search files"
+                    >
+                        <i className="fas fa-search" />
+                    </button>
+
                     <button
                         className={styles.newFileButton}
                         onClick={(e) => {
@@ -81,6 +90,29 @@ export const Sidebar: React.FC = observer(() => {
                     </button>
                 </div>
             )}
+
+            {fileSystemStore.isSearchVisible && (
+                <div className={styles.searchContainer}>
+                    <input
+                        ref={fileSystemStore.searchInputRef}
+                        className={styles.searchInput}
+                        value={fileSystemStore.searchQuery}
+                        onChange={(e) => fileSystemStore.handleSearchChange(e)}
+                        onKeyDown={(e) => fileSystemStore.handleSearchKeyDown(e)}
+                        placeholder="Search files..."
+                        autoFocus
+                    />
+                    {/* Always show the button, acting as Clear or Close */}
+                    <button
+                        className={styles.clearButton}
+                        onClick={(e) => fileSystemStore.handleClearButtonClick(e)}
+                        title={fileSystemStore.searchQuery ? "Clear search" : "Close search"}
+                    >
+                        <i className={`fas ${fileSystemStore.searchQuery ? 'fa-times' : 'fa-times'}`} />
+                    </button>
+                </div>
+            )}
+
             {!hasDirectory ? (
                 <div className={styles.emptyState}>
                     <div>No folder opened</div>
@@ -93,12 +125,34 @@ export const Sidebar: React.FC = observer(() => {
                 </div>
             ) : (
                 <div className={styles.treeContainer}>
-                    {fileSystemStore.fileTree.length === 0 ? (
-                        <div className={styles.emptyState}>Empty folder</div>
+                    {fileSystemStore.searchQuery ? (
+                        // Flat List View
+                        fileSystemStore.searchResults.length === 0 ? (
+                            <div className={styles.emptyState}>No matches</div>
+                        ) : (
+                            fileSystemStore.searchResults.map((result: any) => {
+                                const item = result.item as FileNode;
+                                return (
+                                    <div
+                                        key={item.path}
+                                        className={styles.searchResultItem}
+                                        onClick={() => fileSystemStore.handleSearchResultClick(item)}
+                                    >
+                                        <span className={styles.resultName}>{item.name}</span>
+                                        <span className={styles.resultPath} title={item.path}>{item.path.substring(0, item.path.length - item.name.length - 1)}</span>
+                                    </div>
+                                );
+                            })
+                        )
                     ) : (
-                        fileSystemStore.fileTree.map((node, i) => (
-                            <FileTreeItem key={i} node={node} />
-                        ))
+                        // Tree View
+                        fileSystemStore.fileTree.length === 0 ? (
+                            <div className={styles.emptyState}>Empty folder</div>
+                        ) : (
+                            fileSystemStore.fileTree.map((node, i) => (
+                                <FileTreeItem key={i} node={node} />
+                            ))
+                        )
                     )}
                 </div>
             )}

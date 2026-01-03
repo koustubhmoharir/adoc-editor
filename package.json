@@ -17,6 +17,7 @@
     "dependencies": {
         "@fortawesome/fontawesome-free": "^7.1.0",
         "@vanilla-extract/esbuild-plugin": "^2.3.21",
+        "fzf": "^0.5.2",
         "idb-keyval": "^6.2.2",
         "mobx": "^6.10.0",
         "mobx-react-lite": "^4.0.0",

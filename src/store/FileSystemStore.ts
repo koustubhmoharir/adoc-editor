@@ -1,6 +1,8 @@
-import { observable, action, runInAction, reaction } from "mobx";
+import { observable, action, runInAction, reaction, computed } from "mobx";
 import { get, set } from 'idb-keyval';
+import { Fzf } from 'fzf';
 import { editorStore } from './EditorStore';
+import { createRef } from "react";
 
 export interface FileNode {
     name: string;
@@ -17,6 +19,31 @@ class FileSystemStore {
     @observable accessor dirty: boolean = false;
     @observable accessor isLoading: boolean = false;
     @observable accessor collapsedPaths: Set<string> = new Set();
+    @observable accessor searchQuery: string = '';
+    @observable accessor isSearchVisible: boolean = false;
+
+    get allFiles(): FileNode[] {
+        const result: FileNode[] = [];
+        const traverse = (nodes: FileNode[]) => {
+            for (const node of nodes) {
+                if (node.kind === 'file') {
+                    result.push(node);
+                } else if (node.children) {
+                    traverse(node.children);
+                }
+            }
+        };
+        traverse(this.fileTree);
+        return result;
+    }
+
+    @computed
+    get searchResults() {
+        if (!this.searchQuery) return [];
+        const files = this.allFiles;
+        const fzf = new Fzf(files, { selector: (item) => item.path });
+        return fzf.find(this.searchQuery);
+    }
 
     saveInterval: number | null = null;
 
@@ -506,6 +533,78 @@ class FileSystemStore {
             console.error('Error restoring collapsed paths:', e);
         }
     }
+
+    @action
+    setSearchQuery(query: string) {
+        this.searchQuery = query;
+    }
+
+    readonly searchInputRef = createRef<HTMLInputElement>();
+
+    @action
+    handleSearchKeyDown(e: React.KeyboardEvent) {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            if (this.searchQuery) {
+                this.setSearchQuery('');
+            } else {
+                this.closeSearch();
+            }
+        }
+    }
+
+    @action
+    handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
+        this.setSearchQuery(e.target.value);
+    }
+
+    @action
+    handleSearchResultClick(node: FileNode) {
+        this.selectFile(node);
+        this.closeSearch();
+    }
+
+    @action
+    setSearchVisible(visible: boolean) {
+        this.isSearchVisible = visible;
+        if (visible) {
+            // giving React time to render input? or use layout effect?
+            // Since this is in store, we can't easily wait for render.
+            // We rely on the component using useEffect or callback ref,
+            // OR we just focus if ref exists.
+            setTimeout(() => this.searchInputRef.current?.focus(), 0);
+        } else {
+            this.searchQuery = '';
+        }
+    }
+
+    @action
+    toggleSearch(e?: React.MouseEvent) {
+        if (e) e.stopPropagation();
+        this.setSearchVisible(!this.isSearchVisible);
+    }
+
+    @action
+    closeSearch() {
+        this.setSearchVisible(false);
+    }
+
+    @action
+    clearSearch() {
+        this.setSearchQuery('');
+        this.searchInputRef.current?.focus();
+    }
+
+    @action
+    handleClearButtonClick(e: React.MouseEvent) {
+        e.stopPropagation();
+        if (this.searchQuery) {
+            this.clearSearch();
+        } else {
+            this.closeSearch();
+        }
+    }
+
 
     @action
     setDirty(isDirty: boolean) {

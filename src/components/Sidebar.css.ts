@@ -89,6 +89,7 @@ export const header = style({
 });
 
 export const headerText = style({
+    marginRight: '8px',
     textDecoration: 'underline',
 });
 
@@ -129,3 +130,84 @@ export const newFileButton = style({
         backgroundColor: themeVars.color.hoverBackground
     }
 });
+
+export const searchToggleButton = style({
+    position: "relative",
+    top: "1px",
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    color: themeVars.color.textLight,
+    padding: '0 4px',
+    borderRadius: '4px',
+    fontSize: '14px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ':hover': {
+        backgroundColor: themeVars.color.hoverBackground
+    }
+});
+
+export const searchContainer = style({
+    padding: '8px',
+    borderBottom: `1px solid ${themeVars.color.border}`,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    position: 'relative' // For clear button positioning if needed, or just flex
+});
+
+export const searchInput = style({
+    width: '100%',
+    padding: '6px 24px 6px 8px', // Right padding for clear button
+    borderRadius: '4px',
+    border: `1px solid ${themeVars.color.border}`,
+    backgroundColor: themeVars.color.background,
+    color: themeVars.color.text,
+    fontSize: '14px',
+    outline: 'none',
+    ':focus': {
+        borderColor: themeVars.color.selectionBackground
+    }
+});
+
+export const clearButton = style({
+    position: 'absolute',
+    right: '9px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'transparent',
+    border: 'none',
+    color: themeVars.color.textLight,
+    cursor: 'pointer',
+    padding: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ':hover': {
+        color: themeVars.color.textSecondary,
+    }
+});
+
+export const searchResultItem = style([itemBase, {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    padding: '6px 12px',
+    gap: '4px'
+}]);
+
+export const resultName = style({
+    fontWeight: 'bold',
+    fontSize: '14px'
+});
+
+export const resultPath = style({
+    fontSize: '12px',
+    color: themeVars.color.textLight,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    width: '100%'
+});
+
