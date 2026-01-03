@@ -20,6 +20,7 @@ This document outlines the architectural decisions, technology stack, and coding
 ### Styling
 - **vanilla-extract**: Zero-runtime, type-safe CSS-in-JS.
 - **Design**: Classes are generated at build time. We avoid runtime CSS injection where possible.
+- **Icons**: [Font Awesome Free](https://fontawesome.com/) is used for all icons.
 
 ### Build & Tooling
 - **esbuild**: The bundler for the application. Chosen for its extreme speed and simplicity.
