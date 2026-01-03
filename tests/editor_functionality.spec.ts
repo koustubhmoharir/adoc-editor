@@ -88,12 +88,13 @@ test.describe('Editor Functionality', () => {
         });
 
         // Inject the mock implementation
+        await page.addInitScript('window.__ENABLE_TEST_GLOBALS__ = true;');
         await page.addInitScript({ path: path.join(__dirname, 'helpers', 'fs_mock.js') });
 
         await page.goto('/?skip_restore=true');
 
         // Wait for Monaco to be ready just in case
-        await page.waitForFunction(() => (window as any).monaco !== undefined, null, { timeout: 10000 });
+        await page.waitForFunction(() => (window as any).__TEST_monaco !== undefined, null, { timeout: 10000 });
     });
 
     test.afterEach(() => {
@@ -129,7 +130,7 @@ test.describe('Editor Functionality', () => {
         // Check editor content
         // We wait for content to be set
         await expect(async () => {
-            const editorContent = await page.evaluate(() => (window as any).editorStore.content);
+            const editorContent = await page.evaluate(() => (window as any).__TEST_editorStore.content);
             expect(editorContent).toBe('== File 1\nContent of file 1.');
         }).toPass();
 
@@ -186,7 +187,7 @@ test.describe('Editor Functionality', () => {
 
         // Edit content
         await page.evaluate(() => {
-            (window as any).editorStore.setContent('Updated content.');
+            (window as any).__TEST_editorStore.setContent('Updated content.');
         });
 
         // Dirty indicator visible
@@ -212,7 +213,7 @@ test.describe('Editor Functionality', () => {
 
         // Edit
         await page.evaluate(() => {
-            (window as any).editorStore.setContent('Modified content before switch.');
+            (window as any).__TEST_editorStore.setContent('Modified content before switch.');
         });
 
         // Wait for dirty state
@@ -235,7 +236,7 @@ test.describe('Editor Functionality', () => {
 
         // Edit
         await page.evaluate(() => {
-            (window as any).editorStore.setContent('Modified content before refresh.');
+            (window as any).__TEST_editorStore.setContent('Modified content before refresh.');
         });
 
         // Wait for dirty state
@@ -262,7 +263,7 @@ test.describe('Editor Functionality', () => {
 
         // Content should match
         await expect(async () => {
-            const editorContent = await page.evaluate(() => (window as any).editorStore.content);
+            const editorContent = await page.evaluate(() => (window as any).__TEST_editorStore.content);
             // Should be original content if no edits
             expect(editorContent).toBe('== File 1\nContent of file 1.');
         }).toPass();

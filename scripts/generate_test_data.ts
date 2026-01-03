@@ -61,7 +61,7 @@ async function main() {
     try {
         if (all) {
             console.log("Running all tests...");
-            execSync('npx playwright test', { stdio: 'inherit' });
+            execSync('npx playwright test tests/syntax_verification.spec.ts', { stdio: 'inherit' });
         } else {
             const baseName = files[0].replace('.adoc', '');
             console.log(`Running test for ${baseName}...`);

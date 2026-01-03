@@ -10,8 +10,8 @@ type Monaco = typeof monacoObj;
  */
 export async function getTokens(page: Page, text: string): Promise<Token[][]> {
     return await page.evaluate((content: string) => {
-        const win = window as unknown as { monaco?: Monaco };
-        const monaco = win.monaco;
+        const win = window as unknown as { __TEST_monaco?: Monaco };
+        const monaco = win.__TEST_monaco;
         if (!monaco || !monaco.editor) {
             throw new Error('Monaco editor API not found.');
         }

@@ -14,6 +14,7 @@ export async function generateTokens(files: string[]) {
     const browser = await chromium.launch();
     const context = await browser.newContext();
     const page = await context.newPage();
+    await page.addInitScript('window.__ENABLE_TEST_GLOBALS__ = true;');
 
     let successCount = 0;
     let failCount = 0;
@@ -79,9 +80,11 @@ export async function generateTokens(files: string[]) {
             throw new Error('Connection failed');
         }
 
+
+
         await page.waitForSelector('.monaco-editor');
         // Wait for monaco global
-        await page.waitForFunction(() => (window as any).monaco !== undefined);
+        await page.waitForFunction(() => (window as any).__TEST_monaco !== undefined);
 
         for (const file of files) {
             const filePath = path.join(FIXTURES_DIR, file);

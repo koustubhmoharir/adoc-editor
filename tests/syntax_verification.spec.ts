@@ -30,12 +30,13 @@ const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.adoc'));
 test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
     test.beforeEach(async ({ page }) => {
+        await page.addInitScript('window.__ENABLE_TEST_GLOBALS__ = true;');
         await page.goto('/?skip_restore=true');
         await page.waitForSelector('.monaco-editor');
 
         // Wait for monaco to be exposed
         try {
-            await page.waitForFunction(() => (window as any).monaco !== undefined, null, { timeout: 10000 });
+            await page.waitForFunction(() => (window as any).__TEST_monaco !== undefined, null, { timeout: 10000 });
         } catch (e) {
             console.error('Monaco global not found after waiting');
         }

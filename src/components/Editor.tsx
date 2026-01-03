@@ -4,7 +4,10 @@ import { editorStore } from '../store/EditorStore';
 import * as monaco from 'monaco-editor';
 
 // @ts-ignore
-window.monaco = monaco;
+if ((window as any).__ENABLE_TEST_GLOBALS__) {
+    // @ts-ignore
+    window.__TEST_monaco = monaco;
+}
 
 interface EditorProps {
     theme: string;

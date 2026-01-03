@@ -332,6 +332,6 @@ class FileSystemStore {
 export const fileSystemStore = new FileSystemStore();
 
 // Expose for testing/debugging
-if (typeof window !== 'undefined') {
-    (window as any).fileSystemStore = fileSystemStore;
+if (typeof window !== 'undefined' && (window as any).__ENABLE_TEST_GLOBALS__) {
+    (window as any).__TEST_fileSystemStore = fileSystemStore;
 }
