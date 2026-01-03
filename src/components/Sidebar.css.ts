@@ -21,8 +21,8 @@ export const emptyState = style({
 });
 
 export const treeContainer = style({
-    paddingTop: '8px',
-    paddingBottom: '8px'
+    paddingBottom: '8px',
+    paddingLeft: '12px'
 });
 
 export const itemBase = style({
@@ -61,16 +61,13 @@ export const icon = style({
 });
 
 export const header = style({
-    padding: '10px 16px',
-    fontWeight: 600,
-    fontSize: '12px',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    color: themeVars.color.textSecondary,
-    borderBottom: `1px solid ${themeVars.color.border}`,
+    padding: '4px 8px',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    color: themeVars.color.text,
     display: 'flex',
     alignItems: 'center',
-    marginBottom: '4px',
+    flexShrink: 0,
     // Handle long names
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -80,6 +77,10 @@ export const header = style({
         color: themeVars.color.text,
         backgroundColor: themeVars.color.hoverBackground
     }
+});
+
+export const headerText = style({
+    textDecoration: 'underline',
 });
 
 export const actionButton = style({

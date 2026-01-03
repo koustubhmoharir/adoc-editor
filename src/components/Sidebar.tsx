@@ -46,7 +46,8 @@ export const Sidebar: React.FC = observer(() => {
                     title={fileSystemStore.directoryHandle?.name}
                     onClick={() => fileSystemStore.openDirectory()}
                 >
-                    {fileSystemStore.directoryHandle?.name}
+                    <span className={styles.icon}>📁</span>
+                    <span className={styles.headerText}>{fileSystemStore.directoryHandle?.name}</span>
                 </div>
             )}
             {!hasDirectory ? (
