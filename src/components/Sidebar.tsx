@@ -130,12 +130,13 @@ export const Sidebar: React.FC = observer(() => {
                         fileSystemStore.searchResults.length === 0 ? (
                             <div className={styles.emptyState}>No matches</div>
                         ) : (
-                            fileSystemStore.searchResults.map((result: any) => {
-                                const item = result.item as FileNode;
+                            fileSystemStore.searchResults.map((model) => {
+                                const item = model.item;
                                 return (
                                     <div
                                         key={item.path}
-                                        className={styles.searchResultItem}
+                                        ref={model.ref}
+                                        className={`${styles.searchResultItem} ${model.isHighlighted ? styles.highlighted : ''}`}
                                         onClick={() => fileSystemStore.handleSearchResultClick(item)}
                                     >
                                         <span className={styles.resultName}>{item.name}</span>

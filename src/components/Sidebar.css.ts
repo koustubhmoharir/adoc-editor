@@ -10,7 +10,8 @@ export const sidebar = style({
     display: 'flex',
     flexDirection: 'column',
     fontSize: '14px',
-    fontFamily: 'sans-serif'
+    fontFamily: 'sans-serif',
+    position: 'relative'
 });
 
 export const emptyState = style({
@@ -209,5 +210,9 @@ export const resultPath = style({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     width: '100%'
+});
+
+export const highlighted = style({
+    backgroundColor: themeVars.color.hoverBackground
 });
 

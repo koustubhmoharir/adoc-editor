@@ -12,6 +12,17 @@ export interface FileNode {
     children?: FileNode[];
 }
 
+export class SearchResultItemModel {
+    @observable accessor isHighlighted: boolean = false;
+    readonly ref = createRef<HTMLDivElement>();
+    constructor(public readonly item: FileNode) { }
+
+    @action
+    setHighlight(val: boolean) {
+        this.isHighlighted = val;
+    }
+}
+
 class FileSystemStore {
     @observable accessor directoryHandle: FileSystemDirectoryHandle | null = null;
     @observable accessor fileTree: FileNode[] = [];
@@ -42,7 +53,8 @@ class FileSystemStore {
         if (!this.searchQuery) return [];
         const files = this.allFiles;
         const fzf = new Fzf(files, { selector: (item) => item.path });
-        return fzf.find(this.searchQuery);
+        const matches = fzf.find(this.searchQuery);
+        return matches.map(match => new SearchResultItemModel(match.item));
     }
 
     saveInterval: number | null = null;
@@ -550,6 +562,70 @@ class FileSystemStore {
             } else {
                 this.closeSearch();
             }
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            this.moveHighlight(1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this.moveHighlight(-1);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            this.openHighlighted();
+        }
+    }
+
+    @action
+    moveHighlight(direction: 1 | -1) {
+        const results = this.searchResults;
+        if (results.length === 0) return;
+
+        const currentIndex = results.findIndex(r => r.isHighlighted);
+        let newIndex = currentIndex;
+
+        if (currentIndex === -1) {
+            if (direction === 1) newIndex = 0;
+            // if direction -1, do nothing (stay unhighlighted)
+        } else {
+            newIndex = currentIndex + direction;
+        }
+
+        // Boundary checks
+        if (newIndex < 0) {
+            // Moving up from 0 -> clear highlight
+            if (currentIndex !== -1) {
+                results[currentIndex].setHighlight(false);
+            }
+            // Scroll to top/input
+            this.searchInputRef.current?.scrollIntoView({ block: 'center' });
+            return;
+        }
+
+        if (newIndex >= results.length) {
+            // Stay at last
+            newIndex = results.length - 1;
+        }
+
+        // Update highlight
+        if (currentIndex !== -1) {
+            results[currentIndex].setHighlight(false);
+        }
+        results[newIndex].setHighlight(true);
+
+        // Scroll into view
+        this.scrollToResult(results[newIndex]);
+    }
+
+    scrollToResult(result: SearchResultItemModel) {
+        setTimeout(() => {
+            result.ref.current?.scrollIntoView({ block: 'nearest' });
+        }, 0);
+    }
+
+    @action
+    openHighlighted() {
+        const result = this.searchResults.find(r => r.isHighlighted);
+        if (result) {
+            this.handleSearchResultClick(result.item);
         }
     }
 
