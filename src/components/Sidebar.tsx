@@ -37,7 +37,17 @@ const FileTreeItem: React.FC<{ node: FileNode; level?: number }> = observer(({ n
                 onClick={toggle}
             >
                 <i className={`fas ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} ${styles.icon} ${styles.folderIcon}`} />
-                {node.name}
+                <span>{node.name}</span>
+                <button
+                    className={styles.newFileButton}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        fileSystemStore.createNewFile(node.handle as FileSystemDirectoryHandle);
+                    }}
+                    title="New File"
+                >
+                    <i className="fas fa-file-circle-plus" />
+                </button>
             </div>
             {!isCollapsed && node.children && node.children.map((child, i) => (
                 <FileTreeItem key={i} node={child} level={level + 1} />
@@ -59,6 +69,16 @@ export const Sidebar: React.FC = observer(() => {
                 >
                     <i className={`fas fa-folder-open ${styles.icon} ${styles.folderIcon}`} />
                     <span className={styles.headerText}>{fileSystemStore.directoryHandle?.name}</span>
+                    <button
+                        className={styles.newFileButton}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            fileSystemStore.createNewFile(fileSystemStore.directoryHandle!);
+                        }}
+                        title="New File"
+                    >
+                        <i className="fas fa-file-circle-plus" />
+                    </button>
                 </div>
             )}
             {!hasDirectory ? (

@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css';
-import { vars } from '../theme.css';
+import { sidebarWidth, vars } from '../theme.css';
 
 export const header = style({
     height: '40px',
@@ -8,12 +8,13 @@ export const header = style({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '0 0 0 16px',
     borderBottom: `1px solid ${vars.color.border}`,
     flexShrink: 0
 });
 
 export const leftSection = style({
+    padding: '0 0 0 16px',
+    width: sidebarWidth,
     display: 'flex',
     alignItems: 'center',
     gap: '16px'
@@ -72,4 +73,10 @@ export const themeButtonLight = style([button, {
 export const helpButton = style([button, {
     color: '#0ea5e9', // Sky blue
 }]);
+
+export const newFileButton = style([button, {
+    color: vars.color.newFileIcon,
+    marginLeft: "auto",
+}]);
+
 

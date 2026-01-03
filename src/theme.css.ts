@@ -1,4 +1,8 @@
-import { createThemeContract, createTheme } from '@vanilla-extract/css';
+import { createThemeContract, createTheme, globalStyle } from '@vanilla-extract/css';
+
+globalStyle("*", {
+    boxSizing: "border-box",
+});
 
 export const vars = createThemeContract({
     color: {
@@ -15,7 +19,8 @@ export const vars = createThemeContract({
         checkForeground: null,
         codeBackground: null,
         folderIcon: null,
-        fileIcon: null
+        fileIcon: null,
+        newFileIcon: null
     },
     space: {
         small: null,
@@ -38,7 +43,8 @@ export const lightTheme = createTheme(vars, {
         checkForeground: '#e6f4ea',
         codeBackground: '#f5f5f5',
         folderIcon: '#dcb67a',
-        fileIcon: '#dfe4eaff'
+        fileIcon: '#dfe4eaff',
+        newFileIcon: '#1e8e3e'
     },
     space: {
         small: '10px',
@@ -61,7 +67,8 @@ export const darkTheme = createTheme(vars, {
         checkForeground: '#0e3a1f',
         codeBackground: '#2d2d2d',
         folderIcon: '#e8c32e',
-        fileIcon: '#828a8eff'
+        fileIcon: '#828a8eff',
+        newFileIcon: '#a3cda5'
     },
     space: {
         small: '10px',
@@ -69,3 +76,4 @@ export const darkTheme = createTheme(vars, {
     }
 });
 
+export const sidebarWidth = "250px";

@@ -1,8 +1,8 @@
 import { style } from '@vanilla-extract/css';
-import { vars as themeVars } from '../theme.css';
+import { vars as themeVars, sidebarWidth } from '../theme.css';
 
 export const sidebar = style({
-    width: '250px',
+    width: sidebarWidth,
     height: '100%',
     backgroundColor: themeVars.color.background,
     borderRight: `1px solid ${themeVars.color.border}`,
@@ -41,6 +41,7 @@ export const itemBase = style({
 
 export const directoryItem = style([itemBase, {
     fontWeight: 'bold',
+    paddingRight: '4px'
 }]);
 
 export const fileItem = style([itemBase, {
@@ -69,7 +70,7 @@ export const fileIcon = style({
 });
 
 export const header = style({
-    padding: '4px 8px',
+    padding: '4px 4px 4px 8px',
     fontWeight: 'bold',
     fontSize: '14px',
     color: themeVars.color.text,
@@ -100,6 +101,30 @@ export const actionButton = style({
     padding: '6px 12px',
     cursor: 'pointer',
     fontSize: '12px',
+    ':hover': {
+        backgroundColor: themeVars.color.hoverBackground
+    }
+});
+
+export const newFileButton = style({
+    marginLeft: 'auto',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    color: themeVars.color.newFileIcon,
+    padding: '0 4px',
+    borderRadius: '4px',
+    fontSize: '16px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0, // Hidden by default
+    transition: 'opacity 0.2s',
+    selectors: {
+        [`${sidebar}:hover &`]: {
+            opacity: 1 // Show on hover of parent
+        },
+    },
     ':hover': {
         backgroundColor: themeVars.color.hoverBackground
     }

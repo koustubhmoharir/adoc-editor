@@ -218,14 +218,13 @@ class FileSystemStore {
     async selectFile(node: FileNode) {
         if (node.kind !== 'file') return;
 
+
         // Auto-save previous file if dirty
         if (this.currentFileHandle && this.dirty) {
             await this.saveFile();
         }
 
         const fileHandle = node.handle as FileSystemFileHandle;
-
-        // For reading, we might need permission too? usually strictly nested files inherit permission.
 
         // Persist file handle
         try {
@@ -234,8 +233,15 @@ class FileSystemStore {
             console.warn('Failed to persist file handle:', e);
         }
 
-        const file = await fileHandle.getFile();
-        const content = await file.text();
+        let content = '';
+        try {
+            const file = await fileHandle.getFile();
+            content = await file.text();
+        } catch (e) {
+            console.error('Failed to read file:', e);
+            alert('Failed to read file. It might have been moved or deleted.');
+            return;
+        }
 
         runInAction(() => {
             this.isLoading = true;
@@ -323,6 +329,103 @@ class FileSystemStore {
             }
         }
         return null;
+    }
+
+    async createNewFile(parentDirectory?: FileSystemDirectoryHandle) {
+        if (!this.directoryHandle) {
+            alert('Please open a directory first.');
+            return;
+        }
+
+        // 1. Determine target directory
+        let targetDir: FileSystemDirectoryHandle | null | undefined = parentDirectory;
+        if (!targetDir) {
+            if (this.currentFileHandle) {
+                targetDir = this.findParentDirectory(this.currentFileHandle);
+            }
+            if (!targetDir) {
+                targetDir = this.directoryHandle;
+            }
+        }
+
+        if (!targetDir) return; // Should not happen given logic above
+
+        // 2. Auto-save current file
+        if (this.dirty) {
+            await this.saveFile();
+        }
+
+        try {
+            // 3. Find unique filename
+            let index = 1;
+            let filename = `new-${index}.adoc`;
+            while (true) {
+                try {
+                    await targetDir.getFileHandle(filename);
+                    // If successful, file exists
+                    index++;
+                    filename = `new-${index}.adoc`;
+                } catch (e) {
+                    // File does not exist (or other error), so we can use this name
+                    break;
+                }
+            }
+
+            // 4. Create the file
+            const newFileHandle = await targetDir.getFileHandle(filename, { create: true });
+
+            // 5. Refresh tree to show new file
+            await this.refreshTree();
+
+            // 6. Select the new file
+            // We need to find the node in the tree to select it properly with path info
+            const findNode = (nodes: FileNode[]): FileNode | undefined => {
+                for (const node of nodes) {
+                    if (node.kind === 'file' && (node.handle as any).name === filename) {
+                        // This check is a bit weak if multiple files have same name in diff dirs,
+                        // but since we just created it in targetDir and refreshed, we ideally need a robust way.
+                        // Ideally we match handles but strict equality might fail after refresh if handles are re-fetched?
+                        // Actually, refreshTree re-reads handles.
+                        // Let's use isSameEntry
+                        // But we can't await inside sync filter/find easily.
+                        return node;
+                    } else if (node.children) {
+                        const found = findNode(node.children);
+                        if (found) return found;
+                    }
+                }
+            };
+
+            // Since handle comparison needs await, and we just need to select,
+            // we can try to "find" it by structure if we know the path, but we don't know the full path string easily without reconstructing it.
+            // Let's rely on `isSameEntry` in `syncSelectedFileWithTree` logic but adapted.
+
+            // Simpler approach: Select it manually by constructing a partial node or just calling selectFile with the handle
+            // But selectFile expects a Node to get the name? No, it casts node.handle.
+            // Let's construct a temporary node or find it properly.
+
+            const findNodeAsync = async (nodes: FileNode[]): Promise<FileNode | undefined> => {
+                for (const node of nodes) {
+                    if (node.kind === 'file') {
+                        if (await node.handle.isSameEntry(newFileHandle)) {
+                            return node;
+                        }
+                    } else if (node.children) {
+                        const found = await findNodeAsync(node.children);
+                        if (found) return found;
+                    }
+                }
+            }
+
+            const newNode = await findNodeAsync(this.fileTree);
+            if (newNode) {
+                await this.selectFile(newNode);
+            }
+
+        } catch (error) {
+            console.error('Error creating new file:', error);
+            alert('Failed to create new file.');
+        }
     }
 
     async findSiblingFile(handle: FileSystemFileHandle, siblingName: string): Promise<FileSystemFileHandle | null> {

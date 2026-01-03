@@ -14,6 +14,13 @@ export const TitleBar: React.FC = observer(() => {
         <header className={styles.header}>
             <div className={styles.leftSection}>
                 <h3 className={styles.title}>AsciiDoc Editor</h3>
+                <button
+                    className={styles.newFileButton}
+                    onClick={() => fileSystemStore.createNewFile()}
+                    title="New File"
+                >
+                    <i className="fa-solid fa-file-circle-plus"></i>
+                </button>
             </div>
 
             <div className={styles.centerSection}>

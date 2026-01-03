@@ -321,4 +321,99 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('text=deep_file.adoc')).not.toBeVisible();
     });
 
+    // New File Feature Tests
+
+    test('Creating a new file from Title Bar', async ({ page }) => {
+        await page.click('button:has-text("Open Folder")');
+        // Wait for file tree to load
+        await expect(page.locator('text=file1.adoc')).toBeVisible();
+
+        // Initially in root, no file selected.
+        // Click New File button in Title Bar.
+        await page.click('header [title="New File"]');
+
+        // Should create new-1.adoc
+        await expect(page.locator('header')).toContainText('new-1.adoc');
+
+        // Check file exists on disk
+        const newFilePath = path.join(tempDir1, 'new-1.adoc');
+        expect(fs.existsSync(newFilePath)).toBe(true);
+
+        // Check sidebar has new file selected
+        await expect(page.locator('text=new-1.adoc')).toBeVisible();
+    });
+
+    test('Creating multiple new files increments counter', async ({ page }) => {
+        await page.click('button:has-text("Open Folder")');
+        await expect(page.locator('text=file1.adoc')).toBeVisible();
+
+        await page.click('header [title="New File"]');
+        await expect(page.locator('header')).toContainText('new-1.adoc');
+
+        // Allow some time for state to settle/save
+        await page.waitForTimeout(500);
+
+        await page.click('header [title="New File"]');
+        await expect(page.locator('header')).toContainText('new-2.adoc');
+
+        const path1 = path.join(tempDir1, 'new-1.adoc');
+        const path2 = path.join(tempDir1, 'new-2.adoc');
+        expect(fs.existsSync(path1)).toBe(true);
+        expect(fs.existsSync(path2)).toBe(true);
+    });
+
+    test('Creating new file auto-saves current dirty file', async ({ page }) => {
+        await page.click('button:has-text("Open Folder")');
+        await page.click('text=file1.adoc');
+        await expect(page.locator('header')).toContainText('file1.adoc');
+
+        // Edit
+        await page.evaluate(() => {
+            (window as any).__TEST_editorStore.setContent('Modified content.');
+        });
+        await expect(page.locator('header span', { hasText: '*' })).toBeVisible();
+
+        // Create new file
+        await page.click('header [title="New File"]');
+        await expect(page.locator('header')).toContainText('new-1.adoc');
+
+        // Check existing file content
+        const content = fs.readFileSync(path.join(tempDir1, 'file1.adoc'), 'utf8');
+        expect(content).toBe('Modified content.');
+    });
+
+    test('Creating new file in subdirectory via Sidebar', async ({ page }) => {
+        await page.click('button:has-text("Open Folder")');
+
+        // Expand subdirectory if needed (it is empty so might show as empty)
+        // wait for sidebar items
+        await expect(page.locator('text=subdir')).toBeVisible();
+
+        // We select based on 'subdir' text, finding the parent container
+        // We filter for a div that directly contains the text "subdir" to avoid matching children or parents vaguely
+        const subdirItem = page.locator('div', { has: page.locator('span', { hasText: 'subdir' }) }).last();
+
+        const newFileBtn = subdirItem.locator('button[title="New File"]');
+
+        // Force hover
+        await subdirItem.hover();
+        // Wait for opacity transition
+        await page.waitForTimeout(300);
+
+        // Click might need force if hidden? But hover should reveal it.
+        // Let's force click just in case
+        await newFileBtn.click({ force: true });
+
+        // Should create new-1.adoc INSIDE subdir
+        const newFilePath = path.join(tempDir1, 'subdir', 'new-1.adoc');
+
+        // Allow operation to complete
+        await expect(async () => {
+            expect(fs.existsSync(newFilePath)).toBe(true);
+        }).toPass();
+
+        // Check it is selected in title bar
+        await expect(page.locator('header')).toContainText('new-1.adoc');
+    });
+
 });
