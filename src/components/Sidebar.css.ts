@@ -48,7 +48,11 @@ export const fileItem = style([itemBase, {
 
 export const selected = style({
     backgroundColor: themeVars.color.selectionBackground,
-    color: themeVars.color.selectionForeground
+    color: themeVars.color.selectionForeground,
+    ':hover': {
+        backgroundColor: themeVars.color.selectionBackground,
+        color: themeVars.color.selectionForeground
+    }
 });
 
 export const icon = style({

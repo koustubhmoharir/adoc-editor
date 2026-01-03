@@ -51,6 +51,11 @@ export const activeToken = style({
     color: themeVars.color.selectionForeground,
     ':hover': {
         backgroundColor: themeVars.color.selectionBackground
+    },
+    vars: {
+        [themeVars.color.textSecondary]: themeVars.color.selectionForeground,
+        [themeVars.color.text]: themeVars.color.selectionForeground,
+        [themeVars.color.codeBackground]: 'transparent'
     }
 });
 
@@ -64,28 +69,43 @@ export const tokenLine = style({
 });
 
 export const tokenType = style({
-    color: themeVars.color.textSecondary, // Use theme variable for better contrast
+    color: themeVars.color.text, // Same importance as content
     fontSize: '11px',
     flex: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    marginBottom: '2px'
+    marginTop: '2px',
+    opacity: 0.8 // Slightly less visual weight but same color
 });
 
 export const tokenText = style({
-    fontWeight: 'bold',
+    fontWeight: 'normal',
     flex: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    whiteSpace: 'pre-wrap',
+    fontFamily: 'inherit',
     color: themeVars.color.text,
+    backgroundColor: themeVars.color.codeBackground,
+    alignSelf: 'flex-start',
+    padding: '0 4px',
+    borderRadius: '3px',
     minHeight: '16px' // Ensure height for descenders
 });
 
 export const checkIcon = style({
-    color: '#4caf50', // Green
+    color: themeVars.color.checkForeground,
+    backgroundColor: themeVars.color.checkBackground,
     marginLeft: '8px',
-    fontSize: '16px',
-    alignSelf: 'center'
+    fontSize: '14px',
+    alignSelf: 'center',
+    padding: '2px',
+    borderRadius: '4px',
+    fontWeight: 'bold',
+    width: '20px',
+    height: '20px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
 });

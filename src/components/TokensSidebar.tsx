@@ -33,8 +33,8 @@ export const TokensSidebar: React.FC = observer(() => {
                     >
                         <span className={styles.tokenLine}>{token.line}</span>
                         <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
+                            <code className={styles.tokenText} title={token.text}>{token.text}</code>
                             <span className={styles.tokenType} title={token.type}>{token.type}</span>
-                            <span className={styles.tokenText} title={token.text}>{token.text}</span>
                         </div>
                         {checkedTokenIndices.has(index) && (
                             <span className={styles.checkIcon} title="Valid test case">✓</span>
