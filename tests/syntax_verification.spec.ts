@@ -49,77 +49,86 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
         const testName = path.basename(file, '.adoc') + ' Highlighting';
 
         test(testName, async ({ page }) => {
-            const tokens = await getTokens(page, adocContent);
-            const lines = adocContent.split(/\r?\n/);
+            try {
+                const tokens = await getTokens(page, adocContent);
+                const lines = adocContent.split(/\r?\n/);
 
-            // 1. Generate {test_name}-tokens.json with rich structure using helper
-            const richTokens = enrichTokens(tokens, lines);
+                // 1. Generate {test_name}-tokens.json with rich structure using helper
+                const richTokens = enrichTokens(tokens, lines);
 
-            fs.writeFileSync(tokensPath, JSON.stringify(richTokens, null, 2));
+                fs.writeFileSync(tokensPath, JSON.stringify(richTokens, null, 2));
 
-            // 2. Check for existence of checks file
-            if (!fs.existsSync(fixturePath)) {
-                const relativeFixturePath = path.relative(repoRoot, fixturePath);
-                const relativeTokensPath = path.relative(repoRoot, tokensPath);
-                throw new Error(`Fixture checks file '${relativeFixturePath}' is missing. Please inspect the generated tokens file '${relativeTokensPath}' and create the checks file.`);
-            }
-
-            const fixture: TestFixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'));
-
-            // Track the last matched token index for each line to assume sequential checks
-            const lastMatchIndices = new Map<number, number>();
-
-            for (const check of fixture.checks) {
-                const lineIndex = check.line;
-
-                const lineTokens = tokens[lineIndex];
-                const lineText = lines[lineIndex];
-
-                expect(lineTokens, `Tokens for line ${lineIndex} exist`).toBeDefined();
-                expect(lineText, `Text for line ${lineIndex} exists`).toBeDefined();
-
-                if (!check.tokenContent) {
-                    throw new Error(`Fixture ${file} check at line ${lineIndex} is missing 'tokenContent'`);
+                // 2. Check for existence of checks file
+                if (!fs.existsSync(fixturePath)) {
+                    const relativeFixturePath = path.relative(repoRoot, fixturePath);
+                    const relativeTokensPath = path.relative(repoRoot, tokensPath);
+                    throw new Error(`Fixture checks file '${relativeFixturePath}' is missing. Please inspect the generated tokens file '${relativeTokensPath}' and create the checks file.`);
                 }
 
-                const startIndex = (lastMatchIndices.get(lineIndex) ?? -1) + 1;
-                let foundTokenIndex = -1;
-                let foundToken: Token | null = null;
+                const fixture: TestFixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'));
 
-                // Find the first token *after* startIndex that matches the content
-                for (let i = startIndex; i < lineTokens.length; i++) {
-                    const token = lineTokens[i];
-                    const nextOffset = i < lineTokens.length - 1 ? lineTokens[i + 1].offset : lineText.length;
-                    const tokenText = lineText.substring(token.offset, nextOffset);
+                // Track the last matched token index for each line to assume sequential checks
+                const lastMatchIndices = new Map<number, number>();
 
-                    if (tokenText === check.tokenContent) {
-                        foundTokenIndex = i;
-                        foundToken = token;
-                        break;
+                for (const check of fixture.checks) {
+                    const lineIndex = check.line;
+
+                    const lineTokens = tokens[lineIndex];
+                    const lineText = lines[lineIndex];
+
+                    expect(lineTokens, `Tokens for line ${lineIndex} exist`).toBeDefined();
+                    expect(lineText, `Text for line ${lineIndex} exists`).toBeDefined();
+
+                    if (!check.tokenContent) {
+                        throw new Error(`Fixture ${file} check at line ${lineIndex} is missing 'tokenContent'`);
+                    }
+
+                    const startIndex = (lastMatchIndices.get(lineIndex) ?? -1) + 1;
+                    let foundTokenIndex = -1;
+                    let foundToken: Token | null = null;
+
+                    // Find the first token *after* startIndex that matches the content
+                    for (let i = startIndex; i < lineTokens.length; i++) {
+                        const token = lineTokens[i];
+                        const nextOffset = i < lineTokens.length - 1 ? lineTokens[i + 1].offset : lineText.length;
+                        const tokenText = lineText.substring(token.offset, nextOffset);
+
+                        if (tokenText === check.tokenContent) {
+                            foundTokenIndex = i;
+                            foundToken = token;
+                            break;
+                        }
+                    }
+
+                    if (foundToken) {
+                        // Verify types
+                        const tokenParts = foundToken.type.split('.');
+                        // Check that ALL expected types are present in the token parts (AND logic)
+                        const typeMatch = check.tokenTypes.every(t => tokenParts.includes(t));
+                        if (!typeMatch) {
+                            console.error(`TYPE MISMATCH: Line ${lineIndex} Token "${check.tokenContent}". Expected [${check.tokenTypes}], Got "${foundToken.type}"`);
+                        }
+                        expect(typeMatch, `Expected token "${check.tokenContent}" to have ALL types [${check.tokenTypes.join(', ')}], but got "${foundToken.type}"`).toBeTruthy();
+
+                        // Update last match index for this line
+                        lastMatchIndices.set(lineIndex, foundTokenIndex);
+                    }
+                    else {
+                        // Check debug info
+                        console.log(`Failed to find token "${check.tokenContent}" on line ${lineIndex} starting after index ${startIndex}. Available tokens:`);
+                        lineTokens.forEach((t, i) => {
+                            const nextOffset = i < lineTokens.length - 1 ? lineTokens[i + 1].offset : lineText.length;
+                            const txt = lineText.substring(t.offset, nextOffset);
+                            console.log(`Token ${i}: text="${txt}", type="${t.type}"`);
+                        });
+
+                        expect(foundToken, `Could not find token with content "${check.tokenContent}" on line ${lineIndex} after previous check`).not.toBe(null);
                     }
                 }
-
-                if (foundToken) {
-                    // Verify types
-                    const tokenParts = foundToken.type.split('.');
-                    // Check that ALL expected types are present in the token parts (AND logic)
-                    const typeMatch = check.tokenTypes.every(t => tokenParts.includes(t));
-                    expect(typeMatch, `Expected token "${check.tokenContent}" to have ALL types [${check.tokenTypes.join(', ')}], but got "${foundToken.type}"`).toBeTruthy();
-
-                    // Update last match index for this line
-                    lastMatchIndices.set(lineIndex, foundTokenIndex);
-                }
-                else {
-                    // Check debug info
-                    console.log(`Failed to find token "${check.tokenContent}" on line ${lineIndex} starting after index ${startIndex}. Available tokens:`);
-                    lineTokens.forEach((t, i) => {
-                        const nextOffset = i < lineTokens.length - 1 ? lineTokens[i + 1].offset : lineText.length;
-                        const txt = lineText.substring(t.offset, nextOffset);
-                        console.log(`Token ${i}: text="${txt}", type="${t.type}"`);
-                    });
-
-                    expect(foundToken, `Could not find token with content "${check.tokenContent}" on line ${lineIndex} after previous check`).not.toBe(null);
-                }
+            } catch (e: any) {
+                console.error(`TEST FAILED: ${testName}`);
+                console.error(e.message);
+                throw e;
             }
         });
     }

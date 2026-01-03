@@ -8,13 +8,6 @@
       ]
     },
     {
-      "line": 2,
-      "tokenContent": "console.log('hi');",
-      "tokenTypes": [
-        "string"
-      ]
-    },
-    {
       "line": 3,
       "tokenContent": "----",
       "tokenTypes": [

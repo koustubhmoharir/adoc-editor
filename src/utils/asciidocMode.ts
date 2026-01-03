@@ -234,7 +234,8 @@ const embeddedLanguages = {
     'rust': ['rust', 'rs'],
     'sql': ['sql'],
     'csharp': ['cs', 'csharp'],
-    'shell': ['sh', 'bash', 'shell']
+    'shell': ['sh', 'bash', 'shell'],
+    'asciidoc': ['asciidoc', 'adoc']
 };
 
 function getEmbeddedLanguageRules() {
@@ -281,7 +282,7 @@ function getEmbeddedLanguageRules() {
 
                 // 3. Body state: specific to this delimiter char and length
                 stateDefinitions[bodyStateName] = [
-                    [new RegExp(`^${escapedChar}{${len}}$`), { token: 'string', next: '@pop', nextEmbedded: '@pop' }]
+                    [new RegExp(`^${escapedChar}{${len}}\\s*$`), { token: 'string', next: '@pop', nextEmbedded: '@pop' }]
                 ];
             }
         });

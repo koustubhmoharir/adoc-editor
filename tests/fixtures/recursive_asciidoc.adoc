@@ -1,0 +1,27 @@
+= Recursive AsciiDoc Embedding
+
+[source, asciidoc]
+----
+= Inner Document Title
+
+This is an embedded AsciiDoc block.
+
+[source, python]
+....
+def inner_function():
+    print("Deeply nested")
+....
+
+* Bold text inside*
+----
+
+[source, adoc]
+....
+= Another nested block
+
+Feature list:
+. Item 1
+. Item 2
+....
+
+End of recursion.

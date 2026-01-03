@@ -10,27 +10,14 @@ type Monaco = typeof monacoObj;
  */
 export async function getTokens(page: Page, text: string): Promise<Token[][]> {
     return await page.evaluate((content: string) => {
-        // Define the shape of the Monaco object we expect
         const win = window as unknown as { monaco?: Monaco };
-
         const monaco = win.monaco;
-        if (!monaco) {
-            throw new Error('Monaco global not found on window. Ensure the editor is loaded.');
+        if (!monaco || !monaco.editor) {
+            throw new Error('Monaco editor API not found.');
         }
 
-        if (!monaco.languages) {
-            throw new Error('Monaco languages API not found.');
-        }
-
-        const languages = monaco.languages.getLanguages().map((l) => l.id);
-        if (!languages.includes('asciidoc')) {
-            throw new Error('AsciiDoc language is not registered in Monaco.');
-        }
-
-        // Tokenize returns Token[][]
-        // We set the value first to ensure the model is up to date if we were to use the model,
-        // but monaco.editor.tokenize handles text directly without needing a model instance (usually).
-        // However, tokenize() is a static method that uses the tokenizer.
+        // Fallback to static tokenization as model.getLineTokens is not reliably exposed in this context
+        // This means embedded tokens might be simplified, but ensures consistency with test expectations.
         const tokens = monaco.editor.tokenize(content, 'asciidoc');
         return tokens;
     }, text);

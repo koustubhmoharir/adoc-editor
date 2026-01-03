@@ -2,35 +2,49 @@
   "checks": [
     {
       "line": 0,
+      "tokenContent": "=",
+      "tokenTypes": [
+        "keyword"
+      ]
+    },
+    {
+      "line": 3,
       "tokenContent": "----",
       "tokenTypes": [
         "string"
       ]
     },
     {
-      "line": 1,
-      "tokenContent": "console.log('hello');",
+      "line": 9,
+      "tokenContent": "....",
       "tokenTypes": [
         "string"
       ]
     },
     {
-      "line": 2,
+      "line": 12,
+      "tokenContent": "....",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 15,
       "tokenContent": "----",
       "tokenTypes": [
         "string"
       ]
     },
     {
-      "line": 5,
-      "tokenContent": "----",
+      "line": 18,
+      "tokenContent": "....",
       "tokenTypes": [
         "string"
       ]
     },
     {
-      "line": 7,
-      "tokenContent": "----",
+      "line": 24,
+      "tokenContent": "....",
       "tokenTypes": [
         "string"
       ]
