@@ -9,6 +9,7 @@ const WELCOME_CONTENT = `
 Welcome to the AsciiDoc Editor!
 
 == Features
+
 * Syntax highlighting
 * File system integration
 * Auto-save functionality

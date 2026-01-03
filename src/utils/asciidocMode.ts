@@ -38,7 +38,7 @@ export function registerAsciiDoc() {
     });
 
     // Monarch tokens provider
-    monaco.languages.setMonarchTokensProvider('asciidoc', {
+    const baseTokenizer = {
         defaultToken: '',
 
         tokenizer: {
@@ -168,6 +168,7 @@ export function registerAsciiDoc() {
             ],
 
             emphasisDouble: [
+                [/\.\./, 'emphasis'], // Should not happen with __ but just in case
                 [/__/, { token: 'emphasis', next: '@pop' }],
                 { include: '@formatting' },
                 [/[^*_`#]+/, 'emphasis'],
@@ -206,8 +207,95 @@ export function registerAsciiDoc() {
                 [/./, 'variable']
             ]
         }
-    });
+    };
+
+    monaco.languages.setMonarchTokensProvider('asciidoc', extendTokenizer(baseTokenizer));
 
     // Optional: Define a theme that maps these better if default isn't enough
     // But usually vs-dark handles keyword, string, comment, variable well.
+}
+
+// Supported languages and their aliases
+const embeddedLanguages = {
+    'javascript': ['js', 'jsx', 'javascript'],
+    'typescript': ['ts', 'tsx', 'typescript'],
+    'json': ['json', 'jsonc'],
+    'html': ['html', 'htm'],
+    'css': ['css'],
+    'scss': ['scss'],
+    'less': ['less'],
+    'python': ['py', 'python'],
+    'java': ['java'],
+    'cpp': ['cpp', 'c++'],
+    'c': ['c'],
+    'xml': ['xml'],
+    'yaml': ['yaml', 'yml'],
+    'go': ['go'],
+    'rust': ['rust', 'rs'],
+    'sql': ['sql'],
+    'csharp': ['cs', 'csharp'],
+    'shell': ['sh', 'bash', 'shell']
+};
+
+function getEmbeddedLanguageRules() {
+    const rootRules: any[] = [];
+    const stateDefinitions: any = {};
+
+    Object.entries(embeddedLanguages).forEach(([langId, aliases]) => {
+        // Escape special characters in aliases for Regex (e.g. c++)
+        const escapedAliases = aliases.map(a => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        const aliasPattern = escapedAliases.join('|');
+        const stateNameWait = `block_wait_${langId}`;
+        const stateNameBody = `block_body_${langId}`;
+
+        // 1. Root rule: Detect [source, lang]
+        rootRules.push([
+            new RegExp(`^/\\/\\/\\s*.*$`), // Ignore comments before checking source block
+            'comment'
+        ]);
+
+        // Match [source, language] or just [language] if it's a common pattern (but usually it's [source,lang])
+        // We focus on [source, lang]
+        rootRules.push([
+            new RegExp(`^\\[source,\\s*(${aliasPattern})\\s*\\]$`),
+            { token: 'keyword', next: `@${stateNameWait}` }
+        ]);
+
+        // 2. Waiting state: waiting for ----
+        stateDefinitions[stateNameWait] = [
+            [/^----\s*$/, { token: 'string', next: `@${stateNameBody}`, nextEmbedded: langId }],
+            [/\s+/, { token: '' }], // whitespace allowed
+            [/^.*$/, { token: '@rematch', next: '@pop' }] // Anything else? Abort wait.
+        ];
+
+        // 3. Body state: inside the block, look for exit
+        stateDefinitions[stateNameBody] = [
+            [/^----$/, { token: 'string', next: '@pop', nextEmbedded: '@pop' }]
+        ];
+    });
+
+    return { rootRules, stateDefinitions };
+}
+
+// ... inside setMonarchTokensProvider ...
+// to be called within the registers function
+function extendTokenizer(baseTokenizer: any) {
+    const { rootRules, stateDefinitions } = getEmbeddedLanguageRules();
+
+    // Insert language detection rules at the top of root, but after headers/comments if we strictly follow order
+    // Actually, [source,lang] is a block attribute. It should be checked before general blocks.
+
+    const newRoot = [
+        ...rootRules,
+        ...baseTokenizer.tokenizer.root
+    ];
+
+    return {
+        ...baseTokenizer,
+        tokenizer: {
+            ...baseTokenizer.tokenizer,
+            root: newRoot,
+            ...stateDefinitions
+        }
+    };
 }

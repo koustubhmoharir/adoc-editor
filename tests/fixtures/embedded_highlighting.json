@@ -1,0 +1,67 @@
+{
+  "checks": [
+    {
+      "line": 0,
+      "tokenContent": "=",
+      "tokenTypes": [
+        "keyword"
+      ]
+    },
+    {
+      "line": 3,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 8,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 11,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 15,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 18,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 23,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 26,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    },
+    {
+      "line": 34,
+      "tokenContent": "----",
+      "tokenTypes": [
+        "string"
+      ]
+    }
+  ]
+}
