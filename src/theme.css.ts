@@ -13,7 +13,9 @@ export const vars = createThemeContract({
         selectionForeground: null,
         checkBackground: null,
         checkForeground: null,
-        codeBackground: null
+        codeBackground: null,
+        folderIcon: null,
+        fileIcon: null
     },
     space: {
         small: null,
@@ -29,12 +31,14 @@ export const lightTheme = createTheme(vars, {
         headerBackground: '#f0f0f0',
         headerText: '#333333',
         border: '#dddddd',
-        hoverBackground: '#e8e8e8',
+        hoverBackground: '#edededff',
         selectionBackground: '#0078d4',
         selectionForeground: '#ffffff',
         checkBackground: '#1e8e3e',
         checkForeground: '#e6f4ea',
-        codeBackground: '#f5f5f5'
+        codeBackground: '#f5f5f5',
+        folderIcon: '#dcb67a',
+        fileIcon: '#dfe4eaff'
     },
     space: {
         small: '10px',
@@ -55,7 +59,9 @@ export const darkTheme = createTheme(vars, {
         selectionForeground: '#ffffff',
         checkBackground: '#4caf50',
         checkForeground: '#0e3a1f',
-        codeBackground: '#2d2d2d'
+        codeBackground: '#2d2d2d',
+        folderIcon: '#e8c32e',
+        fileIcon: '#828a8eff'
     },
     space: {
         small: '10px',

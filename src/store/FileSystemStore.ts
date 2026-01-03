@@ -4,6 +4,7 @@ import { editorStore } from './EditorStore';
 
 export interface FileNode {
     name: string;
+    path: string;
     kind: 'file' | 'directory';
     handle: FileSystemFileHandle | FileSystemDirectoryHandle;
     children?: FileNode[];
@@ -15,6 +16,7 @@ class FileSystemStore {
     @observable accessor currentFileHandle: FileSystemFileHandle | null = null;
     @observable accessor dirty: boolean = false;
     @observable accessor isLoading: boolean = false;
+    @observable accessor collapsedPaths: Set<string> = new Set();
 
     saveInterval: number | null = null;
 
@@ -74,6 +76,7 @@ class FileSystemStore {
                 const perm = await this.directoryHandle!.queryPermission({ mode: 'read' });
                 if (perm === 'granted') {
                     await this.refreshTree();
+                    this.restoreCollapsedPaths();
                     await this.restoreLastFile();
                 } else {
                     // We maintain the handle but can't list files yet.
@@ -178,15 +181,22 @@ class FileSystemStore {
         });
     }
 
-    async readDirectory(dirHandle: FileSystemDirectoryHandle): Promise<FileNode[]> {
+    async readDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string = ''): Promise<FileNode[]> {
         const entries: FileNode[] = [];
         for await (const entry of dirHandle.values()) {
             if (entry.name.startsWith('.')) continue; // Skip hidden files/dotfiles
+
+            // Build the relative path for this entry
+            // parentPath is empty for root items.
+            // If parentPath exists, append '/'
+            const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+
 
             if (entry.kind === 'file') {
                 if (entry.name.endsWith('.adoc')) {
                     entries.push({
                         name: entry.name,
+                        path: currentPath,
                         kind: 'file',
                         handle: entry
                     });
@@ -194,9 +204,10 @@ class FileSystemStore {
             } else if (entry.kind === 'directory') {
                 entries.push({
                     name: entry.name,
+                    path: currentPath,
                     kind: 'directory',
                     handle: entry,
-                    children: await this.readDirectory(entry)
+                    children: await this.readDirectory(entry, currentPath)
                 });
             }
         }
@@ -320,6 +331,38 @@ class FileSystemStore {
             return await parentHandle.getFileHandle(siblingName);
         } catch (e) {
             return null;
+        }
+    }
+
+    @action
+    toggleDirectory(path: string) {
+        if (this.collapsedPaths.has(path)) {
+            this.collapsedPaths.delete(path);
+        } else {
+            this.collapsedPaths.add(path);
+        }
+        // Trigger generic reaction/persist
+        set('collapsedPaths', Array.from(this.collapsedPaths));
+    }
+
+    isCollapsed(path: string) {
+        return this.collapsedPaths.has(path);
+    }
+
+    async restoreCollapsedPaths() {
+        try {
+            const stored = await get('collapsedPaths') as Set<string> | string[] | undefined;
+            if (stored) {
+                runInAction(() => {
+                    if (Array.isArray(stored)) {
+                        this.collapsedPaths = new Set(stored);
+                    } else if (stored instanceof Set) {
+                        this.collapsedPaths = stored;
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('Error restoring collapsed paths:', e);
         }
     }
 

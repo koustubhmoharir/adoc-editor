@@ -16,19 +16,30 @@ const FileTreeItem: React.FC<{ node: FileNode; level?: number }> = observer(({ n
                 style={{ paddingLeft }}
                 onClick={() => fileSystemStore.selectFile(node)}
             >
-                <span className={styles.icon}>📄</span>
+                <i className={`fas fa-file ${styles.icon} ${styles.fileIcon}`} />
                 {node.name}
             </div>
         );
     }
 
+    const isCollapsed = fileSystemStore.isCollapsed(node.path);
+
+    const toggle = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        fileSystemStore.toggleDirectory(node.path);
+    };
+
     return (
         <div>
-            <div className={styles.directoryItem} style={{ paddingLeft }}>
-                <span className={styles.icon}>📁</span>
+            <div
+                className={styles.directoryItem}
+                style={{ paddingLeft }}
+                onClick={toggle}
+            >
+                <i className={`fas ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} ${styles.icon} ${styles.folderIcon}`} />
                 {node.name}
             </div>
-            {node.children && node.children.map((child, i) => (
+            {!isCollapsed && node.children && node.children.map((child, i) => (
                 <FileTreeItem key={i} node={child} level={level + 1} />
             ))}
         </div>
@@ -46,7 +57,7 @@ export const Sidebar: React.FC = observer(() => {
                     title={fileSystemStore.directoryHandle?.name}
                     onClick={() => fileSystemStore.openDirectory()}
                 >
-                    <span className={styles.icon}>📁</span>
+                    <i className={`fas fa-folder-open ${styles.icon} ${styles.folderIcon}`} />
                     <span className={styles.headerText}>{fileSystemStore.directoryHandle?.name}</span>
                 </div>
             )}

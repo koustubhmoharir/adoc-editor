@@ -57,7 +57,15 @@ export const selected = style({
 
 export const icon = style({
     marginRight: '6px',
-    opacity: 0.8
+    opacity: 1 // Ensure full opacity for colors
+});
+
+export const folderIcon = style({
+    color: themeVars.color.folderIcon
+});
+
+export const fileIcon = style({
+    color: themeVars.color.fileIcon
 });
 
 export const header = style({
