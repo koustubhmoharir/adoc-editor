@@ -58,6 +58,7 @@ class FileSystemStore {
                 const perm = await handle.queryPermission({ mode: 'read' });
                 if (perm === 'granted') {
                     await this.refreshTree();
+                    await this.restoreLastFile();
                 } else {
                     // We maintain the handle but can't list files yet.
                     // The UI should show a button to "Restore Access" or "Reload Directory" which matches a user gesture.
@@ -71,6 +72,63 @@ class FileSystemStore {
         } catch (error) {
             console.error('Error restoring directory:', error);
         }
+    }
+
+    async restoreLastFile() {
+        try {
+            const handle = await get('lastOpenFile') as FileSystemFileHandle | undefined;
+            if (handle) {
+                // Verify permission for the file (should be inherited from directory usually, or re-verified)
+                const perm = await handle.queryPermission({ mode: 'read' });
+
+                if (perm === 'granted') {
+                    const file = await handle.getFile();
+                    const content = await file.text();
+
+                    runInAction(() => {
+                        this.currentFileHandle = handle;
+                        this.isLoading = true;
+                    });
+
+                    editorStore.setContent(content);
+
+                    runInAction(() => {
+                        this.dirty = false;
+                        this.isLoading = false;
+                    });
+
+                    // Sync with tree if it's already loaded
+                    if (this.fileTree.length > 0) {
+                        await this.syncSelectedFileWithTree();
+                    }
+                    this.startAutoSave();
+                }
+            }
+        } catch (error) {
+            console.error('Error restoring last file:', error);
+        }
+    }
+
+    async syncSelectedFileWithTree() {
+        if (!this.currentFileHandle) return;
+
+        const findAndReplaceHandle = async (nodes: FileNode[]) => {
+            for (const node of nodes) {
+                if (node.kind === 'file') {
+                    if (await node.handle.isSameEntry(this.currentFileHandle!)) {
+                        runInAction(() => {
+                            this.currentFileHandle = node.handle as FileSystemFileHandle;
+                        });
+                        return true;
+                    }
+                } else if (node.children) {
+                    if (await findAndReplaceHandle(node.children)) return true;
+                }
+            }
+            return false;
+        };
+
+        await findAndReplaceHandle(this.fileTree);
     }
 
     async verifyPermission(handle: FileSystemDirectoryHandle, readWrite: boolean = false) {
@@ -97,6 +155,7 @@ class FileSystemStore {
         const tree = await this.readDirectory(this.directoryHandle);
         runInAction(() => {
             this.fileTree = tree;
+            this.syncSelectedFileWithTree();
         });
     }
 
@@ -140,6 +199,9 @@ class FileSystemStore {
 
         // For reading, we might need permission too? usually strictly nested files inherit permission.
 
+        // Persist file handle
+        await set('lastOpenFile', fileHandle);
+
         const file = await fileHandle.getFile();
         const content = await file.text();
 
@@ -162,6 +224,9 @@ class FileSystemStore {
         if (this.currentFileHandle && this.dirty) {
             await this.saveFile();
         }
+
+        // Clear persisted handle
+        await set('lastOpenFile', null);
 
         runInAction(() => {
             this.currentFileHandle = null;
