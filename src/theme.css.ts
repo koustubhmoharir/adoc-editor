@@ -21,7 +21,11 @@ export const vars = createThemeContract({
         codeBackground: null,
         folderIcon: null,
         fileIcon: null,
-        newFileIcon: null
+
+        newFileIcon: null,
+        rename: null,
+        delete: null,
+        success: null,
     },
     space: {
         small: null,
@@ -39,14 +43,18 @@ export const lightTheme = createTheme(vars, {
         headerText: '#333333',
         border: '#dddddd',
         hoverBackground: '#edededff',
-        selectionBackground: '#0078d4',
+        selectionBackground: '#8d8d8d',
         selectionForeground: '#ffffff',
         checkBackground: '#1e8e3e',
         checkForeground: '#e6f4ea',
         codeBackground: '#f5f5f5',
         folderIcon: '#dcb67a',
         fileIcon: '#dfe4eaff',
-        newFileIcon: '#1e8e3e'
+
+        newFileIcon: '#1e8e3e',
+        rename: '#e6f4ea',
+        delete: '#ffff00',
+        success: '#2e7d32',
     },
     space: {
         small: '10px',
@@ -64,14 +72,17 @@ export const darkTheme = createTheme(vars, {
         headerText: '#ffffff',
         border: '#3e3e3e',
         hoverBackground: '#2a2d2e',
-        selectionBackground: '#094771',
+        selectionBackground: '#707070ff',
         selectionForeground: '#ffffff',
         checkBackground: '#4caf50',
         checkForeground: '#0e3a1f',
         codeBackground: '#2d2d2d',
         folderIcon: '#e8c32e',
         fileIcon: '#828a8eff',
-        newFileIcon: '#a3cda5'
+        newFileIcon: '#a3cda5',
+        rename: '#0e3a1f',
+        delete: '#c60c02ff',
+        success: '#4caf50',
     },
     space: {
         small: '10px',

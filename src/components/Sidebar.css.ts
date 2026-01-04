@@ -46,6 +46,7 @@ export const directoryItem = style([itemBase, {
 }]);
 
 export const fileItem = style([itemBase, {
+    position: 'relative',
 }]);
 
 export const selected = style({
@@ -58,6 +59,7 @@ export const selected = style({
 });
 
 export const icon = style({
+    flexShrink: 0,
     marginRight: '6px',
     opacity: 1 // Ensure full opacity for colors
 });
@@ -214,5 +216,62 @@ export const resultPath = style({
 
 export const highlighted = style({
     backgroundColor: themeVars.color.hoverBackground
+});
+
+export const renameButton = style({
+    position: 'absolute',
+    left: '0',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    color: themeVars.color.rename,
+    padding: '2px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '12px',
+});
+
+export const deleteButton = style({
+    marginLeft: 'auto',
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    color: themeVars.color.delete,
+    padding: '2px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '12px',
+});
+
+export const acceptButton = style({
+    marginLeft: '2px',
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    color: themeVars.color.checkForeground,
+    padding: '2px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '12px',
+});
+
+
+export const renameInput = style({
+    fontFamily: 'inherit',
+    fontSize: 'inherit',
+    padding: '2px 4px',
+    border: `none`,
+    background: themeVars.color.background,
+    color: themeVars.color.text,
+    width: '100%',
+    boxSizing: 'border-box',
+    outline: 'none',
+    margin: '-3px 0 -3px -5px', // Adjust for padding diff
+    borderRadius: '2px'
 });
 

@@ -510,6 +510,152 @@ class FileSystemStore {
         }
     }
 
+    async deleteFile(node: FileNode) {
+        if (node.kind !== 'file') return;
+
+        // 1. Confirm deletion (UI should handle confirmation before calling this, but we can verify)
+        // For store action, we assume confirmation is done or we provide a callback? 
+        // The plan says "UI side handles alert, this method just executes".
+
+        const parentDir = this.findParentDirectory(node.handle);
+        if (!parentDir) {
+            alert('Cannot search parent directory needed for deletion.');
+            return;
+        }
+
+        try {
+            await parentDir.removeEntry(node.name);
+
+            // Clear selection if deleted file was active
+            if (this.currentFileHandle && await node.handle.isSameEntry(this.currentFileHandle)) {
+                await this.clearSelection();
+            }
+
+            await this.refreshTree();
+        } catch (error) {
+            console.error('Error deleting file:', error);
+            alert(`Failed to delete file: ${error}`);
+        }
+    }
+
+    async renameFile(node: FileNode, newName: string) {
+        if (node.kind !== 'file') return;
+
+        const trimmedName = newName.trim();
+        if (!trimmedName) return;
+
+        // Ensure extension
+        const finalName = trimmedName.endsWith('.adoc') ? trimmedName : `${trimmedName}.adoc`;
+
+        // 1. Validation
+        // Allowed: 
+        // - Printable ASCII (0x20-0x7E) EXCEPT < > : " / \ | ? *
+        // - Unicode letters (\p{L}) and numbers (\p{N})
+        // - Characters already in the original filename
+
+        const unsafeAsciiRegex = /[<>:"/\\|?*]/;
+        const printableAsciiRegex = /^[\x20-\x7E]$/;
+        const unicodeWordRegex = /^[\p{L}\p{N}]$/u;
+
+        for (const char of finalName) {
+            if (node.name.includes(char)) continue; // Allowed if in original
+
+            if (printableAsciiRegex.test(char)) {
+                // It is printable ASCII. Check if it is unsafe.
+                if (unsafeAsciiRegex.test(char)) {
+                    alert(`Invalid character: ${char}`);
+                    return;
+                }
+            } else {
+                // It is NOT printable ASCII (e.g. Unicode or Control)
+                // Check if it is a Unicode Letter or Number
+                if (!unicodeWordRegex.test(char)) {
+                    alert(`Invalid character: ${char}`);
+                    return;
+                }
+            }
+        }
+
+        const parentDir = this.findParentDirectory(node.handle);
+        if (!parentDir) {
+            alert('Cannot find parent directory.');
+            return;
+        }
+
+        // 2. Uniqueness Check
+        // Check for siblings with case-insensitive match
+        // We can use this.fileTree to search, but we need the specific parent's children.
+        // It's safer to re-read or use existing tree if up to date.
+        // Let's use `findSiblingFile` logic or iterate parentDir values? 
+        // `findSiblingFile` is async and accurate.
+
+        // Check if file exists (case insensitive check implies we need to list all and compare?)
+        // FileSystemHandle API getFileHandle is case sensitive on some OS/Browsers, insensitive on others. 
+        // To strictly follow "If there is a conflict considering insensitive match, lets alert...", we should scan.
+
+        // Find the folder node in tree to get siblings
+        const findParentNode = (nodes: FileNode[], target: FileSystemHandle): FileNode | null => {
+            for (const n of nodes) {
+                if (n.kind === 'directory' && n.children) {
+                    if (n.children.some(c => c.handle === target)) return n;
+                    const found = findParentNode(n.children, target);
+                    if (found) return found;
+                }
+            }
+            // If root
+            if (nodes.some(n => n.handle === target)) return { handle: this.directoryHandle } as any;
+            return null;
+        };
+        // Searching tree is easier than re-reading dir
+        // Actually we can just iterate `parentDir.values()`
+        let conflict = false;
+        try {
+            for await (const entry of parentDir.values()) {
+                if (entry.name === node.name) continue; // self
+                if (entry.name.toLowerCase() === finalName.toLowerCase()) {
+                    conflict = true;
+                    break;
+                }
+            }
+        } catch (e) { console.warn('Error checking siblings', e); }
+
+        if (conflict) {
+            const proceed = confirm(`A file with the name "${finalName}" already exists (case-insensitive). Do you want to try replacing it or proceed?`);
+            if (!proceed) return;
+        }
+
+        // 3. Execute Rename
+        // Check for move() support
+        const handle = node.handle as any;
+        if (handle.move) {
+            try {
+                await handle.move(parentDir, finalName);
+
+                // Refresh
+                await this.refreshTree();
+
+                // If it was selected, ensure selection is maintained (refreshTree might lose it if reference changes, 
+                // but syncSelectedFileWithTree should handle it if path updates? 
+                // If path changed, syncSelectedFileWithTree relies on finding handle.
+                // Depending on browser, handle object might mutate or remain same.
+                // We should re-select by name if needed.
+
+                // Wait, if we renamed current file, logic in store might need update
+                if (this.currentFileHandle && await node.handle.isSameEntry(this.currentFileHandle)) {
+                    // Update current handle reference if needed (move modifies in place usually)
+                    // But we should re-sync just in case
+                    // The handle itself points to the file. 
+                }
+
+            } catch (error) {
+                console.error('Rename failed:', error);
+                alert(`Rename failed: ${error}`);
+            }
+        } else {
+            alert('Your browser does not support renaming files directly (File System Access API "move" method is missing). Please use a supported browser (e.g. Chrome 111+).');
+        }
+    }
+
     @action
     toggleDirectory(path: string) {
         if (this.collapsedPaths.has(path)) {
