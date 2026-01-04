@@ -93,6 +93,17 @@ export class FsTestSetup {
             }
         });
 
+        await page.exposeFunction('__fs_rename', async (oldPath: string, newPath: string) => {
+            const fullOldPath = resolvePath(oldPath);
+            const fullNewPath = resolvePath(newPath);
+            fs.renameSync(fullOldPath, fullNewPath);
+        });
+
+        await page.exposeFunction('__fs_remove', async (filePath: string) => {
+            const fullPath = resolvePath(filePath);
+            fs.rmSync(fullPath, { recursive: true, force: true });
+        });
+
         // Inject the mock implementation
         await page.addInitScript('window.__ENABLE_TEST_GLOBALS__ = true;');
         // Start one level up from this file (tests/helpers) -> tests/helpers/fs_mock.js

@@ -3,19 +3,124 @@ import { get, set } from 'idb-keyval';
 import { Fzf } from 'fzf';
 import { editorStore } from './EditorStore';
 import { createRef } from "react";
+import { EffectAwareModel } from "./EffectAwareModel";
 
-export interface FileNode {
+export interface FileNodeData {
     name: string;
     path: string;
     kind: 'file' | 'directory';
     handle: FileSystemFileHandle | FileSystemDirectoryHandle;
-    children?: FileNode[];
+    children?: FileNodeData[];
+}
+
+export class FileNodeModel extends EffectAwareModel {
+    @observable accessor name: string;
+    readonly path: string;
+    readonly kind: 'file' | 'directory';
+    readonly handle: FileSystemFileHandle | FileSystemDirectoryHandle;
+    @observable accessor children: FileNodeModel[] | undefined;
+
+    // UI State
+    @observable accessor isRenaming: boolean = false;
+    @observable accessor renameValue: string = '';
+
+    // Refs
+    readonly renameInputRef = createRef<HTMLInputElement>();
+
+
+
+    constructor(data: FileNodeData) {
+        super();
+        this.name = data.name;
+        this.path = data.path;
+        this.kind = data.kind;
+        this.handle = data.handle;
+        if (data.children) {
+            this.children = data.children.map(child => new FileNodeModel(child));
+        }
+    }
+
+    @action
+    startRenaming() {
+        this.isRenaming = true;
+        this.renameValue = this.name;
+
+        // Schedule focus effect
+        this.scheduleEffect(() => {
+            if (this.renameInputRef.current) {
+                this.renameInputRef.current.focus();
+                // Select name part excluding extension
+                const dotIndex = this.renameValue.lastIndexOf('.');
+                if (dotIndex > 0) {
+                    this.renameInputRef.current.setSelectionRange(0, dotIndex);
+                } else {
+                    this.renameInputRef.current.select();
+                }
+            }
+        });
+    }
+
+
+    @action
+    cancelRenaming() {
+        this.isRenaming = false;
+        this.renameValue = '';
+    }
+
+    @action
+    setRenameValue(val: string) {
+        this.renameValue = val;
+    }
+
+    @action
+    async commitRenaming() {
+        if (!this.renameValue || this.renameValue === this.name) {
+            this.cancelRenaming();
+            return;
+        }
+        await fileSystemStore.renameFile(this, this.renameValue);
+        // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
+        // If not, we stay here.
+        // We can optimistically close it? No, wait for refresh.
+        // logic in store refreshes tree.
+    }
+
+    @action
+    async delete() {
+        if (confirm(`Are you sure you want to delete '${this.name}'?`)) {
+            await fileSystemStore.deleteFile(this);
+        }
+    }
+
+    @action
+    handleRenameInputKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
+        if (e.key === 'Enter') {
+            e.stopPropagation();
+            this.commitRenaming();
+        } else if (e.key === 'Escape') {
+            e.stopPropagation();
+            this.cancelRenaming();
+        }
+    }
+
+    @action
+    handleTreeItemKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
+        if (this.isRenaming) return;
+
+        if (e.key === 'F2') {
+            e.preventDefault();
+            this.startRenaming();
+        } else if (e.key === 'Delete') {
+            e.preventDefault();
+            this.delete();
+        }
+    }
 }
 
 export class SearchResultItemModel {
     @observable accessor isHighlighted: boolean = false;
     readonly ref = createRef<HTMLDivElement>();
-    constructor(public readonly item: FileNode) { }
+    constructor(public readonly item: FileNodeModel) { }
 
     @action
     setHighlight(val: boolean) {
@@ -23,9 +128,9 @@ export class SearchResultItemModel {
     }
 }
 
-class FileSystemStore {
+class FileSystemStore extends EffectAwareModel {
     @observable accessor directoryHandle: FileSystemDirectoryHandle | null = null;
-    @observable accessor fileTree: FileNode[] = [];
+    @observable accessor fileTree: FileNodeModel[] = [];
     @observable accessor currentFileHandle: FileSystemFileHandle | null = null;
     @observable accessor dirty: boolean = false;
     @observable accessor isLoading: boolean = false;
@@ -33,9 +138,10 @@ class FileSystemStore {
     @observable accessor searchQuery: string = '';
     @observable accessor isSearchVisible: boolean = false;
 
-    get allFiles(): FileNode[] {
-        const result: FileNode[] = [];
-        const traverse = (nodes: FileNode[]) => {
+
+    get allFiles(): FileNodeModel[] {
+        const result: FileNodeModel[] = [];
+        const traverse = (nodes: FileNodeModel[]) => {
             for (const node of nodes) {
                 if (node.kind === 'file') {
                     result.push(node);
@@ -60,6 +166,7 @@ class FileSystemStore {
     saveInterval: number | null = null;
 
     constructor() {
+        super();
         this.restoreDirectory();
 
         // React to editor content changes to set dirty state
@@ -78,6 +185,38 @@ class FileSystemStore {
                 this.saveFile(); // Attempt to save (best effort)
             }
         });
+
+        // Global key listener
+        window.addEventListener('keydown', this.handleGlobalKeyDown.bind(this));
+    }
+
+    handleGlobalKeyDown(e: KeyboardEvent) {
+        const isEditorFocused = document.activeElement?.classList.contains('monaco-editor') || document.activeElement?.closest('.monaco-editor');
+        const isInputFocused = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+
+        // Verify if we should handle global shortcuts
+        if (isEditorFocused || isInputFocused) return;
+
+        if (this.currentFileHandle) {
+            if (e.key === 'F2') {
+                const node = this.allFiles.find(n => n.handle === this.currentFileHandle);
+                if (node) {
+                    e.preventDefault();
+                    node.startRenaming();
+                }
+            } else if (e.key === 'Delete') {
+                const node = this.allFiles.find(n => n.handle === this.currentFileHandle);
+                if (node) {
+                    e.preventDefault();
+                    node.delete();
+                }
+            }
+        }
+    }
+
+    @action
+    setDirty(val: boolean) {
+        this.dirty = val;
     }
 
     async openDirectory() {
@@ -171,7 +310,7 @@ class FileSystemStore {
     async syncSelectedFileWithTree() {
         if (!this.currentFileHandle) return;
 
-        const findAndReplaceHandle = async (nodes: FileNode[]) => {
+        const findAndReplaceHandle = async (nodes: FileNodeModel[]) => {
             for (const node of nodes) {
                 if (node.kind === 'file') {
                     if (await node.handle.isSameEntry(this.currentFileHandle!)) {
@@ -218,43 +357,42 @@ class FileSystemStore {
         });
     }
 
-    async readDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string = ''): Promise<FileNode[]> {
-        const entries: FileNode[] = [];
+    async readDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string = ''): Promise<FileNodeModel[]> {
+        const models: FileNodeModel[] = [];
+
         for await (const entry of dirHandle.values()) {
-            if (entry.name.startsWith('.')) continue; // Skip hidden files/dotfiles
-
-            // Build the relative path for this entry
-            // parentPath is empty for root items.
-            // If parentPath exists, append '/'
+            if (entry.name.startsWith('.')) continue;
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
-
 
             if (entry.kind === 'file') {
                 if (entry.name.endsWith('.adoc')) {
-                    entries.push({
+                    models.push(new FileNodeModel({
                         name: entry.name,
                         path: currentPath,
                         kind: 'file',
                         handle: entry
-                    });
+                    }));
                 }
             } else if (entry.kind === 'directory') {
-                entries.push({
+                const children = await this.readDirectory(entry, currentPath);
+                const dirModel = new FileNodeModel({
                     name: entry.name,
                     path: currentPath,
                     kind: 'directory',
-                    handle: entry,
-                    children: await this.readDirectory(entry, currentPath)
+                    handle: entry
                 });
+                dirModel.children = children; // Assign children explicitly
+                models.push(dirModel);
             }
         }
-        return entries.sort((a, b) => {
+
+        return models.sort((a, b) => {
             if (a.kind === b.kind) return a.name.localeCompare(b.name);
             return a.kind === 'directory' ? -1 : 1;
         });
     }
 
-    async selectFile(node: FileNode) {
+    async selectFile(node: FileNodeModel) {
         if (node.kind !== 'file') return;
 
 
@@ -346,29 +484,48 @@ class FileSystemStore {
     findParentDirectory(targetHandle: FileSystemHandle): FileSystemDirectoryHandle | null {
         if (!this.directoryHandle) return null;
 
-        // Check root level
+        const traverse = (nodes: FileNodeModel[]): FileSystemDirectoryHandle | undefined => {
+            // Check if target is a child of any node in this list? 
+            // Logic in original was: is `nodes` children of `node`? 
+            // Original was iterating nodes to check if THEIR children contain target.
+
+            // Wait, original: `findParentRecursive(this.fileTree, targetHandle)`
+            // `for (const node of nodes)`
+            // `if (node.kind === 'directory' && node.children)`
+            // `if (node.children.some(child => child.handle === target))` -> return node.handle
+
+            for (const node of nodes) {
+                if (node.kind === 'directory' && node.children) {
+                    if (node.children.some(child => child.handle === targetHandle)) { // Equality check on handle reference
+                        return node.handle as FileSystemDirectoryHandle;
+                    }
+                    const found = traverse(node.children);
+                    if (found) return found;
+                }
+            }
+        };
+
+        // Root check
         if (this.fileTree.some(n => n.handle === targetHandle)) {
             return this.directoryHandle;
         }
 
-        // Check recursively
-        return this.findParentRecursive(this.fileTree, targetHandle);
+        return traverse(this.fileTree) || null;
     }
 
-    findParentRecursive(nodes: FileNode[], target: FileSystemHandle): FileSystemDirectoryHandle | null {
-        for (const node of nodes) {
-            if (node.kind === 'directory' && node.children) {
-                // Is target a child of this node?
-                if (node.children.some(child => child.handle === target)) {
-                    return node.handle as FileSystemDirectoryHandle;
-                }
-                // Recurse
-                const found = this.findParentRecursive(node.children, target);
+    // Helper to find actual parent node Model
+    findParentNode(nodes: FileNodeModel[], target: FileSystemHandle): FileNodeModel | null {
+        for (const n of nodes) {
+            if (n.kind === 'directory' && n.children) {
+                if (n.children.some(c => c.handle === target)) return n;
+                const found = this.findParentNode(n.children, target);
                 if (found) return found;
             }
         }
+        // If root, we don't have a parent "node" unless we consider root a node which isn't in fileTree.
         return null;
     }
+
 
     get currentDirectoryPath(): string {
         if (!this.directoryHandle) return '';
@@ -377,7 +534,7 @@ class FileSystemStore {
         if (!this.currentFileHandle) return rootName;
 
         // Find path of current file in tree
-        const findPath = (nodes: FileNode[]): string | null => {
+        const findPath = (nodes: FileNodeModel[]): string | null => {
             for (const node of nodes) {
                 if (node.kind === 'file') {
                     // Optimized check? node.handle is same as currentFileHandle?
@@ -419,7 +576,7 @@ class FileSystemStore {
             }
         }
 
-        if (!targetDir) return; // Should not happen given logic above
+        if (!targetDir) return;
 
         // 2. Auto-save current file
         if (this.dirty) {
@@ -450,32 +607,7 @@ class FileSystemStore {
 
             // 6. Select the new file
             // We need to find the node in the tree to select it properly with path info
-            const findNode = (nodes: FileNode[]): FileNode | undefined => {
-                for (const node of nodes) {
-                    if (node.kind === 'file' && (node.handle as any).name === filename) {
-                        // This check is a bit weak if multiple files have same name in diff dirs,
-                        // but since we just created it in targetDir and refreshed, we ideally need a robust way.
-                        // Ideally we match handles but strict equality might fail after refresh if handles are re-fetched?
-                        // Actually, refreshTree re-reads handles.
-                        // Let's use isSameEntry
-                        // But we can't await inside sync filter/find easily.
-                        return node;
-                    } else if (node.children) {
-                        const found = findNode(node.children);
-                        if (found) return found;
-                    }
-                }
-            };
-
-            // Since handle comparison needs await, and we just need to select,
-            // we can try to "find" it by structure if we know the path, but we don't know the full path string easily without reconstructing it.
-            // Let's rely on `isSameEntry` in `syncSelectedFileWithTree` logic but adapted.
-
-            // Simpler approach: Select it manually by constructing a partial node or just calling selectFile with the handle
-            // But selectFile expects a Node to get the name? No, it casts node.handle.
-            // Let's construct a temporary node or find it properly.
-
-            const findNodeAsync = async (nodes: FileNode[]): Promise<FileNode | undefined> => {
+            const findNodeAsync = async (nodes: FileNodeModel[]): Promise<FileNodeModel | undefined> => {
                 for (const node of nodes) {
                     if (node.kind === 'file') {
                         if (await node.handle.isSameEntry(newFileHandle)) {
@@ -510,7 +642,7 @@ class FileSystemStore {
         }
     }
 
-    async deleteFile(node: FileNode) {
+    async deleteFile(node: FileNodeModel) {
         if (node.kind !== 'file') return;
 
         // 1. Confirm deletion (UI should handle confirmation before calling this, but we can verify)
@@ -538,7 +670,7 @@ class FileSystemStore {
         }
     }
 
-    async renameFile(node: FileNode, newName: string) {
+    async renameFile(node: FileNodeModel, newName: string) {
         if (node.kind !== 'file') return;
 
         const trimmedName = newName.trim();
@@ -594,18 +726,6 @@ class FileSystemStore {
         // To strictly follow "If there is a conflict considering insensitive match, lets alert...", we should scan.
 
         // Find the folder node in tree to get siblings
-        const findParentNode = (nodes: FileNode[], target: FileSystemHandle): FileNode | null => {
-            for (const n of nodes) {
-                if (n.kind === 'directory' && n.children) {
-                    if (n.children.some(c => c.handle === target)) return n;
-                    const found = findParentNode(n.children, target);
-                    if (found) return found;
-                }
-            }
-            // If root
-            if (nodes.some(n => n.handle === target)) return { handle: this.directoryHandle } as any;
-            return null;
-        };
         // Searching tree is easier than re-reading dir
         // Actually we can just iterate `parentDir.values()`
         let conflict = false;
@@ -726,18 +846,45 @@ class FileSystemStore {
         }
     }
 
+    @action
+    closeSearch() {
+        this.isSearchVisible = false;
+        this.setSearchQuery('');
+    }
+
+    @action
+    toggleSearch(e: React.MouseEvent) {
+        e.stopPropagation();
+        if (this.isSearchVisible) {
+            this.closeSearch();
+        } else {
+            this.isSearchVisible = true;
+            // Schedule focus
+            this.scheduleEffect(() => {
+                this.searchInputRef.current?.focus();
+            });
+        }
+    }
+
+    @action
+    handleClearButtonClick(e: React.MouseEvent) {
+        e.stopPropagation();
+        if (this.searchQuery) {
+            this.setSearchQuery('');
+            this.searchInputRef.current?.focus();
+        } else {
+            this.closeSearch();
+        }
+    }
+
     getPageSize(): number {
         const first = this.searchResults[0];
         if (!first || !first.ref.current) return 10;
-
         const itemHeight = first.ref.current.offsetHeight;
-        // The container is the offsetParent
         const container = first.ref.current.offsetParent as HTMLElement;
         if (!container) return 10;
-
         const height = container.clientHeight;
         if (height === 0 || itemHeight === 0) return 10;
-
         return Math.floor(height / itemHeight);
     }
 
@@ -747,43 +894,28 @@ class FileSystemStore {
         if (results.length === 0) return;
 
         const currentIndex = results.findIndex(r => r.isHighlighted);
-
-        // Calculate new index
-        // If nothing selected (-1), start from -1. 
-        // For ArrowDown (delta=1): -1 + 1 = 0
-        // For PageDown (delta=10): -1 + 10 = 9
         let newIndex = currentIndex + delta;
 
         // Boundary checks
         if (newIndex < 0) {
-            // Moving up past top -> clear highlight
-            if (currentIndex !== -1) {
-                results[currentIndex].setHighlight(false);
-            }
-            // Scroll to top/input
+            if (currentIndex !== -1) results[currentIndex].setHighlight(false);
             this.searchInputRef.current?.scrollIntoView({ block: 'center' });
             return;
         }
 
         if (newIndex >= results.length) {
-            // Stay at last
             newIndex = results.length - 1;
         }
 
-        // Update highlight
-        if (currentIndex !== -1) {
-            results[currentIndex].setHighlight(false);
-        }
+        if (currentIndex !== -1) results[currentIndex].setHighlight(false);
         results[newIndex].setHighlight(true);
-
-        // Scroll into view
         this.scrollToResult(results[newIndex]);
     }
 
     scrollToResult(result: SearchResultItemModel) {
-        setTimeout(() => {
+        this.scheduleEffect(() => {
             result.ref.current?.scrollIntoView({ block: 'nearest' });
-        }, 0);
+        });
     }
 
     @action
@@ -795,61 +927,14 @@ class FileSystemStore {
     }
 
     @action
-    handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
-        this.setSearchQuery(e.target.value);
-    }
-
-    @action
-    handleSearchResultClick(node: FileNode) {
-        this.selectFile(node);
+    handleSearchResultClick(item: FileNodeModel) {
+        this.selectFile(item);
         this.closeSearch();
     }
 
     @action
-    setSearchVisible(visible: boolean) {
-        this.isSearchVisible = visible;
-        if (visible) {
-            // giving React time to render input? or use layout effect?
-            // Since this is in store, we can't easily wait for render.
-            // We rely on the component using useEffect or callback ref,
-            // OR we just focus if ref exists.
-            setTimeout(() => this.searchInputRef.current?.focus(), 0);
-        } else {
-            this.searchQuery = '';
-        }
-    }
-
-    @action
-    toggleSearch(e?: React.MouseEvent) {
-        if (e) e.stopPropagation();
-        this.setSearchVisible(!this.isSearchVisible);
-    }
-
-    @action
-    closeSearch() {
-        this.setSearchVisible(false);
-    }
-
-    @action
-    clearSearch() {
-        this.setSearchQuery('');
-        this.searchInputRef.current?.focus();
-    }
-
-    @action
-    handleClearButtonClick(e: React.MouseEvent) {
-        e.stopPropagation();
-        if (this.searchQuery) {
-            this.clearSearch();
-        } else {
-            this.closeSearch();
-        }
-    }
-
-
-    @action
-    setDirty(isDirty: boolean) {
-        this.dirty = isDirty;
+    handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
+        this.setSearchQuery(e.target.value);
     }
 }
 

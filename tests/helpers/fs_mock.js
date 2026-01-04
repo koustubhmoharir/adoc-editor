@@ -60,6 +60,27 @@ class MockFileSystemFileHandle extends MockFileSystemHandle {
             truncate: async () => { },
         };
     }
+
+    async move(destination, newName) {
+        // destination is a DirectoryHandle (mock)
+        // newName is string (optional if destination is file handle? spec is varying, but usage is handle.move(parentDir, newName))
+        // If destination is DirectoryHandle:
+        let newPath;
+        if (destination.kind === 'directory') {
+            newPath = destination._path + '/' + (newName || this.name);
+        } else {
+            // If destination is a handle to overwrite? 
+            // The API signature used in app is: handle.move(parentDir, finalName)
+            // So destination is parentDir
+            throw new Error('Destination must be a directory');
+        }
+
+        await window.__fs_rename(this._path, newPath);
+
+        // Update this handle? 
+        this.name = newName || this.name;
+        this._path = newPath;
+    }
 }
 
 class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
@@ -100,6 +121,12 @@ class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
     async getDirectoryHandle(name, options) {
         const childPath = this._path + '/' + name;
         return new MockFileSystemDirectoryHandle(name, childPath);
+    }
+
+    async removeEntry(name, options) {
+        const childPath = this._path + '/' + name;
+        // In real FS Access, removeEntry is on DirectoryHandle, taking the name of child to remove.
+        await window.__fs_remove(childPath);
     }
 }
 
