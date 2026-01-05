@@ -137,4 +137,18 @@ The following global flags can be set on `window` to alter application behavior 
 
 ### Script Execution
 - **Tool**: Use `node` directly for all scripts (e.g., `node scripts/generate_test_data.ts`).
-- **Avoid**: Do not use `npx tsx` as it creates unnecessary overhead and dependencies. Modern Node.js supports running the TypeScript scripts in this project.
+- Avoid: Do not use `npx tsx` as it creates unnecessary overhead and dependencies. Modern Node.js supports running the TypeScript scripts in this project.
+
+## 9. Dialog System
+
+We have implemented a custom, promise-based dialog system to replace the native `window.alert` and `window.confirm`. This ensures a consistent UI that matches the application's theme and allows for better testing.
+
+- **Import**: `import { dialog } from '../components/Dialog';` (relative path to `src/components/Dialog`).
+- **Usage**:
+  - `await dialog.alert(message, options?)`: Shows an alert dialog. Returns a Promise that resolves when the user dismisses it.
+  - `await dialog.confirm(message, options?)`: Shows a confirmation dialog. Returns a Promise that resolves to `true` (confirmed) or `false` (cancelled).
+- **Options**: Both methods accept an optional configuration object for titles, button text, and icons.
+- **Testing**: In tests, do NOT use `page.on('dialog')`. Instead, interact with the DOM elements (e.g., `data-testid="dialog-overlay"`, `data-testid="dialog-confirm-button"`).
+
+> [!IMPORTANT]
+> Always use `dialog.alert` and `dialog.confirm` instead of the native browser methods. Native methods block the renderer process and cannot be styled.
