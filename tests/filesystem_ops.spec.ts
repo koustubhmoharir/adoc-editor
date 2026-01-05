@@ -41,29 +41,12 @@ test.describe('Renaming Functionality', () => {
     test('Enter and exit renaming via buttons', async ({ page }) => {
         // Select file using robust data-file-path locator
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        await fileItem.click();
 
-        // Verify selected state
-        await expect(fileItem).toHaveClass(/selected/);
+        // Use helper to trigger rename via button
+        const input = await triggerRename(page, fileItem, 'button');
 
-        // Click Rename button (pencil)
-        await fileItem.hover();
-        const renameBtn = fileItem.locator('[data-testid="rename-button"]');
-        await expect(renameBtn).toBeVisible();
-        await renameBtn.click();
-
-        // Use the input itself to anchor, since it's unique during rename.
-        const input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-
-        // Rename
-        await input.fill('newname.adoc');
-
-        // Click Accept button (check)
-        const acceptBtn = page.locator('[data-testid="accept-rename-button"]');
-        await expect(acceptBtn).toBeVisible();
-        await acceptBtn.click();
+        // Rename and complete via button
+        await completeRename(page, input, 'newname.adoc', 'button');
 
         // Verify rename
         // The file item should now have the new path
@@ -75,21 +58,12 @@ test.describe('Renaming Functionality', () => {
     test('Enter and exit renaming via keyboard (F2, Enter)', async ({ page }) => {
         // Select file using robust selector
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        await fileItem.click();
-        await expect(fileItem).toHaveClass(/selected/);
 
-        // Press F2
-        await page.keyboard.press('F2');
+        // Use helper to trigger rename via F2
+        const input = await triggerRename(page, fileItem, 'f2');
 
-        const input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-
-        // Check selection (optional but good)
-        // await expect(page.evaluate(() => document.getSelection()?.toString())).toBe('file1');
-
-        await input.fill('renamed.adoc');
-        await page.keyboard.press('Enter');
+        // Rename and complete via Enter
+        await completeRename(page, input, 'renamed.adoc', 'enter');
 
         await expect(page.locator('[data-testid="file-item"][data-file-path="renamed.adoc"]')).toBeVisible();
         expect(fs.existsSync(path.join(fsSetup.tempDir1, 'renamed.adoc'))).toBe(true);
@@ -97,16 +71,11 @@ test.describe('Renaming Functionality', () => {
 
     test('Cancel renaming via Esc', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        await fileItem.click();
-        await page.keyboard.press('F2');
+        const input = await triggerRename(page, fileItem, 'f2');
 
-        const input = page.locator('[data-testid="rename-input"]');
-        await input.fill('aborted_change.adoc');
-
-        await page.keyboard.press('Escape');
+        await cancelRename(page, input, 'aborted_change.adoc');
 
         // Input gone, old name remains
-        await expect(input).not.toBeVisible();
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
         expect(fs.existsSync(path.join(fsSetup.tempDir1, 'file1.adoc'))).toBe(true);
         expect(fs.existsSync(path.join(fsSetup.tempDir1, 'aborted_change.adoc'))).toBe(false);
@@ -114,38 +83,39 @@ test.describe('Renaming Functionality', () => {
 
     test('Cancel renaming resets to original name if empty or same', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        await fileItem.click();
 
-        // 1. Same name
-        await page.keyboard.press('F2');
-        const input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-        await page.keyboard.press('Enter');
+        // 1. Same name (Use helper, defaults to F2 trigger, Enter completion)
+        let input = await triggerRename(page, fileItem);
+        // We can't use completeRename here strictly if we don't change text, OR we can just pass empty string/same content?
+        // completeRename fills newName.
+        // Wait, completeRename fills newName. I should probably just manually press enter if I want "no change".
+        // Or make completeRename handle it.
+        // Actually, if I pass 'file1.adoc' (original name), it should work. But it might not simulate "typing nothing".
+        // Let's modify the test to leverage the helper as much as possible, or fallback to manual if helper is too restrictive.
+        // But the user asked for helper to enter/exit.
+
+        // Case 1: Same name (simulate just pressing enter on current name?) or typing same name?
+        // The original test just pressed Enter immediately without typing.
+        // completeRename does fill().
+        await input.press('Enter');
         await expect(input).not.toBeVisible();
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
 
         // 2. Empty name
-        await page.keyboard.press('F2');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-        await input.fill('');
-        await page.keyboard.press('Enter');
-        await expect(input).not.toBeVisible();
+        input = await triggerRename(page, fileItem);
+        await completeRename(page, input, '');
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
     });
 
     test('Entering rename mode selects filename without extension', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        await fileItem.click();
-        await page.keyboard.press('F2');
+        const input = await triggerRename(page, fileItem);
 
-        const input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-
-        // Type 'changed' immediately. 
-        // If "file1" was selected, input becomes "changed.adoc".
+        // Type 'changed' immediately to verify selection handling
+        // We can't use completeRename here because we want to test that specific typing behavior (or verify selection first).
+        // BUT completeRename does .fill(), which overwrites.
+        // The original test was: `await page.keyboard.type('changed');` to prove selection was active.
+        // I will do that here manually as it's a specific interaction test.
         await page.keyboard.type('changed');
         await page.keyboard.press('Enter');
 
@@ -156,7 +126,7 @@ test.describe('Renaming Functionality', () => {
 
     test('Renaming preserves file content and editor content', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        await fileItem.click();
+        await fileItem.click(); // Ensure selection for content load check first
 
         // Ensure content loaded
         await expect(async () => {
@@ -165,15 +135,10 @@ test.describe('Renaming Functionality', () => {
         }).toPass();
 
         // Rename
-        await page.keyboard.press('F2');
-        let input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-        await input.fill('preserved.adoc');
-        await page.keyboard.press('Enter');
-        await expect(input).not.toBeVisible();
+        const input = await triggerRename(page, fileItem);
+        await completeRename(page, input, 'preserved.adoc');
 
-        // Verify editor content (should not reload or clear if not needed, but even if it reloads, it must be correct)
+        // Verify editor content
         await expect(async () => {
             const editorContent = await page.evaluate(() => (window as any).__TEST_editorStore.content);
             expect(editorContent).toBe('== File 1 content');
@@ -184,12 +149,8 @@ test.describe('Renaming Functionality', () => {
         expect(content).toBe('== File 1 content');
 
         // Cancelled rename also preserves
-        await page.keyboard.press('F2');
-        input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-        await input.fill('broken.adoc');
-        await page.keyboard.press('Escape');
+        const input2 = await triggerRename(page, page.locator('[data-testid="file-item"][data-file-path="preserved.adoc"]'));
+        await cancelRename(page, input2, 'broken.adoc');
 
         await expect(async () => {
             const editorContent = await page.evaluate(() => (window as any).__TEST_editorStore.content);
@@ -201,106 +162,72 @@ test.describe('Renaming Functionality', () => {
         // Helper to reset state
         const resetFile = async (currentName: string) => {
             const item = page.locator(`[data-testid="file-item"][data-file-path="${currentName}"]`);
-            await item.click();
-            await page.keyboard.press('F2');
-            let input = page.locator('[data-testid="rename-input"]');
-            await expect(input).toBeVisible();
-            await expect(input).toBeFocused();
-            await input.fill('file1.adoc');
-            await page.keyboard.press('Enter');
-            await expect(input).not.toBeVisible();
+            const input = await triggerRename(page, item);
+            await completeRename(page, input, 'file1.adoc');
             await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]'), 'Failed to reset file to file1.adoc').toBeVisible();
         };
 
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        await fileItem.click();
 
         // 1. Leading dots: .config -> .config
-        // Note: The logic will append .adoc if we don't provide it, because original handled .adoc
-        // But .config usually doesn't have .adoc. 
-        // Logic: if node.name.endsWith('.adoc') ...
-        // file1.adoc ends with .adoc. So if we rename to .config, it becomes .config.adoc
-
-        await page.keyboard.press('F2');
-        let input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-        await input.fill('.config');
-        await page.keyboard.press('Enter');
-        await expect(input).not.toBeVisible();
+        let input = await triggerRename(page, fileItem);
+        await completeRename(page, input, '.config');
         await expect(page.locator('[data-testid="file-item"][data-file-path=".config.adoc"]'), 'Failed to rename .config -> .config.adoc').toBeVisible();
         await resetFile('.config.adoc');
 
         // 2. Multiple dots: my..file.adoc -> my.file.adoc
-        await page.keyboard.press('F2');
-        input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-        await input.fill('my..file.adoc');
-        await page.keyboard.press('Enter');
+        const fileItem2 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]'); // Re-locate after reset? Should be same but safer.
+        input = await triggerRename(page, fileItem2);
+        await completeRename(page, input, 'my..file.adoc');
         await expect(page.locator('[data-testid="file-item"][data-file-path="my.file.adoc"]'), 'Failed to rename my..file.adoc -> my.file.adoc').toBeVisible();
         await resetFile('my.file.adoc');
 
         // 3. Spaces around dots: my . file . adoc -> my.file.adoc
-        await page.keyboard.press('F2');
-        input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-        await input.fill('my . file . adoc');
-        await page.keyboard.press('Enter');
+        const fileItem3 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
+        input = await triggerRename(page, fileItem3);
+        await completeRename(page, input, 'my . file . adoc');
         await expect(page.locator('[data-testid="file-item"][data-file-path="my.file.adoc"]'), 'Failed to rename "my . file . adoc" -> my.file.adoc').toBeVisible();
         await resetFile('my.file.adoc');
 
-        // 4. Empty parts: foo..bar -> foo.bar.adoc (appends extension)
-        await page.keyboard.press('F2');
-        input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-        await input.fill('foo..bar');
-        await page.keyboard.press('Enter');
+        // 4. Empty parts: foo..bar -> foo.bar.adoc
+        const fileItem4 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
+        input = await triggerRename(page, fileItem4);
+        await completeRename(page, input, 'foo..bar');
         await expect(page.locator('[data-testid="file-item"][data-file-path="foo.bar.adoc"]'), 'Failed to rename foo..bar -> foo.bar.adoc').toBeVisible();
         await resetFile('foo.bar.adoc');
 
         // 5. Only dots: ... -> . (Disallowed -> Cancel)
-        await page.keyboard.press('F2');
-        input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
-        await input.fill('...');
-        await page.keyboard.press('Enter');
-        // Rename should cancel, input gone, original name remains
-        await expect(input, 'Input did not disappear after disallowed rename').not.toBeVisible();
+        const fileItem5 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
+        input = await triggerRename(page, fileItem5);
+
+        // We expect it to cancel/reset. completeRename waits for input to not be visible.
+        // We can use completeRename here as it fills and presses enter.
+        await completeRename(page, input, '...');
+
+        // Rename should have cancelled/failed essentially, meaning original file remains.
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]'), 'Original file name not visible after disallowed rename').toBeVisible();
     });
 
     test('Validation: Unsafe characters', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        await fileItem.click();
-        await page.keyboard.press('F2');
+        const input = await triggerRename(page, fileItem);
 
-        let input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
         await input.fill('bad/name.adoc');
         await page.keyboard.press('Enter');
 
         await expect(async () => expect(lastDialogMessage).toContain('Invalid character')).toPass();
 
+        // Input should still be visible because validation failed
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
     });
 
     test('Validation: Conflict', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        await fileItem.click();
-        await page.keyboard.press('F2');
+        const input = await triggerRename(page, fileItem);
 
         // 1. Decline override
         dialogAction = 'dismiss';
 
-        // Try renaming to existing 'conflict.adoc'
-        let input = page.locator('[data-testid="rename-input"]');
-        await expect(input).toBeVisible();
-        await expect(input).toBeFocused();
         await input.fill('conflict.adoc');
         await page.keyboard.press('Enter');
 
@@ -311,16 +238,58 @@ test.describe('Renaming Functionality', () => {
         // 2. Accept override
         dialogAction = 'accept';
 
-        // Retrigger
+        // Retrigger enter
         await page.keyboard.press('Enter');
 
         // Should succeed now
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).not.toBeVisible();
         await expect(page.locator('[data-testid="file-item"][data-file-path="conflict.adoc"]')).toBeVisible();
 
-        // Mock implementation of move/rename simply renames the path on the handle.
-        // Standard fs.renameSync does overwrite.
         const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'conflict.adoc'), 'utf8');
         expect(content).toBe('== File 1 content');
     });
 });
+
+// Helper Functions
+import { Page, Locator } from '@playwright/test';
+
+async function triggerRename(page: Page, fileItem: Locator, method: 'f2' | 'button' = 'f2'): Promise<Locator> {
+    await fileItem.click();
+    await expect(fileItem).toHaveClass(/selected/);
+
+    if (method === 'button') {
+        await fileItem.hover();
+        const renameBtn = fileItem.locator('[data-testid="rename-button"]');
+        await expect(renameBtn).toBeVisible();
+        await renameBtn.click();
+    } else {
+        await page.keyboard.press('F2');
+    }
+
+    const input = page.locator('[data-testid="rename-input"]');
+    await expect(input).toBeVisible();
+    await expect(input).toBeFocused();
+    return input;
+}
+
+async function completeRename(page: Page, input: Locator, newName: string, method: 'enter' | 'button' = 'enter') {
+    await input.fill(newName);
+
+    if (method === 'button') {
+        const acceptBtn = page.locator('[data-testid="accept-rename-button"]');
+        await expect(acceptBtn).toBeVisible();
+        await acceptBtn.click();
+    } else {
+        await page.keyboard.press('Enter');
+    }
+
+    await expect(input).not.toBeVisible();
+}
+
+async function cancelRename(page: Page, input: Locator, inputContent?: string) {
+    if (inputContent !== undefined) {
+        await input.fill(inputContent);
+    }
+    await page.keyboard.press('Escape');
+    await expect(input).not.toBeVisible();
+}
