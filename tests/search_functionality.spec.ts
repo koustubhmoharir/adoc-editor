@@ -34,9 +34,9 @@ test.describe('Search Functionality', () => {
         await page.waitForFunction(() => (window as any).__TEST_monaco !== undefined, null, { timeout: 10000 });
 
         // Open folder
-        await page.click('button:has-text("Open Folder")');
+        await page.click('[data-testid="open-folder-button"]');
         // Wait for tree to populate
-        await expect(page.locator('text=file-01.adoc')).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"]', { hasText: 'file-01.adoc' })).toBeVisible();
     });
 
     test.afterEach(() => {
@@ -45,39 +45,39 @@ test.describe('Search Functionality', () => {
 
     test('UI Compatibility: Toggling search', async ({ page }) => {
         // Initially search input hidden
-        await expect(page.locator('input[placeholder="Search files..."]')).not.toBeVisible();
+        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
 
         // Toggle on
-        await page.click('button[title="Search files"]');
-        await expect(page.locator('input[placeholder="Search files..."]')).toBeVisible();
-        await expect(page.locator('input[placeholder="Search files..."]')).toBeFocused();
+        await page.click('[data-testid="search-toggle-button"]');
+        await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
+        await expect(page.locator('[data-testid="search-input"]')).toBeFocused();
 
         // Toggle off via button - actually toggle button usually toggles visibility
-        await page.click('button[title="Search files"]');
-        await expect(page.locator('input[placeholder="Search files..."]')).not.toBeVisible();
+        await page.click('[data-testid="search-toggle-button"]');
+        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
     });
 
     test('Filtering Logic', async ({ page }) => {
-        await page.click('button[title="Search files"]');
+        await page.click('[data-testid="search-toggle-button"]');
 
         // Search "apple"
-        await page.fill('input[placeholder="Search files..."]', 'apple');
-        await expect(page.locator('text=apple.adoc')).toBeVisible();
-        await expect(page.locator('text=banana.adoc')).not.toBeVisible();
+        await page.fill('[data-testid="search-input"]', 'apple');
+        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'apple.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'banana.adoc' })).not.toBeVisible();
 
         // Search "file"
-        await page.fill('input[placeholder="Search files..."]', 'file');
-        await expect(page.locator('text=file-01.adoc')).toBeVisible();
-        await expect(page.locator('text=file-30.adoc')).toBeVisible();
-        await expect(page.locator('text=apple.adoc')).not.toBeVisible();
+        await page.fill('[data-testid="search-input"]', 'file');
+        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'file-01.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'file-30.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'apple.adoc' })).not.toBeVisible();
     });
 
     test('Scrolling & Navigation', async ({ page }) => {
-        await page.click('button[title="Search files"]');
-        await page.fill('input[placeholder="Search files..."]', 'file');
+        await page.click('[data-testid="search-toggle-button"]');
+        await page.fill('[data-testid="search-input"]', 'file');
 
         // Locate results
-        const resultItems = page.locator('[class*="Sidebar_searchResultItem"]');
+        const resultItems = page.locator('[data-testid="search-result-item"]');
         // Wait for results
         await expect(resultItems.first()).toBeVisible();
 
@@ -101,7 +101,7 @@ test.describe('Search Functionality', () => {
         await page.keyboard.press('ArrowUp');
         await expect(resultItems.nth(0)).not.toHaveClass(/highlighted/);
         // Verify input is still focused or at least visible/accessible
-        await expect(page.locator('input[placeholder="Search files..."]')).toBeFocused(); // If implementation sets focus
+        await expect(page.locator('[data-testid="search-input"]')).toBeFocused(); // If implementation sets focus
 
         // --- Page Navigation ---
 
@@ -154,36 +154,36 @@ test.describe('Search Functionality', () => {
         // Sidebar usually is the scroll container.
         // Actually, sidebar has overflow-y: auto.
         // But let's check input visibility which implies top.
-        await expect(page.locator('input[placeholder="Search files..."]')).toBeInViewport();
+        await expect(page.locator('[data-testid="search-input"]')).toBeInViewport();
     });
 
     test('Interaction & Selection', async ({ page }) => {
-        await page.click('button[title="Search files"]');
-        await page.fill('input[placeholder="Search files..."]', 'apple');
+        await page.click('[data-testid="search-toggle-button"]');
+        await page.fill('[data-testid="search-input"]', 'apple');
 
         // Select via Enter
         await page.keyboard.press('ArrowDown'); // Highlight apple.adoc
         await page.keyboard.press('Enter');
 
         // Check file opened
-        await expect(page.locator('header')).toContainText('apple.adoc');
+        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('apple.adoc');
         // Search should close
-        await expect(page.locator('input[placeholder="Search files..."]')).not.toBeVisible();
+        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
 
         // Select via Click
-        await page.click('button[title="Search files"]');
-        await page.fill('input[placeholder="Search files..."]', 'banana');
-        await page.click('text=banana.adoc');
+        await page.click('[data-testid="search-toggle-button"]');
+        await page.fill('[data-testid="search-input"]', 'banana');
+        await page.click('[data-testid="search-result-item"]:has-text("banana.adoc")');
 
-        await expect(page.locator('header')).toContainText('banana.adoc');
-        await expect(page.locator('input[placeholder="Search files..."]')).not.toBeVisible();
+        await expect(page.locator('[data-testid="title-bar"]')).toContainText('banana.adoc');
+        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
     });
 
     test('Clear/Close Logic', async ({ page }) => {
-        await page.click('button[title="Search files"]');
-        const input = page.locator('input[placeholder="Search files..."]');
-        const clearBtn = page.locator('button[title="Clear search"], button[title="Close search"]').first();
-        // Since title changes dynamically, selector needs care.
+        await page.click('[data-testid="search-toggle-button"]');
+        const input = page.locator('[data-testid="search-input"]');
+        // We can use data-testid for clear button which serves both roles, but check visibility/function
+        const clearBtn = page.locator('[data-testid="clear-search-button"]');
 
         // 1. Close when empty via Esc
         await expect(input).toBeVisible();
@@ -191,24 +191,23 @@ test.describe('Search Functionality', () => {
         await expect(input).not.toBeVisible();
 
         // 2. Clear when text via Esc
-        await page.click('button[title="Search files"]');
-        await page.fill('input[placeholder="Search files..."]', 'foo');
+        await page.click('[data-testid="search-toggle-button"]');
+        await page.fill('[data-testid="search-input"]', 'foo');
         await page.keyboard.press('Escape');
         await expect(input).toHaveValue('');
         await expect(input).toBeVisible();
 
         // 3. Clear when text via Button
-        await page.fill('input[placeholder="Search files..."]', 'bar');
-        // Button should verify title "Clear search"
-        await expect(page.locator('button[title="Clear search"]')).toBeVisible();
-        await page.click('button[title="Clear search"]');
+        await page.fill('[data-testid="search-input"]', 'bar');
+        // Button should be visible
+        await expect(clearBtn).toBeVisible();
+        await clearBtn.click();
         await expect(input).toHaveValue('');
         await expect(input).toBeVisible();
 
         // 4. Close when empty via Button
-        // Button should verify title "Close search"
-        await expect(page.locator('button[title="Close search"]')).toBeVisible();
-        await page.click('button[title="Close search"]');
+        await expect(clearBtn).toBeVisible();
+        await clearBtn.click();
         await expect(input).not.toBeVisible();
     });
 });
