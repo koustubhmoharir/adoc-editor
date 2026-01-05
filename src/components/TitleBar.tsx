@@ -1,8 +1,9 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { fileSystemStore } from '../store/FileSystemStore';
-import { themeStore } from '../store/ThemeStore';
+import { themeStore, appName } from '../store/ThemeStore';
 import { editorStore } from '../store/EditorStore';
+import { dialog } from '../components/Dialog';
 import * as styles from './TitleBar.css';
 
 export const TitleBar: React.FC = observer(() => {
@@ -13,7 +14,7 @@ export const TitleBar: React.FC = observer(() => {
     return (
         <header className={styles.header} data-testid="title-bar">
             <div className={styles.leftSection}>
-                <h3 className={styles.title}>AsciiDoc Editor</h3>
+                <h3 className={styles.title}>{appName}</h3>
                 <button
                     className={styles.newFileButton}
                     onClick={() => fileSystemStore.createNewFile()}
@@ -36,6 +37,21 @@ export const TitleBar: React.FC = observer(() => {
                     data-testid="theme-toggle-button"
                 >
                     {themeStore.theme === 'light' ? <i className="fa-solid fa-moon"></i> : <i className="fa-regular fa-moon"></i>}
+                </button>
+                <button
+                    className={styles.helpButton}
+                    onClick={async () => {
+                        const confirmed = await dialog.confirm('Do you want to test the new dialog?');
+                        if (confirmed) {
+                            await dialog.alert('You clicked OK!', 'Result');
+                        } else {
+                            await dialog.alert('You clicked Cancel!', 'Result');
+                        }
+                    }}
+                    title="Test Dialog"
+                    data-testid="dialog-test-button"
+                >
+                    <i className="fa-solid fa-comment-dots"></i>
                 </button>
                 <button
                     className={styles.helpButton}

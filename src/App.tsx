@@ -8,6 +8,8 @@ import { themeStore } from './store/ThemeStore';
 import { lightTheme, darkTheme } from './theme.css';
 import * as styles from './App.css';
 
+import { NativeDialog } from './components/Dialog';
+
 const App: React.FC = observer(() => {
     const themeClass = themeStore.theme === 'light' ? lightTheme : darkTheme;
 
@@ -21,6 +23,7 @@ const App: React.FC = observer(() => {
                 </main>
                 <TokensSidebar />
             </div>
+            <NativeDialog />
         </div>
     );
 });

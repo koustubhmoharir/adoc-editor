@@ -20,3 +20,5 @@ class ThemeStore {
 }
 
 export const themeStore = new ThemeStore();
+
+export const appName = 'AsciiDoc Editor';
