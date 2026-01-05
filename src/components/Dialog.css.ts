@@ -5,7 +5,7 @@ export const dialog = style({
     backgroundColor: vars.color.background,
     border: `1px solid ${vars.color.border}`,
     borderRadius: '4px',
-    minWidth: '300px',
+    minWidth: '350px',
     maxWidth: '500px',
     padding: 0,
     color: vars.color.text,
@@ -32,7 +32,25 @@ export const header = style({
 export const body = style({
     padding: vars.space.medium,
     lineHeight: '1.5',
+    display: 'flex',
+    alignItems: 'center', // Align icon and text
+    gap: vars.space.medium
 });
+
+export const icon = style({
+    fontSize: '24px',
+    flexShrink: 0
+});
+
+export const messageText = style({
+    flex: 1
+});
+
+// Icon colors
+export const errorIcon = style({ color: '#d93025' }); // Google Red
+export const warningIcon = style({ color: '#f9ab00' }); // Google Yellow/Amber
+export const infoIcon = style({ color: '#1a73e8' }); // Google Blue
+export const confirmIcon = style({ color: vars.color.text }); // Default text color or specific
 
 export const footer = style({
     padding: `${vars.space.small} ${vars.space.medium}`,

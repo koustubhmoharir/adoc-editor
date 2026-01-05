@@ -41,11 +41,11 @@ export const TitleBar: React.FC = observer(() => {
                 <button
                     className={styles.helpButton}
                     onClick={async () => {
-                        const confirmed = await dialog.confirm('Do you want to test the new dialog?');
+                        const confirmed = await dialog.confirm('Do you want to test the new dialog?', { title: 'Test Dialog', yesText: 'Yes please!', noText: 'No thank you!' });
                         if (confirmed) {
-                            await dialog.alert('You clicked OK!', 'Result');
+                            await dialog.alert('You clicked OK!', { title: 'Result', icon: 'info' });
                         } else {
-                            await dialog.alert('You clicked Cancel!', 'Result');
+                            await dialog.alert('You clicked Cancel!', { title: 'Result', icon: 'warning', okText: 'OK!' });
                         }
                     }}
                     title="Test Dialog"

@@ -6,9 +6,21 @@ import { appName } from "../store/ThemeStore";
 
 type DialogType = 'alert' | 'confirm';
 
-interface Dialog {
-    alert(message: string, title?: string): Promise<void>;
-    confirm(message: string, title?: string): Promise<boolean>;
+export interface AlertOptions {
+    title?: string;
+    icon?: 'error' | 'warning' | 'info';
+    okText?: string;
+}
+
+export interface ConfirmOptions {
+    title?: string;
+    yesText?: string;
+    noText?: string;
+}
+
+export interface Dialog {
+    alert(message: string, options?: AlertOptions): Promise<void>;
+    confirm(message: string, options?: ConfirmOptions): Promise<boolean>;
 }
 
 class DialogStore implements Dialog {
@@ -16,27 +28,43 @@ class DialogStore implements Dialog {
     @observable accessor message: string = '';
     @observable accessor title: string = '';
 
+    // Alert specific
+    @observable accessor alertIcon: 'error' | 'warning' | 'info' | undefined = undefined;
+    @observable accessor okText: string = 'OK';
+
+    // Confirm specific
+    @observable accessor yesText: string = 'OK';
+    @observable accessor noText: string = 'Cancel';
+
     dialogRef: React.RefObject<HTMLDialogElement> = React.createRef();
     confirmButtonRef: React.RefObject<HTMLButtonElement> = React.createRef();
     private resolvePromise: ((value: any) => void) | null = null;
     private pendingResult: any = undefined;
 
     @action
-    private show(type: DialogType, message: string, title?: string): Promise<any> {
+    private show(type: DialogType, message: string, options: AlertOptions | ConfirmOptions = {}): Promise<any> {
         this.type = type;
         this.message = message;
-        this.title = title || appName;
+        this.title = options.title || appName;
         this.pendingResult = undefined;
+
+        if (type === 'alert') {
+            const opts = options as AlertOptions;
+            this.alertIcon = opts.icon;
+            this.okText = opts.okText || 'OK';
+        } else {
+            const opts = options as ConfirmOptions;
+            this.yesText = opts.yesText || 'OK';
+            this.noText = opts.noText || 'Cancel';
+        }
 
         if (this.dialogRef.current) {
             this.dialogRef.current.showModal();
         }
-        // Schedule showModal and focus
-        //this.scheduleEffect(() => {
+
         if (this.confirmButtonRef.current) {
             this.confirmButtonRef.current.focus();
         }
-        //});
 
         return new Promise((resolve) => {
             this.resolvePromise = resolve;
@@ -51,13 +79,13 @@ class DialogStore implements Dialog {
     }
 
     @action
-    alert(message: string, title?: string): Promise<void> {
-        return this.show('alert', message, title);
+    alert(message: string, options?: AlertOptions): Promise<void> {
+        return this.show('alert', message, options);
     }
 
     @action
-    confirm(message: string, title?: string): Promise<boolean> {
-        return this.show('confirm', message, title);
+    confirm(message: string, options?: ConfirmOptions): Promise<boolean> {
+        return this.show('confirm', message, options);
     }
 
     @action
@@ -78,9 +106,6 @@ class DialogStore implements Dialog {
 
     @action
     onCancelled = (e: React.SyntheticEvent<HTMLDialogElement, Event>) => {
-        // The 'cancel' event is fired when the user presses Esc.
-        // We set the pending result, but do NOT need to call close() manually
-        // because the browser will close the dialog after this event (unless prevented).
         if (this.type === 'confirm') {
             this.pendingResult = false;
         } else {
@@ -90,7 +115,6 @@ class DialogStore implements Dialog {
 
     @action
     onClosed = () => {
-        // Resolve the promise with the pending result (key fix: only resolve now)
         if (this.resolvePromise) {
             this.resolvePromise(this.pendingResult);
             this.resolvePromise = null;
@@ -103,10 +127,29 @@ const dialogStore = new DialogStore();
 
 
 export const NativeDialog: React.FC = observer(() => {
-    const { type, message, title } = dialogStore;
+    const { type, message, title, alertIcon, okText, yesText, noText } = dialogStore;
 
     const defaultTitle = type === 'alert' ? 'Notification' : 'Confirm';
     const displayTitle = title || defaultTitle;
+
+    let iconClass = '';
+    if (type === 'alert' && alertIcon) {
+        switch (alertIcon) {
+            case 'error': iconClass = 'fa-solid fa-circle-exclamation'; break;
+            case 'warning': iconClass = 'fa-solid fa-triangle-exclamation'; break;
+            case 'info': iconClass = 'fa-solid fa-circle-info'; break;
+        }
+    } else if (type === 'confirm') {
+        iconClass = 'fa-solid fa-circle-question';
+    }
+
+    const iconColorMap: Record<string, string> = {
+        error: styles.errorIcon,
+        warning: styles.warningIcon,
+        info: styles.infoIcon
+    };
+
+    const iconColorClass = type === 'alert' && alertIcon ? iconColorMap[alertIcon] : styles.confirmIcon;
 
     return (
         <dialog
@@ -118,7 +161,12 @@ export const NativeDialog: React.FC = observer(() => {
         >
             <div className={styles.dialogContent}>
                 <div className={styles.header} id="dialog-title">{displayTitle}</div>
-                <div className={styles.body}>{message}</div>
+                <div className={styles.body}>
+                    {iconClass && (
+                        <i className={`${iconClass} ${styles.icon} ${iconColorClass}`} aria-hidden="true" />
+                    )}
+                    <span className={styles.messageText}>{message}</span>
+                </div>
                 <div className={styles.footer}>
                     {type === 'confirm' && (
                         <button
@@ -126,7 +174,7 @@ export const NativeDialog: React.FC = observer(() => {
                             onClick={dialogStore.handleCancel}
                             data-testid="dialog-cancel-button"
                         >
-                            Cancel
+                            {noText}
                         </button>
                     )}
                     <button
@@ -135,7 +183,7 @@ export const NativeDialog: React.FC = observer(() => {
                         ref={dialogStore.confirmButtonRef}
                         data-testid="dialog-confirm-button"
                     >
-                        OK
+                        {type === 'alert' ? okText : yesText}
                     </button>
                 </div>
             </div>
