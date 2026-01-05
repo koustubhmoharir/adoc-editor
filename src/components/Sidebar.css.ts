@@ -15,7 +15,7 @@ export const sidebar = style({
 });
 
 export const emptyState = style({
-    padding: '16px',
+    padding: '4px 8px',
     color: themeVars.color.textSecondary,
     textAlign: 'center',
     fontStyle: 'italic'
@@ -23,12 +23,12 @@ export const emptyState = style({
 
 export const treeContainer = style({
     paddingBottom: '8px',
-    paddingLeft: '12px'
+    paddingLeft: '8px'
 });
 
 export const itemBase = style({
     cursor: 'pointer',
-    padding: '4px 8px',
+    padding: '4px 8px 4px 0',
     display: 'flex',
     alignItems: 'center',
     whiteSpace: 'nowrap',
@@ -40,6 +40,10 @@ export const itemBase = style({
     }
 });
 
+export const directoryContainer = style({
+    paddingLeft: '12px'
+});
+
 export const directoryItem = style([itemBase, {
     fontWeight: 'bold',
     paddingRight: '4px'
@@ -47,6 +51,7 @@ export const directoryItem = style([itemBase, {
 
 export const fileItem = style([itemBase, {
     position: 'relative',
+    marginLeft: '12px',
 }]);
 
 export const selected = style({
@@ -69,7 +74,9 @@ export const folderIcon = style({
 });
 
 export const fileIcon = style({
-    color: themeVars.color.fileIcon
+    color: themeVars.color.fileIcon,
+    width: '19px',
+    marginRight: '4px',
 });
 
 export const header = style({
@@ -118,7 +125,7 @@ export const newFileButton = style({
     color: themeVars.color.newFileIcon,
     padding: '0 4px',
     borderRadius: '4px',
-    fontSize: '16px',
+    fontSize: '14px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -219,10 +226,6 @@ export const highlighted = style({
 });
 
 export const renameButton = style({
-    position: 'absolute',
-    left: '0',
-    top: '50%',
-    transform: 'translateY(-50%)',
     background: 'transparent',
     border: 'none',
     cursor: 'pointer',
@@ -232,10 +235,11 @@ export const renameButton = style({
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: '12px',
+    marginRight: '4px',
 });
 
 export const deleteButton = style({
-    marginLeft: 'auto',
+    margin: '-2px 0 -2px auto',
     background: 'transparent',
     border: 'none',
     cursor: 'pointer',
@@ -244,11 +248,10 @@ export const deleteButton = style({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '12px',
+    fontSize: '14px',
 });
 
 export const acceptButton = style({
-    marginLeft: '2px',
     background: 'transparent',
     border: 'none',
     cursor: 'pointer',
@@ -271,7 +274,7 @@ export const renameInput = style({
     width: '100%',
     boxSizing: 'border-box',
     outline: 'none',
-    margin: '-3px 0 -3px -4px', // Adjust for padding diff
+    margin: '-3px 0 -3px 0', // Adjust for padding diff
     borderRadius: '2px'
 });
 

@@ -4,12 +4,9 @@ import { fileSystemStore, FileNodeModel } from '../store/FileSystemStore';
 import * as styles from './Sidebar.css';
 import { useScheduledEffects } from '../hooks/useScheduledEffects';
 
-const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer(({ node, level = 0 }) => {
+const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
     const isSelected = fileSystemStore.currentFileHandle === node.handle;
     const isRenaming = node.isRenaming;
-
-    // Simple indentation style
-    const paddingLeft = `${level * 12 + 8}px`;
 
     // Consume effects after every render
     useScheduledEffects(node);
@@ -19,7 +16,6 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
             <div
                 ref={node.treeItemRef}
                 className={`${styles.fileItem} ${isSelected ? styles.selected : ''}`}
-                style={{ paddingLeft }}
                 onClick={() => {
                     if (!isRenaming) fileSystemStore.selectFile(node);
                 }}
@@ -28,7 +24,33 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                 data-testid="file-item"
                 data-file-path={node.path}
             >
-                <i className={`fas fa-file ${styles.icon} ${styles.fileIcon}`} />
+                {isSelected ? (
+                    isRenaming ?
+                        <button key="accept-rename-button"
+                            className={styles.acceptButton}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                node.commitRenaming();
+                            }}
+                            title="Accept Rename"
+                            data-testid="accept-rename-button"
+                        >
+                            <i className="fas fa-check" />
+                        </button>
+                        :
+                        <button key="rename-button"
+                            className={styles.renameButton}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                node.startRenaming();
+                            }}
+                            title="Rename (F2)"
+                            data-testid="rename-button"
+                        >
+                            <i className="fas fa-pencil" />
+                        </button>) :
+                    <i className={`fas fa-file-lines ${styles.icon} ${styles.fileIcon}`} />
+                }
 
                 {isRenaming ? (
                     <input
@@ -47,43 +69,18 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                     <span>{node.name}</span>
                 )}
 
-                {isRenaming ? (
+                {isRenaming ? null : isSelected && (
                     <button
-                        className={styles.acceptButton}
+                        className={styles.deleteButton}
                         onClick={(e) => {
                             e.stopPropagation();
-                            node.commitRenaming();
+                            node.delete();
                         }}
-                        title="Accept Rename"
-                        data-testid="accept-rename-button"
+                        title="Delete (Del)"
+                        data-testid="delete-button"
                     >
-                        <i className="fas fa-check" />
+                        <i className="fas fa-trash-alt" />
                     </button>
-                ) : isSelected && (
-                    <>
-                        <button
-                            className={styles.renameButton}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                node.startRenaming();
-                            }}
-                            title="Rename (F2)"
-                            data-testid="rename-button"
-                        >
-                            <i className="fas fa-edit" />
-                        </button>
-                        <button
-                            className={styles.deleteButton}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                node.delete();
-                            }}
-                            title="Delete (Del)"
-                            data-testid="delete-button"
-                        >
-                            <i className="fas fa-trash-alt" />
-                        </button>
-                    </>
                 )}
             </div>
         );
@@ -97,10 +94,9 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
     };
 
     return (
-        <div>
+        <div className={styles.directoryContainer}>
             <div
                 className={styles.directoryItem}
-                style={{ paddingLeft }}
                 onClick={toggle}
                 data-testid="directory-item"
                 data-dir-path={node.path}
@@ -120,7 +116,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                 </button>
             </div>
             {!isCollapsed && node.children && node.children.map((child, i) => (
-                <FileTreeItem key={i} node={child} level={level + 1} />
+                <FileTreeItem key={i} node={child} />
             ))}
         </div>
     );
