@@ -109,9 +109,11 @@ export class FileNodeModel extends EffectAwareModel {
 
         if (e.key === 'F2') {
             e.preventDefault();
+            e.stopPropagation();
             this.startRenaming();
         } else if (e.key === 'Delete') {
             e.preventDefault();
+            e.stopPropagation();
             this.delete();
         }
     }
@@ -185,34 +187,8 @@ class FileSystemStore extends EffectAwareModel {
                 this.saveFile(); // Attempt to save (best effort)
             }
         });
-
-        // Global key listener
-        window.addEventListener('keydown', this.handleGlobalKeyDown.bind(this));
     }
 
-    handleGlobalKeyDown(e: KeyboardEvent) {
-        const isEditorFocused = document.activeElement?.classList.contains('monaco-editor') || document.activeElement?.closest('.monaco-editor');
-        const isInputFocused = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
-
-        // Verify if we should handle global shortcuts
-        if (isEditorFocused || isInputFocused) return;
-
-        if (this.currentFileHandle) {
-            if (e.key === 'F2') {
-                const node = this.allFiles.find(n => n.handle === this.currentFileHandle);
-                if (node) {
-                    e.preventDefault();
-                    node.startRenaming();
-                }
-            } else if (e.key === 'Delete') {
-                const node = this.allFiles.find(n => n.handle === this.currentFileHandle);
-                if (node) {
-                    e.preventDefault();
-                    node.delete();
-                }
-            }
-        }
-    }
 
     @action
     setDirty(val: boolean) {
@@ -679,7 +655,11 @@ class FileSystemStore extends EffectAwareModel {
         if (!trimmedName) return;
 
         // Ensure extension
-        const finalName = trimmedName.endsWith('.adoc') ? trimmedName : `${trimmedName}.adoc`;
+        // Only append .adoc if original had .adoc AND new name doesn't have it
+        let finalName = trimmedName;
+        if (node.name.endsWith('.adoc') && !trimmedName.endsWith('.adoc')) {
+            finalName = `${trimmedName}.adoc`;
+        }
 
         // 1. Validation
         // Allowed: 
