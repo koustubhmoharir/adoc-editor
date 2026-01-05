@@ -11,7 +11,8 @@
         "test:syntax": "npx playwright test tests/syntax_verification.spec.ts",
         "test:editor": "npx playwright test tests/editor_loading.spec.ts tests/directory_search.spec.ts tests/filesystem_ops.spec.ts",
         "test-debug:syntax": "cross-env DEBUG_TESTS=1 npx playwright test tests/syntax_verification.spec.ts",
-        "test-debug:editor": "cross-env DEBUG_TESTS=1 npx playwright test tests/editor_loading.spec.ts tests/directory_search.spec.ts tests/filesystem_ops.spec.ts"
+        "test-debug:editor": "cross-env DEBUG_TESTS=1 npx playwright test tests/editor_loading.spec.ts tests/directory_search.spec.ts tests/filesystem_ops.spec.ts",
+        "test-debug": "cross-env DEBUG_TESTS=1 npx playwright test"
     },
     "keywords": [],
     "author": "",

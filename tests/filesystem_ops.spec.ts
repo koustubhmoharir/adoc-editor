@@ -197,19 +197,80 @@ test.describe('Renaming Functionality', () => {
         }).toPass();
     });
 
-    test('Renaming trims whitespace', async ({ page }) => {
+    test('Renaming: Complex whitespace and dot handling', async ({ page }) => {
+        // Helper to reset state
+        const resetFile = async (currentName: string) => {
+            const item = page.locator(`[data-testid="file-item"][data-file-path="${currentName}"]`);
+            await item.click();
+            await page.keyboard.press('F2');
+            let input = page.locator('[data-testid="rename-input"]');
+            await expect(input).toBeVisible();
+            await expect(input).toBeFocused();
+            await input.fill('file1.adoc');
+            await page.keyboard.press('Enter');
+            await expect(input).not.toBeVisible();
+            await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]'), 'Failed to reset file to file1.adoc').toBeVisible();
+        };
+
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
         await fileItem.click();
+
+        // 1. Leading dots: .config -> .config
+        // Note: The logic will append .adoc if we don't provide it, because original handled .adoc
+        // But .config usually doesn't have .adoc. 
+        // Logic: if node.name.endsWith('.adoc') ...
+        // file1.adoc ends with .adoc. So if we rename to .config, it becomes .config.adoc
 
         await page.keyboard.press('F2');
         let input = page.locator('[data-testid="rename-input"]');
         await expect(input).toBeVisible();
         await expect(input).toBeFocused();
-        await input.fill('  trimmed.adoc  ');
+        await input.fill('.config');
         await page.keyboard.press('Enter');
+        await expect(input).not.toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path=".config.adoc"]'), 'Failed to rename .config -> .config.adoc').toBeVisible();
+        await resetFile('.config.adoc');
 
-        await expect(page.locator('[data-testid="file-item"][data-file-path="trimmed.adoc"]')).toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'trimmed.adoc'))).toBe(true);
+        // 2. Multiple dots: my..file.adoc -> my.file.adoc
+        await page.keyboard.press('F2');
+        input = page.locator('[data-testid="rename-input"]');
+        await expect(input).toBeVisible();
+        await expect(input).toBeFocused();
+        await input.fill('my..file.adoc');
+        await page.keyboard.press('Enter');
+        await expect(page.locator('[data-testid="file-item"][data-file-path="my.file.adoc"]'), 'Failed to rename my..file.adoc -> my.file.adoc').toBeVisible();
+        await resetFile('my.file.adoc');
+
+        // 3. Spaces around dots: my . file . adoc -> my.file.adoc
+        await page.keyboard.press('F2');
+        input = page.locator('[data-testid="rename-input"]');
+        await expect(input).toBeVisible();
+        await expect(input).toBeFocused();
+        await input.fill('my . file . adoc');
+        await page.keyboard.press('Enter');
+        await expect(page.locator('[data-testid="file-item"][data-file-path="my.file.adoc"]'), 'Failed to rename "my . file . adoc" -> my.file.adoc').toBeVisible();
+        await resetFile('my.file.adoc');
+
+        // 4. Empty parts: foo..bar -> foo.bar.adoc (appends extension)
+        await page.keyboard.press('F2');
+        input = page.locator('[data-testid="rename-input"]');
+        await expect(input).toBeVisible();
+        await expect(input).toBeFocused();
+        await input.fill('foo..bar');
+        await page.keyboard.press('Enter');
+        await expect(page.locator('[data-testid="file-item"][data-file-path="foo.bar.adoc"]'), 'Failed to rename foo..bar -> foo.bar.adoc').toBeVisible();
+        await resetFile('foo.bar.adoc');
+
+        // 5. Only dots: ... -> . (Disallowed -> Cancel)
+        await page.keyboard.press('F2');
+        input = page.locator('[data-testid="rename-input"]');
+        await expect(input).toBeVisible();
+        await expect(input).toBeFocused();
+        await input.fill('...');
+        await page.keyboard.press('Enter');
+        // Rename should cancel, input gone, original name remains
+        await expect(input, 'Input did not disappear after disallowed rename').not.toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]'), 'Original file name not visible after disallowed rename').toBeVisible();
     });
 
     test('Validation: Unsafe characters', async ({ page }) => {

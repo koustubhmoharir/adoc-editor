@@ -17,6 +17,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
     if (node.kind === 'file') {
         return (
             <div
+                ref={node.treeItemRef}
                 className={`${styles.fileItem} ${isSelected ? styles.selected : ''}`}
                 style={{ paddingLeft }}
                 onClick={() => {
@@ -39,7 +40,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                         onKeyDown={(e) => node.handleRenameInputKeyDown(e)}
                         onClick={(e) => e.stopPropagation()}
                         onBlur={() => {
-                            // Optional: commit on blur or cancel? 
+                            node.handleRenameInputBlur();
                         }}
                     />
                 ) : (

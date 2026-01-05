@@ -26,6 +26,7 @@ export class FileNodeModel extends EffectAwareModel {
 
     // Refs
     readonly renameInputRef = createRef<HTMLInputElement>();
+    readonly treeItemRef = createRef<HTMLDivElement>();
 
 
 
@@ -62,9 +63,14 @@ export class FileNodeModel extends EffectAwareModel {
 
 
     @action
-    cancelRenaming() {
+    cancelRenaming(restoreFocus: boolean = true) {
         this.isRenaming = false;
         this.renameValue = '';
+        if (restoreFocus) {
+            this.scheduleEffect(() => {
+                this.treeItemRef.current?.focus();
+            });
+        }
     }
 
     @action
@@ -73,16 +79,16 @@ export class FileNodeModel extends EffectAwareModel {
     }
 
     @action
-    async commitRenaming() {
+    async commitRenaming(revertOnFailure: boolean = false, restoreFocus: boolean = true) {
         if (!this.renameValue || this.renameValue === this.name) {
-            this.cancelRenaming();
+            this.cancelRenaming(restoreFocus);
             return;
         }
-        await fileSystemStore.renameFile(this, this.renameValue);
+        const success = await fileSystemStore.renameFile(this, this.renameValue);
         // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
-        // If not, we stay here.
-        // We can optimistically close it? No, wait for refresh.
-        // logic in store refreshes tree.
+        if (!success && revertOnFailure) {
+            this.cancelRenaming(restoreFocus);
+        }
     }
 
     @action
@@ -96,10 +102,20 @@ export class FileNodeModel extends EffectAwareModel {
     handleRenameInputKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
         if (e.key === 'Enter') {
             e.stopPropagation();
-            this.commitRenaming();
+            this.commitRenaming(false, true);
         } else if (e.key === 'Escape') {
             e.stopPropagation();
-            this.cancelRenaming();
+            this.cancelRenaming(true);
+        }
+    }
+
+    @action
+    handleRenameInputBlur() {
+        // If the window loses focus (e.g. alt-tab), we want to KEEP renaming state.
+        // If the click is inside the app but outside input, we want to COMMIT.
+        // We do NOT want to restore focus to the tree item, because the user likely clicked something else.
+        if (document.hasFocus()) {
+            this.commitRenaming(true, false);
         }
     }
 
@@ -139,6 +155,9 @@ class FileSystemStore extends EffectAwareModel {
     @observable accessor collapsedPaths: Set<string> = new Set();
     @observable accessor searchQuery: string = '';
     @observable accessor isSearchVisible: boolean = false;
+
+    // Internal state for focus management
+    pendingFocusPath: string | null = null;
 
 
     get allFiles(): FileNodeModel[] {
@@ -318,6 +337,7 @@ class FileSystemStore extends EffectAwareModel {
         return false;
     }
 
+    @action
     async refreshTree() {
         if (!this.directoryHandle) return;
 
@@ -330,6 +350,26 @@ class FileSystemStore extends EffectAwareModel {
         runInAction(() => {
             this.fileTree = tree;
             this.syncSelectedFileWithTree();
+
+            // Handle pending focus
+            if (this.pendingFocusPath) {
+                const findNode = (nodes: FileNodeModel[]): FileNodeModel | undefined => {
+                    for (const node of nodes) {
+                        if (node.path === this.pendingFocusPath) return node;
+                        if (node.children) {
+                            const found = findNode(node.children);
+                            if (found) return found;
+                        }
+                    }
+                }
+                const nodeToFocus = findNode(this.fileTree);
+                if (nodeToFocus) {
+                    nodeToFocus.scheduleEffect(() => {
+                        nodeToFocus.treeItemRef.current?.focus();
+                    });
+                }
+                this.pendingFocusPath = null;
+            }
         });
     }
 
@@ -337,7 +377,6 @@ class FileSystemStore extends EffectAwareModel {
         const models: FileNodeModel[] = [];
 
         for await (const entry of dirHandle.values()) {
-            if (entry.name.startsWith('.')) continue;
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
 
             if (entry.kind === 'file') {
@@ -350,6 +389,7 @@ class FileSystemStore extends EffectAwareModel {
                     }));
                 }
             } else if (entry.kind === 'directory') {
+                if (entry.name.startsWith('.')) continue;
                 const children = await this.readDirectory(entry, currentPath);
                 const dirModel = new FileNodeModel({
                     name: entry.name,
@@ -648,17 +688,36 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    async renameFile(node: FileNodeModel, newName: string) {
-        if (node.kind !== 'file') return;
+    async renameFile(node: FileNodeModel, newName: string): Promise<boolean> {
+        if (node.kind !== 'file') return false;
 
-        const trimmedName = newName.trim();
-        if (!trimmedName) return;
+        // 1. Trim the name first
+        const trimmedInput = newName.trim();
+
+        // 2. See if it begins with a dot
+        const startsWithDot = trimmedInput.startsWith('.');
+
+        // 3. Split by dot, trim all parts, filter out empty parts
+        const parts = trimmedInput.split('.').map(p => p.trim()).filter(p => p.length > 0);
+
+        // 4. Join with a dot
+        let finalName = parts.join('.');
+
+        // 5. If the result of step 1 was true, prepend a dot again
+        if (startsWithDot) {
+            finalName = '.' + finalName;
+        }
+
+        // 6. Check for empty or just dot (disallowed)
+        if (!finalName || finalName === '.') {
+            node.cancelRenaming();
+            return true;
+        }
 
         // Ensure extension
         // Only append .adoc if original had .adoc AND new name doesn't have it
-        let finalName = trimmedName;
-        if (node.name.endsWith('.adoc') && !trimmedName.endsWith('.adoc')) {
-            finalName = `${trimmedName}.adoc`;
+        if (node.name.endsWith('.adoc') && !finalName.endsWith('.adoc')) {
+            finalName = `${finalName}.adoc`;
         }
 
         // 1. Validation
@@ -666,7 +725,6 @@ class FileSystemStore extends EffectAwareModel {
         // - Printable ASCII (0x20-0x7E) EXCEPT < > : " / \ | ? *
         // - Unicode letters (\p{L}) and numbers (\p{N})
         // - Characters already in the original filename
-
         const unsafeAsciiRegex = /[<>:"/\\|?*]/;
         const printableAsciiRegex = /^[\x20-\x7E]$/;
         const unicodeWordRegex = /^[\p{L}\p{N}]$/u;
@@ -678,14 +736,14 @@ class FileSystemStore extends EffectAwareModel {
                 // It is printable ASCII. Check if it is unsafe.
                 if (unsafeAsciiRegex.test(char)) {
                     alert(`Invalid character: ${char}`);
-                    return;
+                    return false;
                 }
             } else {
                 // It is NOT printable ASCII (e.g. Unicode or Control)
                 // Check if it is a Unicode Letter or Number
                 if (!unicodeWordRegex.test(char)) {
                     alert(`Invalid character: ${char}`);
-                    return;
+                    return false;
                 }
             }
         }
@@ -693,23 +751,10 @@ class FileSystemStore extends EffectAwareModel {
         const parentDir = this.findParentDirectory(node.handle);
         if (!parentDir) {
             alert('Cannot find parent directory.');
-            return;
+            return false;
         }
 
         // 2. Uniqueness Check
-        // Check for siblings with case-insensitive match
-        // We can use this.fileTree to search, but we need the specific parent's children.
-        // It's safer to re-read or use existing tree if up to date.
-        // Let's use `findSiblingFile` logic or iterate parentDir values? 
-        // `findSiblingFile` is async and accurate.
-
-        // Check if file exists (case insensitive check implies we need to list all and compare?)
-        // FileSystemHandle API getFileHandle is case sensitive on some OS/Browsers, insensitive on others. 
-        // To strictly follow "If there is a conflict considering insensitive match, lets alert...", we should scan.
-
-        // Find the folder node in tree to get siblings
-        // Searching tree is easier than re-reading dir
-        // Actually we can just iterate `parentDir.values()`
         let conflict = false;
         try {
             for await (const entry of parentDir.values()) {
@@ -723,38 +768,32 @@ class FileSystemStore extends EffectAwareModel {
 
         if (conflict) {
             const proceed = confirm(`A file with the name "${finalName}" already exists (case-insensitive). Do you want to try replacing it or proceed?`);
-            if (!proceed) return;
+            if (!proceed) return false;
         }
 
         // 3. Execute Rename
-        // Check for move() support
         const handle = node.handle as any;
         if (handle.move) {
             try {
                 await handle.move(parentDir, finalName);
 
-                // Refresh
+                // Determine new path to set pending focus
+                // If it was renamed, the path changes.
+                // We basically need parent path + finalName
+                const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
+                const newPath = parentPath ? `${parentPath}/${finalName}` : finalName;
+                this.pendingFocusPath = newPath;
+
                 await this.refreshTree();
-
-                // If it was selected, ensure selection is maintained (refreshTree might lose it if reference changes, 
-                // but syncSelectedFileWithTree should handle it if path updates? 
-                // If path changed, syncSelectedFileWithTree relies on finding handle.
-                // Depending on browser, handle object might mutate or remain same.
-                // We should re-select by name if needed.
-
-                // Wait, if we renamed current file, logic in store might need update
-                if (this.currentFileHandle && await node.handle.isSameEntry(this.currentFileHandle)) {
-                    // Update current handle reference if needed (move modifies in place usually)
-                    // But we should re-sync just in case
-                    // The handle itself points to the file. 
-                }
-
+                return true;
             } catch (error) {
                 console.error('Rename failed:', error);
                 alert(`Rename failed: ${error}`);
+                return false;
             }
         } else {
             alert('Your browser does not support renaming files directly (File System Access API "move" method is missing). Please use a supported browser (e.g. Chrome 111+).');
+            return false;
         }
     }
 

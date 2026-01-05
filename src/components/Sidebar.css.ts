@@ -271,7 +271,7 @@ export const renameInput = style({
     width: '100%',
     boxSizing: 'border-box',
     outline: 'none',
-    margin: '-3px 0 -3px -5px', // Adjust for padding diff
+    margin: '-3px 0 -3px -4px', // Adjust for padding diff
     borderRadius: '2px'
 });
 
