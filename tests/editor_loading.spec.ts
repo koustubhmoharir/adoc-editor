@@ -2,11 +2,13 @@ import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
+import { enableTestLogging } from './helpers/test_logging';
 
 test.describe('Editor Functionality', () => {
     let fsSetup: FsTestSetup;
 
     test.beforeEach(async ({ page }) => {
+        enableTestLogging(page);
         fsSetup = new FsTestSetup();
 
         // Populate setup

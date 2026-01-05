@@ -19,6 +19,7 @@ interface TestFixture {
 }
 
 import { fileURLToPath } from 'url';
+import { enableTestLogging } from './helpers/test_logging.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +31,7 @@ const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.adoc'));
 test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
     test.beforeEach(async ({ page }) => {
+        enableTestLogging(page);
         await page.addInitScript('window.__ENABLE_TEST_GLOBALS__ = true;');
         await page.goto('/?skip_restore=true');
         await page.waitForSelector('.monaco-editor');

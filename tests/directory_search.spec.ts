@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { FsTestSetup } from './helpers/fs_test_setup';
+import { enableTestLogging } from './helpers/test_logging';
 
 test.describe('Search Functionality', () => {
     let fsSetup: FsTestSetup;
 
     test.beforeEach(async ({ page }) => {
+        enableTestLogging(page);
         fsSetup = new FsTestSetup();
 
         // 1. Create large set of files for scrolling
