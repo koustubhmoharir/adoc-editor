@@ -11,27 +11,29 @@ export const TitleBar: React.FC = observer(() => {
         : '';
 
     return (
-        <header className={styles.header}>
+        <header className={styles.header} data-testid="title-bar">
             <div className={styles.leftSection}>
                 <h3 className={styles.title}>AsciiDoc Editor</h3>
                 <button
                     className={styles.newFileButton}
                     onClick={() => fileSystemStore.createNewFile()}
                     title={`New File in ${fileSystemStore.currentDirectoryPath}`}
+                    data-testid="new-file-button-titlebar"
                 >
                     <i className="fa-solid fa-file-circle-plus"></i>
                 </button>
             </div>
 
             <div className={styles.centerSection}>
-                <span className={styles.fileName}>{fileName}</span>
-                {fileSystemStore.dirty && <span className={styles.dirtyIndicator}>*</span>}
+                <span className={styles.fileName} data-testid="current-filename">{fileName}</span>
+                {fileSystemStore.dirty && <span className={styles.dirtyIndicator} data-testid="dirty-indicator">*</span>}
             </div>
 
             <div className={styles.rightSection}>
                 <button
                     className={themeStore.theme === 'light' ? styles.themeButtonDark : styles.themeButtonLight}
                     onClick={() => themeStore.toggleTheme()}
+                    data-testid="theme-toggle-button"
                 >
                     {themeStore.theme === 'light' ? <i className="fa-solid fa-moon"></i> : <i className="fa-regular fa-moon"></i>}
                 </button>
@@ -42,6 +44,7 @@ export const TitleBar: React.FC = observer(() => {
                         editorStore.showHelp();
                     }}
                     title="Help"
+                    data-testid="help-button"
                 >
                     <i className="fa-solid fa-circle-question"></i>
                 </button>

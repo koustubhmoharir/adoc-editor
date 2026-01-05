@@ -24,6 +24,8 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                 }}
                 onKeyDown={(e) => node.handleTreeItemKeyDown(e)}
                 tabIndex={isSelected ? 0 : -1} // Enable keyboard focus/events
+                data-testid="file-item"
+                data-file-path={node.path}
             >
                 <i className={`fas fa-file ${styles.icon} ${styles.fileIcon}`} />
 
@@ -31,6 +33,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                     <input
                         ref={node.renameInputRef}
                         className={styles.renameInput}
+                        data-testid="rename-input"
                         value={node.renameValue}
                         onChange={(e) => node.setRenameValue(e.target.value)}
                         onKeyDown={(e) => node.handleRenameInputKeyDown(e)}
@@ -51,6 +54,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                             node.commitRenaming();
                         }}
                         title="Accept Rename"
+                        data-testid="accept-rename-button"
                     >
                         <i className="fas fa-check" />
                     </button>
@@ -63,6 +67,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                                 node.startRenaming();
                             }}
                             title="Rename (F2)"
+                            data-testid="rename-button"
                         >
                             <i className="fas fa-edit" />
                         </button>
@@ -73,6 +78,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                                 node.delete();
                             }}
                             title="Delete (Del)"
+                            data-testid="delete-button"
                         >
                             <i className="fas fa-trash-alt" />
                         </button>
@@ -95,6 +101,8 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                 className={styles.directoryItem}
                 style={{ paddingLeft }}
                 onClick={toggle}
+                data-testid="directory-item"
+                data-dir-path={node.path}
             >
                 <i className={`fas ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} ${styles.icon} ${styles.folderIcon}`} />
                 <span>{node.name}</span>
@@ -105,6 +113,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel; level?: number }> = observer
                         fileSystemStore.createNewFile(node.handle as FileSystemDirectoryHandle);
                     }}
                     title={`New File in ${fileSystemStore.directoryHandle?.name}/${node.path}`}
+                    data-testid="new-file-button-nested"
                 >
                     <i className="fas fa-file-circle-plus" />
                 </button>
@@ -129,6 +138,7 @@ export const Sidebar: React.FC = observer(() => {
                     className={styles.header}
                     title={fileSystemStore.directoryHandle?.name}
                     onClick={() => fileSystemStore.openDirectory()}
+                    data-testid="sidebar-header"
                 >
                     <i className={`fas fa-folder-open ${styles.icon} ${styles.folderIcon}`} />
                     <span className={styles.headerText}>{fileSystemStore.directoryHandle?.name}</span>
@@ -137,6 +147,7 @@ export const Sidebar: React.FC = observer(() => {
                         className={styles.searchToggleButton}
                         onClick={(e) => fileSystemStore.toggleSearch(e)}
                         title="Search files"
+                        data-testid="search-toggle-button"
                     >
                         <i className="fas fa-search" />
                     </button>
@@ -148,6 +159,7 @@ export const Sidebar: React.FC = observer(() => {
                             fileSystemStore.createNewFile(fileSystemStore.directoryHandle!);
                         }}
                         title={`New File in ${fileSystemStore.directoryHandle?.name}`}
+                        data-testid="new-file-button-sidebar"
                     >
                         <i className="fas fa-file-circle-plus" />
                     </button>
@@ -164,11 +176,13 @@ export const Sidebar: React.FC = observer(() => {
                         onKeyDown={(e) => fileSystemStore.handleSearchKeyDown(e)}
                         placeholder="Search files..."
                         autoFocus
+                        data-testid="search-input"
                     />
                     <button
                         className={styles.clearButton}
                         onClick={(e) => fileSystemStore.handleClearButtonClick(e)}
                         title={fileSystemStore.searchQuery ? "Clear search" : "Close search"}
+                        data-testid="clear-search-button"
                     >
                         <i className={`fas ${fileSystemStore.searchQuery ? 'fa-times' : 'fa-times'}`} />
                     </button>
@@ -181,6 +195,7 @@ export const Sidebar: React.FC = observer(() => {
                     <button
                         className={styles.actionButton}
                         onClick={() => fileSystemStore.openDirectory()}
+                        data-testid="open-folder-button"
                     >
                         Open Folder
                     </button>
@@ -200,6 +215,8 @@ export const Sidebar: React.FC = observer(() => {
                                         ref={model.ref}
                                         className={`${styles.searchResultItem} ${model.isHighlighted ? styles.highlighted : ''}`}
                                         onClick={() => fileSystemStore.handleSearchResultClick(item)}
+                                        data-testid="search-result-item"
+                                        data-file-path={item.path}
                                     >
                                         <span className={styles.resultName}>{item.name}</span>
                                         <span className={styles.resultPath} title={item.path}>{item.path.substring(0, item.path.length - item.name.length - 1)}</span>

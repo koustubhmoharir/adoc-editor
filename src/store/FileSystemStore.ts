@@ -475,6 +475,8 @@ class FileSystemStore extends EffectAwareModel {
             clearInterval(this.saveInterval);
         }
         this.saveInterval = window.setInterval(async () => {
+            if ((window as any).__DISABLE_AUTO_SAVE__) return;
+
             if (this.dirty) {
                 await this.saveFile();
             }

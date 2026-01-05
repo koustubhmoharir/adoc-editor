@@ -30,11 +30,12 @@ export const TokensSidebar: React.FC = observer(() => {
                         key={`${token.line}-${token.startColumn}`}
                         className={`${styles.tokenItem} ${index === activeTokenIndex ? styles.activeToken : ''}`}
                         onClick={() => tokensStore.handleTokenClick(token)}
+                        data-testid="token-item"
                     >
                         <span className={styles.tokenLine}>{token.line}</span>
                         <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
-                            <code className={styles.tokenText} title={token.text}>{token.text}</code>
-                            <span className={styles.tokenType} title={token.type}>{token.type}</span>
+                            <code className={styles.tokenText} title={token.text} data-testid="token-text">{token.text}</code>
+                            <span className={styles.tokenType} title={token.type} data-testid="token-type">{token.type}</span>
                         </div>
                         {checkedTokenIndices.has(index) && (
                             <span className={styles.checkIcon} title="Valid test case">✓</span>

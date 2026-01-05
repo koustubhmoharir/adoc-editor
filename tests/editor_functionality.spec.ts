@@ -133,6 +133,9 @@ test.describe('Editor Functionality', () => {
         await page.click('button:has-text("Open Folder")');
         await page.click('text=file1.adoc');
 
+        // Disable auto-save
+        await page.evaluate(() => (window as any).__DISABLE_AUTO_SAVE__ = true);
+
         // Edit
         await page.evaluate(() => {
             (window as any).__TEST_editorStore.setContent('Modified content before switch.');
@@ -155,6 +158,9 @@ test.describe('Editor Functionality', () => {
     test('If changes are made and page is refreshed, changes are saved', async ({ page }) => {
         await page.click('button:has-text("Open Folder")');
         await page.click('text=file1.adoc');
+
+        // Disable auto-save
+        await page.evaluate(() => (window as any).__DISABLE_AUTO_SAVE__ = true);
 
         // Edit
         await page.evaluate(() => {
@@ -291,6 +297,9 @@ test.describe('Editor Functionality', () => {
         await page.click('button:has-text("Open Folder")');
         await page.click('text=file1.adoc');
         await expect(page.locator('header')).toContainText('file1.adoc');
+
+        // Disable auto-save
+        await page.evaluate(() => (window as any).__DISABLE_AUTO_SAVE__ = true);
 
         // Edit
         await page.evaluate(() => {
