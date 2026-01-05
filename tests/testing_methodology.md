@@ -99,3 +99,21 @@ When writing new tests or debugging failing ones, it is often helpful to see exa
 3.  Observe the **Tokens Visualization** sidebar on the right.
 4.  Click on the problematic tokens to see their exact Type and Content.
 5.  Use this information to update your `.json` expectation file or fix the tokenizer logic in `src/utils/asciidocMode.ts`.
+
+## Debugging Tests
+
+To see detailed logs (browser console, errors, and dialog interactions) during test execution, you can use the `test:debug` script. This sets the `DEBUG_TESTS` environment variable for the duration of the command.
+
+```bash
+npm run test:debug -- tests/renaming_functionality.spec.ts
+```
+
+Alternatively, you can manually set the environment variable:
+
+```bash
+# Windows (PowerShell)
+$env:DEBUG_TESTS=1; npx playwright test tests/renaming_functionality.spec.ts
+
+# Linux/macOS
+DEBUG_TESTS=1 npx playwright test tests/renaming_functionality.spec.ts
+```

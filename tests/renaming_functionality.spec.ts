@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
+import { enableTestLogging } from './helpers/test_logging';
 
 test.describe('Renaming Functionality', () => {
     let fsSetup: FsTestSetup;
@@ -11,10 +12,10 @@ test.describe('Renaming Functionality', () => {
     test.beforeEach(async ({ page }) => {
         dialogAction = 'accept'; // Reset default
         lastDialogMessage = '';
-        page.on('console', msg => console.log(`BROWSER: ${msg.text()}`));
-        page.on('pageerror', err => console.log(`BROWSER ERROR: ${err}`));
+        enableTestLogging(page);
+
+        // Custom dialog handler for the tests
         page.on('dialog', async dialog => {
-            console.log(`DIALOG: ${dialog.type()} "${dialog.message()}"`);
             lastDialogMessage = dialog.message();
             if (dialogAction === 'accept') {
                 await dialog.accept();
