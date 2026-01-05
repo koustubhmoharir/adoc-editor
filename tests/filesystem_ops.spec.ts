@@ -244,14 +244,92 @@ test.describe('Renaming Functionality', () => {
         // Should succeed now
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).not.toBeVisible();
         await expect(page.locator('[data-testid="file-item"][data-file-path="conflict.adoc"]')).toBeVisible();
-
         const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'conflict.adoc'), 'utf8');
         expect(content).toBe('== File 1 content');
+    });
+
+    test('Rename commits when clicking another file', async ({ page }) => {
+        await verifyRenameOnFocusChange(page, fsSetup, 'file1.adoc', 'renamed_via_file_click.adoc', async () => {
+            const otherFile = page.locator('[data-testid="file-item"][data-file-path="file2.adoc"]');
+            await otherFile.click();
+        }, true);
+
+        // Verify content preserved after file click rename
+        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'renamed_via_file_click.adoc'), 'utf8');
+        expect(content).toBe('== File 1 content');
+    });
+
+    test('Rename commits when clicking editor - no focus steal', async ({ page }) => {
+        // Use file2.adoc
+        await verifyRenameOnFocusChange(page, fsSetup, 'file2.adoc', 'renamed_via_editor_click.adoc', async () => {
+            const editor = page.locator('.monaco-editor').first();
+            await editor.click();
+        }, true, true);
+    });
+
+    test('Rename commits when clicking title bar', async ({ page }) => {
+        // Use conflict.adoc (available from setup) or create a temp file if needed.
+        // The setup creates: file1.adoc, file2.adoc, conflict.adoc
+        // Let's use conflict.adoc
+        await verifyRenameOnFocusChange(page, fsSetup, 'conflict.adoc', 'renamed_via_title_click.adoc', async () => {
+            await page.locator('header').click();
+        }, true);
+    });
+
+    test('Rename reverts on invalid name when clicking another file', async ({ page }) => {
+        // Use file1.adoc (reset state or separate test run ensures clean state)
+        await verifyRenameOnFocusChange(page, fsSetup, 'file1.adoc', 'invalid/name.adoc', async () => {
+            const otherFile = page.locator('[data-testid="file-item"][data-file-path="file2.adoc"]');
+            await otherFile.click();
+        }, false);
     });
 });
 
 // Helper Functions
 import { Page, Locator } from '@playwright/test';
+
+
+// Helper to verify rename behavior on focus change
+async function verifyRenameOnFocusChange(
+    page: Page,
+    fsSetup: FsTestSetup, // passed in to access tempDir1
+    originalName: string,
+    newName: string,
+    triggerFocusChange: () => Promise<void>,
+    shouldCommit: boolean,
+    checkFocusSteal: boolean = false
+) {
+    const fileItem = page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`);
+    await fileItem.click();
+    await expect(fileItem).toHaveClass(/selected/);
+
+    const input = await triggerRename(page, fileItem);
+    await input.fill(newName);
+
+    // Trigger the focus change
+    await triggerFocusChange();
+
+    // Verify input is gone
+    await expect(input).not.toBeVisible();
+
+    if (shouldCommit) {
+        // Verify new name exists
+        await expect(page.locator(`[data-testid="file-item"][data-file-path="${newName}"]`)).toBeVisible();
+        expect(fs.existsSync(path.join(fsSetup.tempDir1, newName))).toBe(true);
+        // Verify old name gone
+        await expect(page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`)).not.toBeVisible();
+        expect(fs.existsSync(path.join(fsSetup.tempDir1, originalName))).toBe(false);
+    } else {
+        // Verify old name remains
+        await expect(page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`)).toBeVisible();
+        expect(fs.existsSync(path.join(fsSetup.tempDir1, originalName))).toBe(true);
+    }
+
+    if (checkFocusSteal) {
+        const fileItemNew = page.locator(`[data-testid="file-item"][data-file-path="${shouldCommit ? newName : originalName}"]`);
+        await expect(fileItemNew).not.toBeFocused();
+    }
+}
 
 async function triggerRename(page: Page, fileItem: Locator, method: 'f2' | 'button' = 'f2'): Promise<Locator> {
     await fileItem.click();

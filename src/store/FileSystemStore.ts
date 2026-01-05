@@ -84,7 +84,7 @@ export class FileNodeModel extends EffectAwareModel {
             this.cancelRenaming(restoreFocus);
             return;
         }
-        const success = await fileSystemStore.renameFile(this, this.renameValue);
+        const success = await fileSystemStore.renameFile(this, this.renameValue, restoreFocus);
         // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
         if (!success && revertOnFailure) {
             this.cancelRenaming(restoreFocus);
@@ -688,7 +688,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    async renameFile(node: FileNodeModel, newName: string): Promise<boolean> {
+    async renameFile(node: FileNodeModel, newName: string, focusAfterRename: boolean): Promise<boolean> {
         if (node.kind !== 'file') return false;
 
         // 1. Trim the name first
@@ -782,7 +782,12 @@ class FileSystemStore extends EffectAwareModel {
                 // We basically need parent path + finalName
                 const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
                 const newPath = parentPath ? `${parentPath}/${finalName}` : finalName;
-                this.pendingFocusPath = newPath;
+                if (focusAfterRename) {
+                    this.pendingFocusPath = newPath;
+                }
+                else {
+                    this.pendingFocusPath = null;
+                }
 
                 await this.refreshTree();
                 return true;
