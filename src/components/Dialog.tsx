@@ -19,11 +19,13 @@ export interface ConfirmOptions {
 }
 
 export interface Dialog {
+    readonly defaultTitle: string;
     alert(message: string, options?: AlertOptions): Promise<void>;
     confirm(message: string, options?: ConfirmOptions): Promise<boolean>;
 }
 
 class DialogStore implements Dialog {
+    readonly defaultTitle = appName;
     @observable accessor type: DialogType = 'alert';
     @observable accessor message: string = '';
     @observable accessor title: string = '';
@@ -160,12 +162,16 @@ export const NativeDialog: React.FC = observer(() => {
             data-testid="dialog-overlay"
         >
             <div className={styles.dialogContent}>
-                <div className={styles.header} id="dialog-title">{displayTitle}</div>
+                <div className={styles.header} id="dialog-title" data-testid="dialog-title">{displayTitle}</div>
                 <div className={styles.body}>
                     {iconClass && (
-                        <i className={`${iconClass} ${styles.icon} ${iconColorClass}`} aria-hidden="true" />
+                        <i
+                            className={`${iconClass} ${styles.icon} ${iconColorClass}`}
+                            aria-hidden="true"
+                            data-testid="dialog-icon"
+                        />
                     )}
-                    <span className={styles.messageText}>{message}</span>
+                    <span className={styles.messageText} data-testid="dialog-message">{message}</span>
                 </div>
                 <div className={styles.footer}>
                     {type === 'confirm' && (
