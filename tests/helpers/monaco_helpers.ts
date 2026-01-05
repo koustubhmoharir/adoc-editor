@@ -46,9 +46,9 @@ export interface LineTokens {
  * Enriches raw Monaco tokens with line text and substrings.
  */
 export function enrichTokens(tokens: Token[][], lineTextArray: string[]): LineTokens[] {
-    if (tokens.length > 0 && tokens[0].length > 0) {
-        console.log('Sample raw token in enrichTokens:', tokens[0][0]);
-    }
+    // if (tokens.length > 0 && tokens[0].length > 0) {
+    //     console.log('Sample raw token in enrichTokens:', tokens[0][0]);
+    // }
     return tokens.map((lineTokens, lineIndex) => {
         const lineText = lineTextArray[lineIndex];
         return {

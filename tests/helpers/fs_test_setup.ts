@@ -19,7 +19,7 @@ export class FsTestSetup {
     constructor() {
         this.tempDir1 = createTempDir();
         this.tempDir2 = createTempDir();
-        console.log(`Test running in temp dirs: ${this.tempDir1}, ${this.tempDir2}`);
+        // console.log(`Test running in temp dirs: ${this.tempDir1}, ${this.tempDir2}`);
     }
 
     cleanup() {

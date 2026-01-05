@@ -9,3 +9,4 @@ trigger: always_on
 * When writing automated tests, check for the existence of `data-` attributes and prefer those to class or text based locators.
 * Run all tests only when I ask you to or if you have made a change that is so large that it affects everything. Otherwise, just run the specific tests that are relevant to the change.
 * Create new automated tests only when you have been specifically asked to do so.
+* If a test fails, run just that one test again for debugging. Running all tests everytime wastes a lot of time.

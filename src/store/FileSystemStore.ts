@@ -241,7 +241,7 @@ class FileSystemStore extends EffectAwareModel {
             // Check for skip_restore parameter
             const params = new URLSearchParams(window.location.search);
             if (params.get('skip_restore') === 'true') {
-                console.log('Skipping directory restoration due to skip_restore flag');
+                // console.log('Skipping directory restoration due to skip_restore flag');
                 return;
             }
 
@@ -464,7 +464,7 @@ class FileSystemStore extends EffectAwareModel {
             runInAction(() => {
                 this.dirty = false;
             });
-            console.log('Saved file:', this.currentFileHandle.name);
+            // console.log('Saved file:', this.currentFileHandle.name);
         } catch (err) {
             console.error('Failed to save file:', err);
         }

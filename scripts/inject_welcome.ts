@@ -44,7 +44,7 @@ ${escapedWelcomeContent}
 
             if (newContent !== editorStoreContent) {
                 fs.writeFileSync(editorStorePath, newContent, 'utf-8');
-                console.log('Successfully injected Welcome.adoc content into EditorStore.ts');
+                //console.log('Successfully injected Welcome.adoc content into EditorStore.ts');
             } else {
                 // No change needed
             }
