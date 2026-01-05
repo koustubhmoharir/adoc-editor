@@ -22,6 +22,9 @@ The project uses **Playwright** to run end-to-end tests that verify the correct 
   - Uses `tests/helpers/fs_mock.js` to intercept `window.showDirectoryPicker`.
   - Bridges browser file operations to unique temporary directories on the host machine via Playwright bindings (`__fs_readFile`, etc.).
   - This allows tests to run **in parallel** without race conditions on the file system.
+- **Disabling Auto-Save**:
+  - Tests can set `window.__TEST_DISABLE_AUTO_SAVE__ = true` to prevent the auto-save interval from clearing the dirty state during assertions.
+
 
 ## Syntax Test Structure
 - **Fixtures Directory**: `tests/fixtures/`

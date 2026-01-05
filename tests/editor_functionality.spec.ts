@@ -133,7 +133,7 @@ test.describe('Editor Functionality', () => {
         await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
 
         // Disable auto-save
-        await page.evaluate(() => (window as any).__DISABLE_AUTO_SAVE__ = true);
+        await page.evaluate(() => (window as any).__TEST_DISABLE_AUTO_SAVE__ = true);
 
         // Edit
         await page.evaluate(() => {
@@ -159,7 +159,7 @@ test.describe('Editor Functionality', () => {
         await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
 
         // Disable auto-save
-        await page.evaluate(() => (window as any).__DISABLE_AUTO_SAVE__ = true);
+        await page.evaluate(() => (window as any).__TEST_DISABLE_AUTO_SAVE__ = true);
 
         // Edit
         await page.evaluate(() => {
@@ -298,7 +298,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
         // Disable auto-save
-        await page.evaluate(() => (window as any).__DISABLE_AUTO_SAVE__ = true);
+        await page.evaluate(() => (window as any).__TEST_DISABLE_AUTO_SAVE__ = true);
 
         // Edit
         await page.evaluate(() => {
