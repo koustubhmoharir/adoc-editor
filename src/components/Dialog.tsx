@@ -107,7 +107,7 @@ class DialogStore implements Dialog {
     }
 
     @action
-    onCancelled = (e: React.SyntheticEvent<HTMLDialogElement, Event>) => {
+    onCancelled = (_e: React.SyntheticEvent<HTMLDialogElement, Event>) => {
         if (this.type === 'confirm') {
             this.pendingResult = false;
         } else {

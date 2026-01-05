@@ -6,23 +6,9 @@ import { enableTestLogging } from './helpers/test_logging';
 
 test.describe('Renaming Functionality', () => {
     let fsSetup: FsTestSetup;
-    let dialogAction: 'accept' | 'dismiss' = 'accept';
-    let lastDialogMessage = '';
-
     test.beforeEach(async ({ page }) => {
-        dialogAction = 'accept'; // Reset default
-        lastDialogMessage = '';
         enableTestLogging(page);
 
-        // Custom dialog handler for the tests
-        page.on('dialog', async dialog => {
-            lastDialogMessage = dialog.message();
-            if (dialogAction === 'accept') {
-                await dialog.accept();
-            } else {
-                await dialog.dismiss();
-            }
-        });
         fsSetup = new FsTestSetup();
         fsSetup.createFile('dir1', 'file1.adoc', '== File 1 content');
         fsSetup.createFile('dir1', 'file2.adoc', '== File 2 content');
@@ -215,31 +201,50 @@ test.describe('Renaming Functionality', () => {
         await input.fill('bad/name.adoc');
         await page.keyboard.press('Enter');
 
-        await expect(async () => expect(lastDialogMessage).toContain('Invalid character')).toPass();
+        // Verify custom dialog
+        const dialogMessage = page.locator('[data-testid="dialog-message"]');
+        await expect(dialogMessage).toContainText('Invalid character');
+
+        // Dismiss dialog
+        await page.click('[data-testid="dialog-confirm-button"]');
+        await expect(page.locator('[data-testid="dialog-overlay"]')).not.toBeVisible();
 
         // Input should still be visible because validation failed
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
     });
 
-    test('Validation: Conflict', async ({ page }) => {
+    test('Validation - Conflict', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
         const input = await triggerRename(page, fileItem);
 
         // 1. Decline override
-        dialogAction = 'dismiss';
-
         await input.fill('conflict.adoc');
-        await page.keyboard.press('Enter');
+        const enterPromise = page.keyboard.press('Enter');
+
+        const dialogOverlay = page.locator('[data-testid="dialog-overlay"]');
+        await expect(dialogOverlay).toBeVisible();
+        await expect(page.locator('[data-testid="dialog-message"]')).toContainText('already exists');
+
+        // Click Cancel
+        await page.click('[data-testid="dialog-cancel-button"]');
+        await enterPromise;
+        await expect(dialogOverlay).not.toBeVisible();
 
         // Should still be in rename mode (dialog dismissed)
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
         await expect(page.locator('[data-testid="rename-input"]')).toBeFocused();
 
         // 2. Accept override
-        dialogAction = 'accept';
-
         // Retrigger enter
-        await page.keyboard.press('Enter');
+        const enterPromise2 = page.keyboard.press('Enter');
+
+        // Wait for dialog again
+        await expect(dialogOverlay).toBeVisible();
+
+        // Click OK
+        await page.click('[data-testid="dialog-confirm-button"]');
+        await enterPromise2;
+        await expect(dialogOverlay).not.toBeVisible();
 
         // Should succeed now
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).not.toBeVisible();
@@ -277,11 +282,32 @@ test.describe('Renaming Functionality', () => {
     });
 
     test('Rename reverts on invalid name when clicking another file', async ({ page }) => {
-        // Use file1.adoc (reset state or separate test run ensures clean state)
-        await verifyRenameOnFocusChange(page, fsSetup, 'file1.adoc', 'invalid/name.adoc', async () => {
-            const otherFile = page.locator('[data-testid="file-item"][data-file-path="file2.adoc"]');
-            await otherFile.click();
-        }, false);
+        const originalName = 'file1.adoc';
+        const newName = 'invalid/name.adoc';
+
+        const fileItem = page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`);
+        await fileItem.click();
+        const input = await triggerRename(page, fileItem);
+        await input.fill(newName);
+
+        // Trigger the focus change (click other file)
+        const otherFile = page.locator('[data-testid="file-item"][data-file-path="file2.adoc"]');
+        await otherFile.click();
+
+        // Expect Alert
+        const dialogOverlay = page.locator('[data-testid="dialog-overlay"]');
+        await expect(dialogOverlay).toBeVisible();
+        await expect(page.locator('[data-testid="dialog-message"]')).toContainText('Invalid character');
+
+        // Close Alert
+        await page.click('[data-testid="dialog-confirm-button"]');
+        await expect(dialogOverlay).not.toBeVisible();
+
+        // Now input should be gone (reverted)
+        await expect(input).not.toBeVisible();
+
+        // Verify old name remains
+        await expect(page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`)).toBeVisible();
     });
 });
 

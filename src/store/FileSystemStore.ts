@@ -4,6 +4,7 @@ import { Fzf } from 'fzf';
 import { editorStore } from './EditorStore';
 import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
+import { dialog } from "../components/Dialog";
 
 export interface FileNodeData {
     name: string;
@@ -23,6 +24,7 @@ export class FileNodeModel extends EffectAwareModel {
     // UI State
     @observable accessor isRenaming: boolean = false;
     @observable accessor renameValue: string = '';
+    @observable accessor isCommitting: boolean = false;
 
     // Refs
     readonly renameInputRef = createRef<HTMLInputElement>();
@@ -80,20 +82,26 @@ export class FileNodeModel extends EffectAwareModel {
 
     @action
     async commitRenaming(revertOnFailure: boolean = false, restoreFocus: boolean = true) {
-        if (!this.renameValue || this.renameValue === this.name) {
-            this.cancelRenaming(restoreFocus);
-            return;
-        }
-        const success = await fileSystemStore.renameFile(this, this.renameValue, restoreFocus);
-        // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
-        if (!success && revertOnFailure) {
-            this.cancelRenaming(restoreFocus);
+        if (this.isCommitting) return;
+        this.isCommitting = true;
+        try {
+            if (!this.renameValue || this.renameValue === this.name) {
+                this.cancelRenaming(restoreFocus);
+                return;
+            }
+            const success = await fileSystemStore.renameFile(this, this.renameValue, restoreFocus);
+            // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
+            if (!success && revertOnFailure) {
+                this.cancelRenaming(restoreFocus);
+            }
+        } finally {
+            this.isCommitting = false;
         }
     }
 
     @action
     async delete() {
-        if (confirm(`Are you sure you want to delete '${this.name}'?`)) {
+        if (await dialog.confirm(`Are you sure you want to delete '${this.name}'?`)) {
             await fileSystemStore.deleteFile(this);
         }
     }
@@ -432,7 +440,7 @@ class FileSystemStore extends EffectAwareModel {
             content = await file.text();
         } catch (e) {
             console.error('Failed to read file:', e);
-            alert('Failed to read file. It might have been moved or deleted.');
+            await dialog.alert('Failed to read file. It might have been moved or deleted.');
             return;
         }
 
@@ -579,7 +587,7 @@ class FileSystemStore extends EffectAwareModel {
 
     async createNewFile(parentDirectory?: FileSystemDirectoryHandle) {
         if (!this.directoryHandle) {
-            alert('Please open a directory first.');
+            await dialog.alert('Please open a directory first.');
             return;
         }
 
@@ -645,7 +653,7 @@ class FileSystemStore extends EffectAwareModel {
 
         } catch (error) {
             console.error('Error creating new file:', error);
-            alert('Failed to create new file.');
+            await dialog.alert('Failed to create new file.');
         }
     }
 
@@ -669,7 +677,7 @@ class FileSystemStore extends EffectAwareModel {
 
         const parentDir = this.findParentDirectory(node.handle);
         if (!parentDir) {
-            alert('Cannot search parent directory needed for deletion.');
+            await dialog.alert('Cannot search parent directory needed for deletion.');
             return;
         }
 
@@ -684,7 +692,7 @@ class FileSystemStore extends EffectAwareModel {
             await this.refreshTree();
         } catch (error) {
             console.error('Error deleting file:', error);
-            alert(`Failed to delete file: ${error}`);
+            await dialog.alert(`Failed to delete file: ${error}`);
         }
     }
 
@@ -735,14 +743,14 @@ class FileSystemStore extends EffectAwareModel {
             if (printableAsciiRegex.test(char)) {
                 // It is printable ASCII. Check if it is unsafe.
                 if (unsafeAsciiRegex.test(char)) {
-                    alert(`Invalid character: ${char}`);
+                    await dialog.alert(`Invalid character: ${char}`);
                     return false;
                 }
             } else {
                 // It is NOT printable ASCII (e.g. Unicode or Control)
                 // Check if it is a Unicode Letter or Number
                 if (!unicodeWordRegex.test(char)) {
-                    alert(`Invalid character: ${char}`);
+                    await dialog.alert(`Invalid character: ${char}`);
                     return false;
                 }
             }
@@ -750,7 +758,7 @@ class FileSystemStore extends EffectAwareModel {
 
         const parentDir = this.findParentDirectory(node.handle);
         if (!parentDir) {
-            alert('Cannot find parent directory.');
+            await dialog.alert('Cannot find parent directory.');
             return false;
         }
 
@@ -767,7 +775,7 @@ class FileSystemStore extends EffectAwareModel {
         } catch (e) { console.warn('Error checking siblings', e); }
 
         if (conflict) {
-            const proceed = confirm(`A file with the name "${finalName}" already exists (case-insensitive). Do you want to try replacing it or proceed?`);
+            const proceed = await dialog.confirm(`A file with the name "${finalName}" already exists (case-insensitive). Do you want to try replacing it or proceed?`);
             if (!proceed) return false;
         }
 
@@ -793,11 +801,11 @@ class FileSystemStore extends EffectAwareModel {
                 return true;
             } catch (error) {
                 console.error('Rename failed:', error);
-                alert(`Rename failed: ${error}`);
+                await dialog.alert(`Rename failed: ${error}`);
                 return false;
             }
         } else {
-            alert('Your browser does not support renaming files directly (File System Access API "move" method is missing). Please use a supported browser (e.g. Chrome 111+).');
+            await dialog.alert('Your browser does not support renaming files directly (File System Access API "move" method is missing). Please use a supported browser (e.g. Chrome 111+).');
             return false;
         }
     }
