@@ -28,6 +28,7 @@ export class FileNodeModel extends EffectAwareModel {
 
     // Refs
     readonly renameInputRef = createRef<HTMLInputElement>();
+    readonly acceptRenameBtnRef = createRef<HTMLButtonElement>();
     readonly treeItemRef = createRef<HTMLDivElement>();
 
 
@@ -45,11 +46,13 @@ export class FileNodeModel extends EffectAwareModel {
 
     @action
     startRenaming() {
+        //console.log('startRenaming', this.name);
         this.isRenaming = true;
         this.renameValue = this.name;
 
         // Schedule focus effect
         this.scheduleEffect(() => {
+            //console.log('startRenaming: inside scheduleEffect');
             if (this.renameInputRef.current) {
                 this.renameInputRef.current.focus();
                 // Select name part excluding extension
@@ -65,36 +68,41 @@ export class FileNodeModel extends EffectAwareModel {
 
 
     @action
-    cancelRenaming(restoreFocus: boolean = true) {
+    cancelRenaming() {
+        //console.log('cancelRenaming', { restoreFocus, currentName: this.name, renameValue: this.renameValue });
         this.isRenaming = false;
         this.renameValue = '';
-        if (restoreFocus) {
-            this.scheduleEffect(() => {
-                this.treeItemRef.current?.focus();
-            });
-        }
+        this.scheduleEffect(() => {
+            //console.log('cancelRenaming: inside scheduleEffect (restoreFocus)');
+            this.treeItemRef.current?.focus();
+        });
     }
 
     @action
     setRenameValue(val: string) {
+        //console.log('setRenameValue', val);
         this.renameValue = val;
     }
 
     @action
-    async commitRenaming(revertOnFailure: boolean = false, restoreFocus: boolean = true) {
+    async commitRenaming() {
+        //console.log('commitRenaming', { revertOnFailure, restoreFocus, renameValue: this.renameValue });
         if (this.isCommitting) return;
         this.isCommitting = true;
+        //console.log('commitRenaming: setting isCommitting to true');
         try {
             if (!this.renameValue || this.renameValue === this.name) {
-                this.cancelRenaming(restoreFocus);
+                //console.log('commitRenaming: no change');
+                this.cancelRenaming();
                 return;
             }
-            const success = await fileSystemStore.renameFile(this, this.renameValue, restoreFocus);
+            const success = await fileSystemStore.renameFile(this, this.renameValue, true);
             // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
-            if (!success && revertOnFailure) {
-                this.cancelRenaming(restoreFocus);
+            if (!success) {
+                this.renameInputRef.current?.focus();
             }
         } finally {
+            //console.log('commitRenaming: finally block: setting isCommitting to false');
             this.isCommitting = false;
         }
     }
@@ -108,27 +116,35 @@ export class FileNodeModel extends EffectAwareModel {
 
     @action
     handleRenameInputKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
+        //console.log('handleRenameInputKeyDown', e.key);
         if (e.key === 'Enter') {
+            //console.log('handleRenameInputKeyDown: Enter detected');
             e.stopPropagation();
-            this.commitRenaming(false, true);
+            e.preventDefault();
+            this.commitRenaming();
         } else if (e.key === 'Escape') {
+            //console.log('handleRenameInputKeyDown: Escape detected');
             e.stopPropagation();
-            this.cancelRenaming(true);
+            e.preventDefault();
+            this.cancelRenaming();
         }
     }
 
     @action
-    handleRenameInputBlur() {
+    handleRenameInputBlur(e: React.FocusEvent) {
+        //console.log('handleRenameInputBlur', { hasFocus: document.hasFocus(), dialogOpen: dialog.isOpen, relatedTarget: e.relatedTarget });
         // If the window loses focus (e.g. alt-tab), we want to KEEP renaming state.
         // If the click is inside the app but outside input, we want to COMMIT.
         // We do NOT want to restore focus to the tree item, because the user likely clicked something else.
         if (document.hasFocus() && !dialog.isOpen) {
-            this.commitRenaming(true, false);
+            //console.log('handleRenameInputBlur: committing rename');
+            this.commitRenaming();
         }
     }
 
     @action
     handleTreeItemKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
+        //console.log('handleTreeItemKeyDown', e.key);
         if (this.isRenaming) return;
 
         if (e.key === 'F2') {
@@ -697,6 +713,7 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     async renameFile(node: FileNodeModel, newName: string, focusAfterRename: boolean): Promise<boolean> {
+        //console.log('FileSystemStore.renameFile', { nodeName: node.name, newName, focusAfterRename });
         if (node.kind !== 'file') return false;
 
         // 1. Trim the name first
@@ -710,14 +727,17 @@ class FileSystemStore extends EffectAwareModel {
 
         // 4. Join with a dot
         let finalName = parts.join('.');
+        //console.log('renameFile: trimmedInput', trimmedInput, 'finalName (initial)', finalName);
 
         // 5. If the result of step 1 was true, prepend a dot again
         if (startsWithDot) {
+            //console.log('renameFile: re-adding leading dot');
             finalName = '.' + finalName;
         }
 
         // 6. Check for empty or just dot (disallowed)
         if (!finalName || finalName === '.') {
+            //console.log('renameFile: invalid finalName', finalName);
             node.cancelRenaming();
             return true;
         }
@@ -743,6 +763,7 @@ class FileSystemStore extends EffectAwareModel {
             if (printableAsciiRegex.test(char)) {
                 // It is printable ASCII. Check if it is unsafe.
                 if (unsafeAsciiRegex.test(char)) {
+                    //console.log('renameFile: unsafe char', char);
                     await dialog.alert(`Invalid character: ${char}`);
                     return false;
                 }
@@ -750,6 +771,7 @@ class FileSystemStore extends EffectAwareModel {
                 // It is NOT printable ASCII (e.g. Unicode or Control)
                 // Check if it is a Unicode Letter or Number
                 if (!unicodeWordRegex.test(char)) {
+                    //console.log('renameFile: invalid unicode char', char);
                     await dialog.alert(`Invalid character: ${char}`);
                     return false;
                 }
@@ -772,9 +794,13 @@ class FileSystemStore extends EffectAwareModel {
                     break;
                 }
             }
-        } catch (e) { console.warn('Error checking siblings', e); }
+        } catch (e) {
+            console.warn('Error checking siblings', e);
+            //console.log('renameFile: error checking siblings', e);
+        }
 
         if (conflict) {
+            //console.log('renameFile: conflict detected', finalName);
             const proceed = await dialog.confirm(`A file with the name "${finalName}" already exists (case-insensitive). Do you want to try replacing it or proceed?`);
             if (!proceed) return false;
         }
@@ -783,7 +809,9 @@ class FileSystemStore extends EffectAwareModel {
         const handle = node.handle as any;
         if (handle.move) {
             try {
+                //console.log('renameFile: calling move()', parentDir, finalName);
                 await handle.move(parentDir, finalName);
+                //console.log('renameFile: move() returned');
 
                 // Determine new path to set pending focus
                 // If it was renamed, the path changes.
@@ -798,6 +826,7 @@ class FileSystemStore extends EffectAwareModel {
                 }
 
                 await this.refreshTree();
+                //console.log('renameFile: success', finalName);
                 return true;
             } catch (error) {
                 console.error('Rename failed:', error);

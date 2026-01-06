@@ -47,6 +47,7 @@ class DialogStore implements Dialog {
 
     @action
     private show(type: DialogType, message: string, options: AlertOptions | ConfirmOptions = {}): Promise<any> {
+        //console.log('DialogStore.show', { type, message, options });
         this.type = type;
         this.message = message;
         this.title = options.title || appName;
@@ -77,6 +78,7 @@ class DialogStore implements Dialog {
 
     @action
     private close() {
+        //console.log('DialogStore.close');
         if (this.dialogRef.current && this.dialogRef.current.open) {
             this.dialogRef.current.close();
         }
@@ -84,22 +86,26 @@ class DialogStore implements Dialog {
 
     @action
     alert(message: string, options?: AlertOptions): Promise<void> {
+        //console.log('DialogStore.alert', message);
         return this.show('alert', message, options);
     }
 
     @action
     confirm(message: string, options?: ConfirmOptions): Promise<boolean> {
+        //console.log('DialogStore.confirm', message);
         return this.show('confirm', message, options);
     }
 
     @action
     handleConfirm = () => {
+        //console.log('DialogStore.handleConfirm');
         this.pendingResult = true;
         this.close();
     }
 
     @action
     handleCancel = () => {
+        //console.log('DialogStore.handleCancel');
         if (this.type === 'confirm') {
             this.pendingResult = false;
         } else {
@@ -109,6 +115,7 @@ class DialogStore implements Dialog {
     }
 
     onCancelled = (_e: React.SyntheticEvent<HTMLDialogElement, Event>) => {
+        //console.log('DialogStore.onCancelled');
         if (this.type === 'confirm') {
             this.pendingResult = false;
         } else {
@@ -117,6 +124,7 @@ class DialogStore implements Dialog {
     }
 
     onClosed = () => {
+        //console.log('DialogStore.onClosed', { pendingResult: this.pendingResult });
         if (this.resolvePromise) {
             this.resolvePromise(this.pendingResult);
             this.resolvePromise = null;

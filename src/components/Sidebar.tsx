@@ -27,6 +27,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 {isSelected ? (
                     isRenaming ?
                         <button key="accept-rename-button"
+                            ref={node.acceptRenameBtnRef}
                             className={styles.acceptButton}
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -61,9 +62,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                         onChange={(e) => node.setRenameValue(e.target.value)}
                         onKeyDown={(e) => node.handleRenameInputKeyDown(e)}
                         onClick={(e) => e.stopPropagation()}
-                        onBlur={() => {
-                            node.handleRenameInputBlur();
-                        }}
+                        onBlur={(e) => node.handleRenameInputBlur(e)}
                     />
                 ) : (
                     <span>{node.name}</span>
