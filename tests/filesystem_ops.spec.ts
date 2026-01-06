@@ -4,6 +4,7 @@ import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
 import { waitForTestGlobals } from './helpers/test_globals';
+import { handleNextDialog, getLastDialogMessage } from './helpers/dialog_helpers';
 
 test.describe('Renaming Functionality', () => {
     let fsSetup: FsTestSetup;
@@ -201,16 +202,14 @@ test.describe('Renaming Functionality', () => {
         const input = await triggerRename(page, fileItem);
 
         await input.fill('bad/name.adoc');
-        const enterPromise = page.keyboard.press('Enter');
 
-        // Verify custom dialog
-        const dialogMessage = page.locator('[data-testid="dialog-message"]');
-        await expect(dialogMessage).toContainText('Invalid character');
+        // Schedule dialog handling BEFORE the blocking action (Enter)
+        await handleNextDialog(page, 'confirm');
+        await page.keyboard.press('Enter');
 
-        // Dismiss dialog
-        await page.click('[data-testid="dialog-confirm-button"]');
-        await enterPromise;
-        await expect(page.locator('[data-testid="dialog-overlay"]')).not.toBeVisible();
+        // Verify message
+        const message = await getLastDialogMessage(page);
+        expect(message).toContain('Invalid character');
 
         // Input should still be visible because validation failed
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
@@ -223,16 +222,11 @@ test.describe('Renaming Functionality', () => {
 
         // 1. Decline override
         await input.fill('conflict.adoc');
-        const enterPromise = page.keyboard.press('Enter');
 
-        const dialogOverlay = page.locator('[data-testid="dialog-overlay"]');
-        await expect(dialogOverlay).toBeVisible();
-        await expect(page.locator('[data-testid="dialog-message"]')).toContainText('already exists');
+        await handleNextDialog(page, 'cancel');
+        await page.keyboard.press('Enter');
 
-        // Click Cancel
-        await page.click('[data-testid="dialog-cancel-button"]');
-        await enterPromise;
-        await expect(dialogOverlay).not.toBeVisible();
+        expect(await getLastDialogMessage(page)).toContain('already exists');
 
         // Should still be in rename mode (dialog dismissed)
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
@@ -240,15 +234,8 @@ test.describe('Renaming Functionality', () => {
 
         // 2. Accept override
         // Retrigger enter
-        const enterPromise2 = page.keyboard.press('Enter');
-
-        // Wait for dialog again
-        await expect(dialogOverlay).toBeVisible();
-
-        // Click OK
-        await page.click('[data-testid="dialog-confirm-button"]');
-        await enterPromise2;
-        await expect(dialogOverlay).not.toBeVisible();
+        await handleNextDialog(page, 'confirm');
+        await page.keyboard.press('Enter');
 
         // Should succeed now
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).not.toBeVisible();
@@ -296,16 +283,12 @@ test.describe('Renaming Functionality', () => {
 
         // Trigger the focus change (click other file)
         const otherFile = page.locator('[data-testid="file-item"][data-file-path="file2.adoc"]');
+
+        await handleNextDialog(page, 'confirm');
         await otherFile.click();
 
         // Expect Alert
-        const dialogOverlay = page.locator('[data-testid="dialog-overlay"]');
-        await expect(dialogOverlay).toBeVisible();
-        await expect(page.locator('[data-testid="dialog-message"]')).toContainText('Invalid character');
-
-        // Close Alert
-        await page.click('[data-testid="dialog-confirm-button"]');
-        await expect(dialogOverlay).not.toBeVisible();
+        expect(await getLastDialogMessage(page)).toContain('Invalid character');
 
         // Now input should STILL be visible and focused
         await expect(input).toBeVisible();
@@ -351,7 +334,7 @@ async function verifyRenameOnFocusChange(
     // Verify old name gone
     await expect(page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`)).not.toBeVisible();
     expect(fs.existsSync(path.join(fsSetup.tempDir1, originalName))).toBe(false);
-    
+
 }
 
 async function triggerRename(page: Page, fileItem: Locator, method: 'f2' | 'button' = 'f2'): Promise<Locator> {
