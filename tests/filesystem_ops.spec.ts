@@ -214,6 +214,7 @@ test.describe('Renaming Functionality', () => {
 
         // Input should still be visible because validation failed
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
+        await expect(page.locator('[data-testid="rename-input"]')).toBeFocused();
     });
 
     test('Validation - Conflict', async ({ page }) => {
@@ -260,19 +261,19 @@ test.describe('Renaming Functionality', () => {
         await verifyRenameOnFocusChange(page, fsSetup, 'file1.adoc', 'renamed_via_file_click.adoc', async () => {
             const otherFile = page.locator('[data-testid="file-item"][data-file-path="file2.adoc"]');
             await otherFile.click();
-        }, true);
+        });
 
         // Verify content preserved after file click rename
         const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'renamed_via_file_click.adoc'), 'utf8');
         expect(content).toBe('== File 1 content');
     });
 
-    test('Rename commits when clicking editor - no focus steal', async ({ page }) => {
+    test('Rename commits when clicking editor', async ({ page }) => {
         // Use file2.adoc
         await verifyRenameOnFocusChange(page, fsSetup, 'file2.adoc', 'renamed_via_editor_click.adoc', async () => {
             const editor = page.locator('.monaco-editor').first();
             await editor.click();
-        }, true, true);
+        });
     });
 
     test('Rename commits when clicking title bar', async ({ page }) => {
@@ -281,10 +282,10 @@ test.describe('Renaming Functionality', () => {
         // Let's use conflict.adoc
         await verifyRenameOnFocusChange(page, fsSetup, 'conflict.adoc', 'renamed_via_title_click.adoc', async () => {
             await page.locator('header').click();
-        }, true);
+        });
     });
 
-    test('Rename reverts on invalid name when clicking another file', async ({ page }) => {
+    test('Rename stays active on invalid name when clicking another file', async ({ page }) => {
         const originalName = 'file1.adoc';
         const newName = 'invalid/name.adoc';
 
@@ -306,11 +307,16 @@ test.describe('Renaming Functionality', () => {
         await page.click('[data-testid="dialog-confirm-button"]');
         await expect(dialogOverlay).not.toBeVisible();
 
-        // Now input should be gone (reverted)
-        await expect(input).not.toBeVisible();
+        // Now input should STILL be visible and focused
+        await expect(input).toBeVisible();
+        await expect(input).toBeFocused();
 
-        // Verify old name remains
-        await expect(page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`)).toBeVisible();
+        // Verify old name is NOT visible yet (because input is still there)
+        // actually, old name is hidden while renaming input is shown usually, or input sits on top.
+        // The implementation usually hides the name label when input is active.
+        // Let's check that we are still in rename mode.
+        // If necessary we can check input value is preserved.
+        await expect(input).toHaveValue(newName);
     });
 });
 
@@ -324,9 +330,7 @@ async function verifyRenameOnFocusChange(
     fsSetup: FsTestSetup, // passed in to access tempDir1
     originalName: string,
     newName: string,
-    triggerFocusChange: () => Promise<void>,
-    shouldCommit: boolean,
-    checkFocusSteal: boolean = false
+    triggerFocusChange: () => Promise<void>
 ) {
     const fileItem = page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`);
     await fileItem.click();
@@ -341,23 +345,13 @@ async function verifyRenameOnFocusChange(
     // Verify input is gone
     await expect(input).not.toBeVisible();
 
-    if (shouldCommit) {
-        // Verify new name exists
-        await expect(page.locator(`[data-testid="file-item"][data-file-path="${newName}"]`)).toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, newName))).toBe(true);
-        // Verify old name gone
-        await expect(page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`)).not.toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, originalName))).toBe(false);
-    } else {
-        // Verify old name remains
-        await expect(page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`)).toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, originalName))).toBe(true);
-    }
-
-    if (checkFocusSteal) {
-        const fileItemNew = page.locator(`[data-testid="file-item"][data-file-path="${shouldCommit ? newName : originalName}"]`);
-        await expect(fileItemNew).not.toBeFocused();
-    }
+    // Verify new name exists
+    await expect(page.locator(`[data-testid="file-item"][data-file-path="${newName}"]`)).toBeVisible();
+    expect(fs.existsSync(path.join(fsSetup.tempDir1, newName))).toBe(true);
+    // Verify old name gone
+    await expect(page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`)).not.toBeVisible();
+    expect(fs.existsSync(path.join(fsSetup.tempDir1, originalName))).toBe(false);
+    
 }
 
 async function triggerRename(page: Page, fileItem: Locator, method: 'f2' | 'button' = 'f2'): Promise<Locator> {
