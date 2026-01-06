@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { fileURLToPath } from 'url';
+import { enableTestGlobals } from './test_globals';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -105,7 +106,7 @@ export class FsTestSetup {
         });
 
         // Inject the mock implementation
-        await page.addInitScript('window.__ENABLE_TEST_GLOBALS__ = true;');
+        await enableTestGlobals(page);
         // Start one level up from this file (tests/helpers) -> tests/helpers/fs_mock.js
         await page.addInitScript({ path: path.join(__dirname, 'fs_mock.js') });
     }

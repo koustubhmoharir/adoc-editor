@@ -122,7 +122,7 @@ export class FileNodeModel extends EffectAwareModel {
         // If the window loses focus (e.g. alt-tab), we want to KEEP renaming state.
         // If the click is inside the app but outside input, we want to COMMIT.
         // We do NOT want to restore focus to the tree item, because the user likely clicked something else.
-        if (document.hasFocus()) {
+        if (document.hasFocus() && !dialog.isOpen) {
             this.commitRenaming(true, false);
         }
     }
@@ -975,6 +975,6 @@ class FileSystemStore extends EffectAwareModel {
 export const fileSystemStore = new FileSystemStore();
 
 // Expose for testing/debugging
-if (typeof window !== 'undefined' && (window as any).__ENABLE_TEST_GLOBALS__) {
-    (window as any).__TEST_fileSystemStore = fileSystemStore;
+if (typeof window !== 'undefined' && window.__ENABLE_TEST_GLOBALS__) {
+    window.__TEST_fileSystemStore = fileSystemStore;
 }

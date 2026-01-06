@@ -20,6 +20,7 @@ interface TestFixture {
 
 import { fileURLToPath } from 'url';
 import { enableTestLogging } from './helpers/test_logging.ts';
+import { enableTestGlobals } from './helpers/test_globals.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,7 +33,7 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
     test.beforeEach(async ({ page }) => {
         enableTestLogging(page);
-        await page.addInitScript('window.__ENABLE_TEST_GLOBALS__ = true;');
+        await enableTestGlobals(page);
         await page.goto('/?skip_restore=true');
         await page.waitForSelector('.monaco-editor');
 

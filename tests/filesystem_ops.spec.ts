@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
+import { waitForTestGlobals } from './helpers/test_globals';
 
 test.describe('Renaming Functionality', () => {
     let fsSetup: FsTestSetup;
@@ -15,7 +16,8 @@ test.describe('Renaming Functionality', () => {
         fsSetup.createFile('dir1', 'conflict.adoc', '== Conflict File');
         await fsSetup.init(page);
         await page.goto('/?skip_restore=true');
-        await page.waitForFunction(() => (window as any).__TEST_monaco !== undefined, null, { timeout: 10000 });
+        await waitForTestGlobals(page);
+        await page.waitForFunction(() => window.__TEST_monaco !== undefined, null, { timeout: 10000 });
         await page.click('button:has-text("Open Folder")');
         await expect(page.locator('text=file1.adoc')).toBeVisible();
     });
@@ -95,7 +97,7 @@ test.describe('Renaming Functionality', () => {
 
     test('Entering rename mode selects filename without extension', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        const input = await triggerRename(page, fileItem);
+        await triggerRename(page, fileItem);
 
         // Type 'changed' immediately to verify selection handling
         // We can't use completeRename here because we want to test that specific typing behavior (or verify selection first).
@@ -116,7 +118,7 @@ test.describe('Renaming Functionality', () => {
 
         // Ensure content loaded
         await expect(async () => {
-            const editorContent = await page.evaluate(() => (window as any).__TEST_editorStore.content);
+            const editorContent = await page.evaluate(() => window.__TEST_editorStore!.content);
             expect(editorContent).toBe('== File 1 content');
         }).toPass();
 
@@ -126,7 +128,7 @@ test.describe('Renaming Functionality', () => {
 
         // Verify editor content
         await expect(async () => {
-            const editorContent = await page.evaluate(() => (window as any).__TEST_editorStore.content);
+            const editorContent = await page.evaluate(() => window.__TEST_editorStore!.content);
             expect(editorContent).toBe('== File 1 content');
         }).toPass();
 
@@ -139,7 +141,7 @@ test.describe('Renaming Functionality', () => {
         await cancelRename(page, input2, 'broken.adoc');
 
         await expect(async () => {
-            const editorContent = await page.evaluate(() => (window as any).__TEST_editorStore.content);
+            const editorContent = await page.evaluate(() => window.__TEST_editorStore!.content);
             expect(editorContent).toBe('== File 1 content');
         }).toPass();
     });
@@ -194,12 +196,12 @@ test.describe('Renaming Functionality', () => {
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]'), 'Original file name not visible after disallowed rename').toBeVisible();
     });
 
-    test('Validation: Unsafe characters', async ({ page }) => {
+    test('Validation - Unsafe characters', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
         const input = await triggerRename(page, fileItem);
 
         await input.fill('bad/name.adoc');
-        await page.keyboard.press('Enter');
+        const enterPromise = page.keyboard.press('Enter');
 
         // Verify custom dialog
         const dialogMessage = page.locator('[data-testid="dialog-message"]');
@@ -207,6 +209,7 @@ test.describe('Renaming Functionality', () => {
 
         // Dismiss dialog
         await page.click('[data-testid="dialog-confirm-button"]');
+        await enterPromise;
         await expect(page.locator('[data-testid="dialog-overlay"]')).not.toBeVisible();
 
         // Input should still be visible because validation failed

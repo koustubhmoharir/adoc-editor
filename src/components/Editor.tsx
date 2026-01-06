@@ -3,9 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { editorStore } from '../store/EditorStore';
 import * as monaco from 'monaco-editor';
 
-// @ts-ignore
-if ((window as any).__ENABLE_TEST_GLOBALS__) {
-    // @ts-ignore
+if (window.__ENABLE_TEST_GLOBALS__) {
     window.__TEST_monaco = monaco;
 }
 

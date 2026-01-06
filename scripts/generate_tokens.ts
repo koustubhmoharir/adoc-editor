@@ -4,6 +4,7 @@ import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { getTokens, enrichTokens } from '../tests/helpers/monaco_helpers.ts';
 import { SERVER_URL, SERVER_PORT, SERVER_HOST } from './devserver.config.ts';
+import { enableTestGlobals } from '../tests/helpers/test_globals.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +15,7 @@ export async function generateTokens(files: string[]) {
     const browser = await chromium.launch();
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.addInitScript('window.__ENABLE_TEST_GLOBALS__ = true;');
+    await enableTestGlobals(page);
 
     let successCount = 0;
     let failCount = 0;

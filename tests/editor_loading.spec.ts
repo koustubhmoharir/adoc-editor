@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
+import { waitForTestGlobals } from './helpers/test_globals';
 
 test.describe('Editor Functionality', () => {
     let fsSetup: FsTestSetup;
@@ -23,7 +24,8 @@ test.describe('Editor Functionality', () => {
         await page.goto('/?skip_restore=true');
 
         // Wait for Monaco to be ready just in case
-        await page.waitForFunction(() => (window as any).__TEST_monaco !== undefined, null, { timeout: 10000 });
+        await waitForTestGlobals(page);
+        await page.waitForFunction(() => window.__TEST_monaco !== undefined, null, { timeout: 10000 });
     });
 
     test.afterEach(() => {
@@ -54,7 +56,7 @@ test.describe('Editor Functionality', () => {
         // Check editor content
         // We wait for content to be set
         await expect(async () => {
-            const editorContent = await page.evaluate(() => (window as any).__TEST_editorStore.content);
+            const editorContent = await page.evaluate(() => window.__TEST_editorStore!.content);
             expect(editorContent).toBe('== File 1\nContent of file 1.');
         }).toPass();
 
@@ -71,7 +73,7 @@ test.describe('Editor Functionality', () => {
 
         // Switch to dir2
         await page.evaluate(() => {
-            (window as any).__mockPickerConfig = { name: 'dir2', path: 'dir2' };
+            window.__mockPickerConfig = { name: 'dir2', path: 'dir2' };
         });
 
         // Open directory again (click current directory name in sidebar)
@@ -111,7 +113,7 @@ test.describe('Editor Functionality', () => {
 
         // Edit content
         await page.evaluate(() => {
-            (window as any).__TEST_editorStore.setContent('Updated content.');
+            window.__TEST_editorStore!.setContent('Updated content.');
         });
 
         // Dirty indicator visible
@@ -135,11 +137,11 @@ test.describe('Editor Functionality', () => {
         await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
 
         // Disable auto-save
-        await page.evaluate(() => (window as any).__TEST_DISABLE_AUTO_SAVE__ = true);
+        await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
 
         // Edit
         await page.evaluate(() => {
-            (window as any).__TEST_editorStore.setContent('Modified content before switch.');
+            window.__TEST_editorStore!.setContent('Modified content before switch.');
         });
 
         // Wait for dirty state
@@ -161,11 +163,11 @@ test.describe('Editor Functionality', () => {
         await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
 
         // Disable auto-save
-        await page.evaluate(() => (window as any).__TEST_DISABLE_AUTO_SAVE__ = true);
+        await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
 
         // Edit
         await page.evaluate(() => {
-            (window as any).__TEST_editorStore.setContent('Modified content before refresh.');
+            window.__TEST_editorStore!.setContent('Modified content before refresh.');
         });
 
         // Wait for dirty state
@@ -300,11 +302,11 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
         // Disable auto-save
-        await page.evaluate(() => (window as any).__TEST_DISABLE_AUTO_SAVE__ = true);
+        await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
 
         // Edit
         await page.evaluate(() => {
-            (window as any).__TEST_editorStore.setContent('Modified content.');
+            window.__TEST_editorStore!.setContent('Modified content.');
         });
         await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
 

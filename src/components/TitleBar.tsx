@@ -3,7 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { fileSystemStore } from '../store/FileSystemStore';
 import { themeStore, appName } from '../store/ThemeStore';
 import { editorStore } from '../store/EditorStore';
-import { dialog } from '../components/Dialog';
+
 import * as styles from './TitleBar.css';
 
 export const TitleBar: React.FC = observer(() => {

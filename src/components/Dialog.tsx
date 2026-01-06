@@ -19,6 +19,7 @@ export interface ConfirmOptions {
 }
 
 export interface Dialog {
+    readonly isOpen: boolean;
     readonly defaultTitle: string;
     alert(message: string, options?: AlertOptions): Promise<void>;
     confirm(message: string, options?: ConfirmOptions): Promise<boolean>;
@@ -42,6 +43,7 @@ class DialogStore implements Dialog {
     confirmButtonRef: React.RefObject<HTMLButtonElement> = React.createRef();
     private resolvePromise: ((value: any) => void) | null = null;
     private pendingResult: any = undefined;
+    get isOpen() { return this.dialogRef.current?.open ?? false; }
 
     @action
     private show(type: DialogType, message: string, options: AlertOptions | ConfirmOptions = {}): Promise<any> {
@@ -106,7 +108,6 @@ class DialogStore implements Dialog {
         this.close();
     }
 
-    @action
     onCancelled = (_e: React.SyntheticEvent<HTMLDialogElement, Event>) => {
         if (this.type === 'confirm') {
             this.pendingResult = false;
@@ -115,7 +116,6 @@ class DialogStore implements Dialog {
         }
     }
 
-    @action
     onClosed = () => {
         if (this.resolvePromise) {
             this.resolvePromise(this.pendingResult);
@@ -175,7 +175,7 @@ export const NativeDialog: React.FC = observer(() => {
                 </div>
                 <div className={styles.footer}>
                     {type === 'confirm' && (
-                        <button
+                        <button key="cancel"
                             className={styles.button}
                             onClick={dialogStore.handleCancel}
                             data-testid="dialog-cancel-button"
@@ -183,7 +183,7 @@ export const NativeDialog: React.FC = observer(() => {
                             {noText}
                         </button>
                     )}
-                    <button
+                    <button key="confirm"
                         className={styles.primaryButton}
                         onClick={dialogStore.handleConfirm}
                         ref={dialogStore.confirmButtonRef}
@@ -200,6 +200,6 @@ export const NativeDialog: React.FC = observer(() => {
 export const dialog: Dialog = dialogStore;
 
 // Expose for testing/debugging
-if (typeof window !== 'undefined' && (window as any).__ENABLE_TEST_GLOBALS__) {
-    (window as any).__TEST_dialog = dialog;
+if (typeof window !== 'undefined' && window.__ENABLE_TEST_GLOBALS__) {
+    window.__TEST_dialog = dialog;
 }
