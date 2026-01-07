@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
+import { waitForMonaco } from './helpers/monaco_helpers';
 
 test.describe('Search Functionality', () => {
     let fsSetup: FsTestSetup;
@@ -33,7 +34,7 @@ test.describe('Search Functionality', () => {
         await page.goto('/?skip_restore=true');
 
         // Wait for Monaco
-        await page.waitForFunction(() => (window as any).__TEST_monaco !== undefined, null, { timeout: 10000 });
+        await waitForMonaco(page);
 
         // Open folder
         await page.click('[data-testid="open-folder-button"]');

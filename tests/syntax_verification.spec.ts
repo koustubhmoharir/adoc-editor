@@ -5,7 +5,7 @@ import type { Token } from 'monaco-editor';
 // Import shared helpers. Note .js extension for resolution if needed, or rely on toolchain.
 // Since this is Playwright (TS), .ts import usually fine or .js if ESM.
 // Given strict browser/node separation in previous steps, let's try .js for consistency.
-import { getTokens, enrichTokens } from './helpers/monaco_helpers.ts';
+import { getTokens, enrichTokens, waitForMonaco } from './helpers/monaco_helpers.ts';
 
 interface TokenCheck {
     line: number;
@@ -38,11 +38,7 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
         await page.waitForSelector('.monaco-editor');
 
         // Wait for monaco to be exposed
-        try {
-            await page.waitForFunction(() => (window as any).__TEST_monaco !== undefined, null, { timeout: 10000 });
-        } catch (e) {
-            console.error('Monaco global not found after waiting');
-        }
+        await waitForMonaco(page);
     });
 
     for (const file of files) {

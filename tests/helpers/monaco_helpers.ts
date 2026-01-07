@@ -5,6 +5,16 @@ import type { Token } from 'monaco-editor';
 type Monaco = typeof monacoObj;
 
 /**
+ * Waits for the Monaco editor global instance to be available.
+ * 
+ * @param page - The Playwright Page object.
+ * @param timeout - Optional timeout in milliseconds (default: 10000).
+ */
+export async function waitForMonaco(page: Page, timeout: number = 10000): Promise<void> {
+    await page.waitForFunction(() => window.__TEST_monaco !== undefined, null, { timeout });
+}
+
+/**
  * Retrieves tokens from the Monaco editor instance on the page.
  * Assumes the editor is already loaded and the model has content.
  */

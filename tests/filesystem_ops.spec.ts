@@ -6,6 +6,9 @@ import { enableTestLogging } from './helpers/test_logging';
 import { waitForTestGlobals } from './helpers/test_globals';
 import { handleNextDialog, getLastDialogMessage } from './helpers/dialog_helpers';
 
+import { waitForMonaco } from './helpers/monaco_helpers';
+import { getEditorContent } from './helpers/editor_helpers';
+
 test.describe('Renaming Functionality', () => {
     let fsSetup: FsTestSetup;
     test.beforeEach(async ({ page }) => {
@@ -18,7 +21,7 @@ test.describe('Renaming Functionality', () => {
         await fsSetup.init(page);
         await page.goto('/?skip_restore=true');
         await waitForTestGlobals(page);
-        await page.waitForFunction(() => window.__TEST_monaco !== undefined, null, { timeout: 10000 });
+        await waitForMonaco(page);
         await page.click('button:has-text("Open Folder")');
         await expect(page.locator('text=file1.adoc')).toBeVisible();
     });
@@ -119,7 +122,7 @@ test.describe('Renaming Functionality', () => {
 
         // Ensure content loaded
         await expect(async () => {
-            const editorContent = await page.evaluate(() => window.__TEST_editorStore.content);
+            const editorContent = await getEditorContent(page);
             expect(editorContent).toBe('== File 1 content');
         }).toPass();
 
@@ -129,7 +132,7 @@ test.describe('Renaming Functionality', () => {
 
         // Verify editor content
         await expect(async () => {
-            const editorContent = await page.evaluate(() => window.__TEST_editorStore.content);
+            const editorContent = await getEditorContent(page);
             expect(editorContent).toBe('== File 1 content');
         }).toPass();
 
@@ -142,7 +145,7 @@ test.describe('Renaming Functionality', () => {
         await cancelRename(page, input2, 'broken.adoc');
 
         await expect(async () => {
-            const editorContent = await page.evaluate(() => window.__TEST_editorStore.content);
+            const editorContent = await getEditorContent(page);
             expect(editorContent).toBe('== File 1 content');
         }).toPass();
     });

@@ -1,19 +1,14 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
 import { waitForTestGlobals } from './helpers/test_globals';
 
-// Helper to set editor content via UI
-async function setEditorContent(page: Page, content: string) {
-    // Click the editor to focus it
-    await page.click('.monaco-editor');
-    // Select all content
-    await page.keyboard.press('Control+A');
-    // Type the new content
-    await page.keyboard.type(content);
-}
+// Helpers
+import { setEditorContent, getEditorContent, disableAutoSave } from './helpers/editor_helpers';
+import { waitForMonaco } from './helpers/monaco_helpers';
+import { setMockPickerConfig } from './helpers/mock_helpers';
 
 test.describe('Editor Functionality', () => {
     let fsSetup: FsTestSetup;
@@ -35,7 +30,7 @@ test.describe('Editor Functionality', () => {
 
         // Wait for Monaco to be ready just in case
         await waitForTestGlobals(page);
-        await page.waitForFunction(() => window.__TEST_monaco !== undefined, null, { timeout: 10000 });
+        await waitForMonaco(page);
     });
 
     test.afterEach(() => {
@@ -66,7 +61,7 @@ test.describe('Editor Functionality', () => {
         // Check editor content
         // We wait for content to be set
         await expect(async () => {
-            const editorContent = await page.evaluate(() => window.__TEST_editorStore.content);
+            const editorContent = await getEditorContent(page);
             expect(editorContent).toBe('== File 1\nContent of file 1.');
         }).toPass();
 
@@ -82,9 +77,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
         // Switch to dir2
-        await page.evaluate(() => {
-            window.__mockPickerConfig = { name: 'dir2', path: 'dir2' };
-        });
+        await setMockPickerConfig(page, { name: 'dir2', path: 'dir2' });
 
         // Open directory again (click current directory name in sidebar)
         await page.click('[data-testid="sidebar-header"]');
@@ -169,7 +162,7 @@ test.describe('Editor Functionality', () => {
         await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
 
         // Disable auto-save
-        await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
+        await disableAutoSave(page);
 
         // Edit
         await setEditorContent(page, 'Modified content before refresh.');
@@ -198,7 +191,7 @@ test.describe('Editor Functionality', () => {
 
         // Content should match
         await expect(async () => {
-            const editorContent = await page.evaluate(() => (window as any).__TEST_editorStore.content);
+            const editorContent = await getEditorContent(page);
             // Should be original content if no edits
             expect(editorContent).toBe('== File 1\nContent of file 1.');
         }).toPass();
@@ -306,7 +299,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
         // Disable auto-save
-        await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
+        await disableAutoSave(page);
 
         // Edit
         await setEditorContent(page, 'Modified content.');
