@@ -58,7 +58,21 @@ To inspect the tokenizer or UI state manually:
 3.  Paste the asciidoc content into the editor.
 4.  Use the **Tokens Visualization** sidebar to inspect token types.
 
+
 You can also open the directory of fixtures to visualize the tokens. Tokens that are verified as part of the test case are shown with a green check mark.
+
+### Test Helpers
+To maintain clean and robust tests, we use reusable helper functions located in `tests/helpers/`. Avoid accessing window globals directly.
+
+- **`editor_helpers.ts`**:
+    - `setEditorContent(page, content)`: Sets the editor content by simulating user interactions (Click -> Ctrl+A -> Type).
+    - `getEditorContent(page)`: Retrieves the current content from the editor store.
+    - `disableAutoSave(page)`: Disables the auto-save mechanism for the current test.
+- **`monaco_helpers.ts`**:
+    - `waitForMonaco(page)`: Waits for the Monaco editor instance to be fully initialized and exposed on the window object.
+- **`mock_helpers.ts`**:
+    - `setMockPickerConfig(page, config)`: Configures the mock directory picker to simulate different directory selections.
+
 
 ---
 
