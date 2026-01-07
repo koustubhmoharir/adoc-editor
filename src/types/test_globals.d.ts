@@ -1,8 +1,8 @@
 
-import { EditorStore } from '../store/EditorStore';
-import { FileSystemStore } from '../store/FileSystemStore';
-import * as monaco from 'monaco-editor';
-import { Dialog } from '../components/Dialog';
+import type { EditorStore } from '../store/EditorStore';
+import type { FileSystemStore } from '../store/FileSystemStore';
+import type * as monaco from 'monaco-editor';
+import type { Dialog } from '../components/Dialog';
 
 declare global {
     interface Window {

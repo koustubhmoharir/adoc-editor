@@ -19,7 +19,7 @@ Click the "Help" icon in the title bar to see this message again.
 `;
 // MARKER: WELCOME_CONTENT_END
 
-class EditorStore {
+export class EditorStore {
     @observable accessor content: string = WELCOME_CONTENT;
     editor: monaco.editor.IStandaloneCodeEditor | null = null;
     disposers: (() => void)[] = [];

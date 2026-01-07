@@ -11,6 +11,7 @@ export async function enableTestGlobals(page: Page) {
             if ((window as any).__TEST_dialogInterval) {
                 clearInterval((window as any).__TEST_dialogInterval);
             }
+            window.__TEST_lastDialogMessage = null;
 
             const startTime = Date.now();
             (window as any).__TEST_dialogInterval = setInterval(() => {

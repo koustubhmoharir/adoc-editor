@@ -207,13 +207,13 @@ test.describe('Renaming Functionality', () => {
         await handleNextDialog(page, 'confirm');
         await page.keyboard.press('Enter');
 
-        // Verify message
-        const message = await getLastDialogMessage(page);
-        expect(message).toContain('Invalid character');
-
         // Input should still be visible because validation failed
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
         await expect(page.locator('[data-testid="rename-input"]')).toBeFocused();
+
+        // Verify message
+        const message = await getLastDialogMessage(page);
+        expect(message).toContain('Invalid character');
     });
 
     test('Validation - Conflict', async ({ page }) => {
@@ -226,11 +226,11 @@ test.describe('Renaming Functionality', () => {
         await handleNextDialog(page, 'cancel');
         await page.keyboard.press('Enter');
 
-        expect(await getLastDialogMessage(page)).toContain('already exists');
-
         // Should still be in rename mode (dialog dismissed)
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
         await expect(page.locator('[data-testid="rename-input"]')).toBeFocused();
+
+        expect(await getLastDialogMessage(page)).toContain('already exists');
 
         // 2. Accept override
         // Retrigger enter
