@@ -13,16 +13,15 @@ test.describe('Dialog API', () => {
 
         // Wait for dialog global
         await waitForTestGlobals(page);
-        await page.waitForFunction(() => window.__TEST_dialog !== undefined);
     });
 
     test('alert(message, options) should render correctly and resolve on OK', async ({ page }) => {
         let defaultTitle = await page.evaluate(() => {
-            return window.__TEST_dialog!.defaultTitle;
+            return window.__TEST_dialog.defaultTitle;
         });
         // 1. Basic Alert
         let alertPromise = page.evaluate(() => {
-            return window.__TEST_dialog!.alert('Basic alert message');
+            return window.__TEST_dialog.alert('Basic alert message');
         });
 
         await expect(page.getByTestId('dialog-overlay')).toBeVisible();
@@ -37,7 +36,7 @@ test.describe('Dialog API', () => {
 
         // 2. Alert with Options (Title, Icon, Custom Button)
         alertPromise = page.evaluate(() => {
-            return window.__TEST_dialog!.alert('Error occurred', {
+            return window.__TEST_dialog.alert('Error occurred', {
                 title: 'Error Title',
                 icon: 'error',
                 okText: 'Understood'
@@ -64,11 +63,11 @@ test.describe('Dialog API', () => {
 
     test('confirm(message, options) should render correctly and resolve true/false', async ({ page }) => {
         let defaultTitle = await page.evaluate(() => {
-            return window.__TEST_dialog!.defaultTitle;
+            return window.__TEST_dialog.defaultTitle;
         });
         // 1. Confirm with defaults
         let confirmPromise = page.evaluate(() => {
-            return window.__TEST_dialog!.confirm('Are you sure?');
+            return window.__TEST_dialog.confirm('Are you sure?');
         });
 
         await expect(page.getByTestId('dialog-overlay')).toBeVisible();
@@ -87,7 +86,7 @@ test.describe('Dialog API', () => {
 
         // 2. Confirm with Options
         confirmPromise = page.evaluate(() => {
-            return window.__TEST_dialog!.confirm('Delete data?', {
+            return window.__TEST_dialog.confirm('Delete data?', {
                 title: 'Unsafe Action',
                 yesText: 'Delete!',
                 noText: 'Keep it'

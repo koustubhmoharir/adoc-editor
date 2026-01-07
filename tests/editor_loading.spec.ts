@@ -1,9 +1,19 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
 import { waitForTestGlobals } from './helpers/test_globals';
+
+// Helper to set editor content via UI
+async function setEditorContent(page: Page, content: string) {
+    // Click the editor to focus it
+    await page.click('.monaco-editor');
+    // Select all content
+    await page.keyboard.press('Control+A');
+    // Type the new content
+    await page.keyboard.type(content);
+}
 
 test.describe('Editor Functionality', () => {
     let fsSetup: FsTestSetup;
@@ -56,7 +66,7 @@ test.describe('Editor Functionality', () => {
         // Check editor content
         // We wait for content to be set
         await expect(async () => {
-            const editorContent = await page.evaluate(() => window.__TEST_editorStore!.content);
+            const editorContent = await page.evaluate(() => window.__TEST_editorStore.content);
             expect(editorContent).toBe('== File 1\nContent of file 1.');
         }).toPass();
 
@@ -112,9 +122,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
         // Edit content
-        await page.evaluate(() => {
-            window.__TEST_editorStore!.setContent('Updated content.');
-        });
+        await setEditorContent(page, 'Updated content.');
 
         // Dirty indicator visible
         await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
@@ -140,9 +148,7 @@ test.describe('Editor Functionality', () => {
         await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
 
         // Edit
-        await page.evaluate(() => {
-            window.__TEST_editorStore!.setContent('Modified content before switch.');
-        });
+        await setEditorContent(page, 'Modified content before switch.');
 
         // Wait for dirty state
         await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
@@ -166,9 +172,7 @@ test.describe('Editor Functionality', () => {
         await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
 
         // Edit
-        await page.evaluate(() => {
-            window.__TEST_editorStore!.setContent('Modified content before refresh.');
-        });
+        await setEditorContent(page, 'Modified content before refresh.');
 
         // Wait for dirty state
         await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
@@ -305,9 +309,7 @@ test.describe('Editor Functionality', () => {
         await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
 
         // Edit
-        await page.evaluate(() => {
-            window.__TEST_editorStore!.setContent('Modified content.');
-        });
+        await setEditorContent(page, 'Modified content.');
         await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
 
         // Create new file

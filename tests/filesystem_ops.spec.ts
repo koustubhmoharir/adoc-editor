@@ -119,7 +119,7 @@ test.describe('Renaming Functionality', () => {
 
         // Ensure content loaded
         await expect(async () => {
-            const editorContent = await page.evaluate(() => window.__TEST_editorStore!.content);
+            const editorContent = await page.evaluate(() => window.__TEST_editorStore.content);
             expect(editorContent).toBe('== File 1 content');
         }).toPass();
 
@@ -129,7 +129,7 @@ test.describe('Renaming Functionality', () => {
 
         // Verify editor content
         await expect(async () => {
-            const editorContent = await page.evaluate(() => window.__TEST_editorStore!.content);
+            const editorContent = await page.evaluate(() => window.__TEST_editorStore.content);
             expect(editorContent).toBe('== File 1 content');
         }).toPass();
 
@@ -142,7 +142,7 @@ test.describe('Renaming Functionality', () => {
         await cancelRename(page, input2, 'broken.adoc');
 
         await expect(async () => {
-            const editorContent = await page.evaluate(() => window.__TEST_editorStore!.content);
+            const editorContent = await page.evaluate(() => window.__TEST_editorStore.content);
             expect(editorContent).toBe('== File 1 content');
         }).toPass();
     });
