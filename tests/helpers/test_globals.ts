@@ -1,39 +1,95 @@
 
 import { Page } from '@playwright/test';
 
+interface DialogHandle {
+    getMessage: () => string;
+}
+
+// Module-level queue on the Playwright side (node)
+// It stores pending handlers that we have created but not yet fulfilled by the browser.
+const handlersQueue: ((msg: string) => void)[] = [];
+
+/**
+ * Internal function called by the browser when a dialog is handled.
+ */
+function onDialogHandled(message: string) {
+    const handler = handlersQueue.shift();
+    if (handler) {
+        handler(message);
+    } else {
+        console.warn('onDialogHandled called but no handler was waiting in the queue.');
+    }
+}
+
+/**
+ * Schedules a dialog action to be performed automatically when the dialog appears.
+ * Returns a handler object that can be used to synchronously retrieve the dialog message
+ * *after* the UI action has completed.
+ * 
+ * @param page Playwright Page object
+ * @param action The action to perform ('confirm' or 'cancel')
+ * @returns An object with a getMessage() method.
+ */
+export async function handleNextDialog(page: Page, action: 'confirm' | 'cancel' = 'confirm'): Promise<DialogHandle> {
+    let capturedMessage: string | undefined;
+
+    // Create a promise that will be resolved when the exposed onDialogHandled is called
+    handlersQueue.push(msg => { capturedMessage = msg; });
+
+    // Schedule the action in the browser
+    await page.evaluate((act) => {
+        (window as any).__TEST_scheduleDialogAction(act);
+    }, action);
+
+    return {
+        getMessage: () => {
+            if (capturedMessage === undefined) {
+                throw new Error("Dialog action was expected but the dialog callback was never invoked. This usually means the action did not trigger a dialog as expected.");
+            }
+            return capturedMessage;
+        }
+    };
+}
+
 export async function enableTestGlobals(page: Page) {
+    // Expose the handler function to the browser context
+    await page.exposeFunction('__TEST_onDialogHandled', onDialogHandled);
+
     await page.addInitScript(() => {
         window.__ENABLE_TEST_GLOBALS__ = true;
-        window.__TEST_lastDialogMessage = null;
+        const dialogActionsQueue: ('confirm' | 'cancel')[] = [];
+        let dialogInterval: number | null = null;
 
-        window.__TEST_scheduleDialogAction = (action: 'confirm' | 'cancel') => {
-            // Clear any existing interval to avoid conflicts
-            if ((window as any).__TEST_dialogInterval) {
-                clearInterval((window as any).__TEST_dialogInterval);
-            }
-            window.__TEST_lastDialogMessage = null;
+        (window as any).__TEST_scheduleDialogAction = (action: 'confirm' | 'cancel') => {
+            dialogActionsQueue.push(action);
 
-            const startTime = Date.now();
-            (window as any).__TEST_dialogInterval = setInterval(() => {
-                // Timeout after 3 seconds
-                if (Date.now() - startTime > 3000) {
-                    clearInterval((window as any).__TEST_dialogInterval);
-                    console.warn('__TEST_scheduleDialogAction: Timed out waiting for dialog');
+            // Start the watcher loop only if not already running
+            if (dialogInterval) return;
+
+            dialogInterval = window.setInterval(() => {
+                const dialog = window.__TEST_dialog;
+
+                // Stop if queue empty
+                if (dialogActionsQueue.length === 0) {
+                    if (dialogInterval != null) {
+                        clearInterval(dialogInterval);
+                        dialogInterval = null;
+                    }
                     return;
                 }
 
-                const dialog = window.__TEST_dialog; // Access exposed dialog store
-                if (dialog && dialog.isOpen) {
-                    // Capture message (helper might want to read it later)
-                    // We can read from the store or DOM. Store is cleaner if available.
-                    // But we can also look at the DOM for robustness.
-                    // Let's use the DOM since our tests usually align with DOM.
-                    const msgEl = document.querySelector('[data-testid="dialog-message"]');
-                    if (msgEl) {
-                        window.__TEST_lastDialogMessage = msgEl.textContent;
-                    }
+                // If dialog is open and we have a pending action
+                if (dialog.isOpen) {
+                    const action = dialogActionsQueue.shift(); // Get next action
 
-                    // Click the button
+                    // Capture message via DOM for consistency
+                    const msgEl = document.querySelector('[data-testid="dialog-message"]');
+                    const message = msgEl ? msgEl.textContent : '';
+
+                    // Notify Playwright
+                    (window as any).__TEST_onDialogHandled(message);
+
+                    // Perform action
                     const btnSelector = action === 'confirm'
                         ? '[data-testid="dialog-confirm-button"]'
                         : '[data-testid="dialog-cancel-button"]';
@@ -41,7 +97,8 @@ export async function enableTestGlobals(page: Page) {
                     const btn = document.querySelector(btnSelector) as HTMLButtonElement | null;
                     if (btn) {
                         btn.click();
-                        clearInterval((window as any).__TEST_dialogInterval);
+                    } else {
+                        console.error(`__TEST_scheduleDialogAction: Button ${action} not found`);
                     }
                 }
             }, 50);

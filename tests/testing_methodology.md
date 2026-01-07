@@ -72,6 +72,32 @@ To maintain clean and robust tests, we use reusable helper functions located in 
     - `waitForMonaco(page)`: Waits for the Monaco editor instance to be fully initialized and exposed on the window object.
 - **`mock_helpers.ts`**:
     - `setMockPickerConfig(page, config)`: Configures the mock directory picker to simulate different directory selections.
+- **`test_globals.ts`**:
+    - `handleNextDialog(page, action)`: Schedules the next dialog to be automatically handled. Returns a handler object.
+    - `handler.getMessage()`: Synchronously retrieves the message of the handled dialog. **Must be called AFTER the UI action has completed.**
+
+    **Usage Pattern (Critical):**
+    1. Schedule the handler *before* the action.
+    2. Perform the action.
+    3. Verify UI side-effects (ensure action completed).
+    4. Call `getMessage()` to verify specific dialog content.
+
+    ```typescript
+    // Import from test_globals
+    import { handleNextDialog } from './helpers/test_globals';
+
+    // 1. Schedule handling BEFORE the action
+    const dialogHandle = await handleNextDialog(page, 'confirm');
+
+    // 2. Perform action that triggers dialog
+    await page.click('button#delete-file');
+
+    // 3. Verify UI changes (wait for action to complete)
+    await expect(page.locator('text=Deleted File')).not.toBeVisible();
+
+    // 4. Verify dialog message
+    expect(dialogHandle.getMessage()).toBe('Are you sure you want to delete this file?');
+    ```
 
 
 ---

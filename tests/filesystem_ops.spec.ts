@@ -4,7 +4,7 @@ import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
 import { waitForTestGlobals } from './helpers/test_globals';
-import { handleNextDialog, getLastDialogMessage } from './helpers/dialog_helpers';
+import { handleNextDialog } from './helpers/test_globals';
 
 import { waitForMonaco } from './helpers/monaco_helpers';
 import { getEditorContent } from './helpers/editor_helpers';
@@ -207,16 +207,15 @@ test.describe('Renaming Functionality', () => {
         await input.fill('bad/name.adoc');
 
         // Schedule dialog handling BEFORE the blocking action (Enter)
-        await handleNextDialog(page, 'confirm');
+        const dialogHandle = await handleNextDialog(page, 'confirm');
         await page.keyboard.press('Enter');
 
         // Input should still be visible because validation failed
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
         await expect(page.locator('[data-testid="rename-input"]')).toBeFocused();
 
-        // Verify message
-        const message = await getLastDialogMessage(page);
-        expect(message).toContain('Invalid character');
+        // Verify message synchronously
+        expect(dialogHandle.getMessage()).toContain('Invalid character');
     });
 
     test('Validation - Conflict', async ({ page }) => {
@@ -226,18 +225,21 @@ test.describe('Renaming Functionality', () => {
         // 1. Decline override
         await input.fill('conflict.adoc');
 
-        await handleNextDialog(page, 'cancel');
+        // 1. Decline override
+        await input.fill('conflict.adoc');
+
+        let dialogHandle = await handleNextDialog(page, 'cancel');
         await page.keyboard.press('Enter');
 
         // Should still be in rename mode (dialog dismissed)
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
         await expect(page.locator('[data-testid="rename-input"]')).toBeFocused();
 
-        expect(await getLastDialogMessage(page)).toContain('already exists');
+        expect(dialogHandle.getMessage()).toContain('already exists');
 
         // 2. Accept override
         // Retrigger enter
-        await handleNextDialog(page, 'confirm');
+        dialogHandle = await handleNextDialog(page, 'confirm');
         await page.keyboard.press('Enter');
 
         // Should succeed now
@@ -287,15 +289,15 @@ test.describe('Renaming Functionality', () => {
         // Trigger the focus change (click other file)
         const otherFile = page.locator('[data-testid="file-item"][data-file-path="file2.adoc"]');
 
-        await handleNextDialog(page, 'confirm');
+        const dialogHandle = await handleNextDialog(page, 'confirm');
         await otherFile.click();
-
-        // Expect Alert
-        expect(await getLastDialogMessage(page)).toContain('Invalid character');
 
         // Now input should STILL be visible and focused
         await expect(input).toBeVisible();
         await expect(input).toBeFocused();
+
+        // Expect Alert
+        expect(dialogHandle.getMessage()).toContain('Invalid character');
 
         // Verify old name is NOT visible yet (because input is still there)
         // actually, old name is hidden while renaming input is shown usually, or input sits on top.
