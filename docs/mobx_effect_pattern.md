@@ -55,19 +55,7 @@ export const MyComponent = observer(({ model }) => {
 
 ## How this works
 
-`EffectAwareModel` is a base class for models that need to schedule side effects after a render. It maintains a queue of callbacks in `effectCallbacks` and provides a method `scheduleEffect` to add new callbacks to the queue.
+`EffectAwareModel` is a base class for models that need to schedule side effects after a render. It maintains a queue of callbacks in `effectCallbacks` and provides a method `scheduleEffect` to add new callbacks to the queue. Calling `scheduleEffect` also ensures that the component that calls `useScheduledEffects` on this model will re-render.
 
-`useScheduledEffects` is a React hook that consumes the queue of a model after every render (empty effect dependencies array). It is used in the component that needs to perform the side effect. It calls `consumeEffects` on the model, which executes all callbacks in the queue and clears it.
+`useScheduledEffects` is a React hook that consumes the queue of a model after every render (empty effect dependencies array). It is used in the component that needs to perform the side effect. It results in a call to `consumeEffects` on the model, which executes all callbacks in the queue and clears it.
 
-1.  **Why `EffectAwareModel.effectCallbacks` is NOT `@observable`**:
-    *   It is only accessed inside the `useScheduledEffects` hook, which runs *after* render.
-    *   Making it observable would add unnecessary overhead without any benefit, as we don't need to trigger re-renders when effects are scheduled.
-
-2.  **Why `EffectAwareModel.scheduleEffect` is NOT `@action`**:
-    *   Since `effectCallbacks` is a plain array (not observable), modifying it does not constitute a MobX state mutation.
-    *   Therefore, the method simply pushing to the queue does not need to be wrapped in an action.
-
-3.  **Why `EffectAwareModel.consumeEffects` IS `@action`**:
-    *   The callbacks executed by `consumeEffects` might themselves modify observable state.
-    *   Since these state modifications happen synchronously within the loop, wrapping the consumer in an action ensures distinct state updates are batched.
-    *   Even if the callback doesn't modify state, it's safer to treat the consumption phase as an explicit action boundary.

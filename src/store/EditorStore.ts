@@ -23,6 +23,7 @@ export class EditorStore {
     @observable accessor content: string = WELCOME_CONTENT;
     editor: monaco.editor.IStandaloneCodeEditor | null = null;
     disposers: (() => void)[] = [];
+    focusCurrentFileItem: (() => void) | undefined = undefined;
 
     @action
     setContent(newContent: string) {
@@ -42,6 +43,11 @@ export class EditorStore {
     @action
     setTheme(theme: string) {
         monaco.editor.setTheme(theme);
+    }
+
+    @action
+    focusEditor() {
+        this.editor?.focus();
     }
 
     @action
@@ -67,6 +73,12 @@ export class EditorStore {
             });
             this.disposers.push(() => contentDisposable.dispose());
         }
+
+        // Handle Escape to focus sidebar
+        // PRECONDITION: Only if other widgets are NOT visible
+        this.editor.addCommand(monaco.KeyCode.Escape, () => {
+            this.focusCurrentFileItem?.();
+        }, '!findWidgetVisible && !suggestWidgetVisible && !parameterHintsVisible && !referenceSearchVisible && !renameInputVisible');
     }
 
     @action

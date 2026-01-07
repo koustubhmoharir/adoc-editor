@@ -131,7 +131,7 @@ export class FileNodeModel extends EffectAwareModel {
     }
 
     @action
-    handleRenameInputBlur(e: React.FocusEvent) {
+    handleRenameInputBlur(_e: React.FocusEvent) {
         //console.log('handleRenameInputBlur', { hasFocus: document.hasFocus(), dialogOpen: dialog.isOpen, relatedTarget: e.relatedTarget });
         // If the window loses focus (e.g. alt-tab), we want to KEEP renaming state.
         // If the click is inside the app but outside input, we want to COMMIT.
@@ -155,6 +155,23 @@ export class FileNodeModel extends EffectAwareModel {
             e.preventDefault();
             e.stopPropagation();
             this.delete();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (this.kind === 'file') {
+                fileSystemStore.selectNode(this, 'focus');
+            } else {
+                fileSystemStore.toggleDirectory(this.path);
+            }
+        } else if (e.key === ' ' && this.kind === 'directory') {
+            e.preventDefault();
+            e.stopPropagation();
+            fileSystemStore.toggleDirectory(this.path);
+        } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            e.preventDefault();
+            e.stopPropagation();
+            const direction = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right';
+            fileSystemStore.navigate(direction);
         }
     }
 }
@@ -180,8 +197,25 @@ class FileSystemStore extends EffectAwareModel {
     @observable accessor searchQuery: string = '';
     @observable accessor isSearchVisible: boolean = false;
 
-    // Internal state for focus management
-    pendingFocusPath: string | null = null;
+    @observable accessor highlightedPath: string | null = null;
+    loadTimeout: number | null = null;
+
+    @computed
+    get visibleNodes(): FileNodeModel[] {
+        const result: FileNodeModel[] = [];
+        const traverse = (nodes: FileNodeModel[]) => {
+            for (const node of nodes) {
+                result.push(node);
+                if (node.kind === 'directory' && !this.isCollapsed(node.path) && node.children) {
+                    traverse(node.children);
+                }
+            }
+        };
+        traverse(this.fileTree);
+        return result;
+    }
+
+
 
 
     get allFiles(): FileNodeModel[] {
@@ -213,7 +247,7 @@ class FileSystemStore extends EffectAwareModel {
     constructor() {
         super();
         this.restoreDirectory();
-
+        editorStore.focusCurrentFileItem = this.focusCurrentFileInSidebar;
         // React to editor content changes to set dirty state
         reaction(
             () => editorStore.content,
@@ -335,6 +369,7 @@ class FileSystemStore extends EffectAwareModel {
                     if (await node.handle.isSameEntry(this.currentFileHandle!)) {
                         runInAction(() => {
                             this.currentFileHandle = node.handle as FileSystemFileHandle;
+                            this.highlightedPath = node.path;
                         });
                         return true;
                     }
@@ -362,7 +397,7 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    async refreshTree() {
+    async refreshTree(focusPath?: string) {
         if (!this.directoryHandle) return;
 
         // This might trigger a prompt if not granted, so it should ideally be called from a user action 
@@ -376,10 +411,10 @@ class FileSystemStore extends EffectAwareModel {
             this.syncSelectedFileWithTree();
 
             // Handle pending focus
-            if (this.pendingFocusPath) {
+            if (focusPath) {
                 const findNode = (nodes: FileNodeModel[]): FileNodeModel | undefined => {
                     for (const node of nodes) {
-                        if (node.path === this.pendingFocusPath) return node;
+                        if (node.path === focusPath) return node;
                         if (node.children) {
                             const found = findNode(node.children);
                             if (found) return found;
@@ -392,7 +427,6 @@ class FileSystemStore extends EffectAwareModel {
                         nodeToFocus.treeItemRef.current?.focus();
                     });
                 }
-                this.pendingFocusPath = null;
             }
         });
     }
@@ -432,7 +466,110 @@ class FileSystemStore extends EffectAwareModel {
         });
     }
 
-    async selectFile(node: FileNodeModel) {
+
+
+    @action
+    setHighlightedPath(path: string | null) {
+        this.highlightedPath = path;
+    }
+
+    @action
+    selectNode(node: FileNodeModel, loadContent: 'focus' | 'show' | 'delay') {
+        this.setHighlightedPath(node.path);
+
+        if (loadContent !== 'focus') {
+            node.scheduleEffect(() => {
+                node.treeItemRef.current?.focus();
+            });
+        }
+
+        if (this.loadTimeout) {
+            window.clearTimeout(this.loadTimeout);
+            this.loadTimeout = null;
+        }
+
+        if (node.kind === 'file') {
+            if (loadContent === 'delay') {
+                // Debounce load
+                this.loadTimeout = window.setTimeout(() => {
+                    this.loadFileContentInEditor(node);
+                }, 750);
+            } else {
+                this.loadFileContentInEditor(node).then(() => {
+                    if (loadContent === 'focus') {
+                        editorStore.focusEditor();
+                    }
+                });
+            }
+        }
+    }
+
+    @action
+    navigate(direction: 'up' | 'down' | 'left' | 'right') {
+        const visible = this.visibleNodes;
+        const currentIndex = visible.findIndex(n => n.path === this.highlightedPath);
+
+        // If nothing selected, select first
+        if (currentIndex === -1 && visible.length > 0) {
+            this.selectNode(visible[0], 'delay');
+            return;
+        }
+
+        if (currentIndex === -1) return;
+
+        const currentNode = visible[currentIndex];
+
+        if (direction === 'up') {
+            if (currentIndex > 0) {
+                this.selectNode(visible[currentIndex - 1], 'delay');
+            }
+        } else if (direction === 'down') {
+            if (currentIndex < visible.length - 1) {
+                this.selectNode(visible[currentIndex + 1], 'delay');
+            }
+        } else if (direction === 'left') {
+            if (currentNode.kind === 'directory' && !this.isCollapsed(currentNode.path)) {
+                // Collapse
+                this.toggleDirectory(currentNode.path);
+            } else {
+                // Move to parent
+                // Move to parent
+                // const parent = this.findParentNode(this.fileTree, currentNode.handle); 
+                // Using path is better for parent logic if we had it, but findParentNode uses handle.
+                // Let's assume handle equality works or use path logic.
+                // Alternative: find parent in visible nodes?
+                // Parent is always "above" in visible nodes list if we traverse recursively.
+                // We can find the closest directory above that is a prefix of current path?
+
+                // Simpler: Use existing parent logic or just find strictly via path string manipulation
+                const lastSlash = currentNode.path.lastIndexOf('/');
+                if (lastSlash !== -1) {
+                    const parentPath = currentNode.path.substring(0, lastSlash);
+                    const parentNode = visible.find(n => n.path === parentPath);
+                    if (parentNode) {
+                        this.selectNode(parentNode, 'delay');
+                    }
+                }
+            }
+        } else if (direction === 'right') {
+            if (currentNode.kind === 'directory') {
+                if (this.isCollapsed(currentNode.path)) {
+                    this.toggleDirectory(currentNode.path);
+                } else {
+                    // Move to first child (next in visible list)
+                    if (currentIndex < visible.length - 1) {
+                        // Verify next one is actually a child?
+                        // If expanded, next visible IS first child.
+                        this.selectNode(visible[currentIndex + 1], 'delay');
+                    }
+                }
+            }
+        }
+    }
+
+
+
+    async loadFileContentInEditor(node: FileNodeModel) {
         if (node.kind !== 'file') return;
 
 
@@ -463,6 +600,7 @@ class FileSystemStore extends EffectAwareModel {
         runInAction(() => {
             this.isLoading = true;
             this.currentFileHandle = fileHandle;
+            this.highlightedPath = node.path;
         });
 
         editorStore.setContent(content);
@@ -473,6 +611,57 @@ class FileSystemStore extends EffectAwareModel {
         });
 
         this.startAutoSave();
+    }
+
+    @action.bound
+    focusCurrentFileInSidebar() {
+        if (!this.currentFileHandle) return;
+
+        const node = this.findNodeByHandle(this.currentFileHandle);
+        if (!node) return;
+
+        // 1. Highlight
+        this.setHighlightedPath(node.path);
+
+        // 2. Expand all parents
+        const parts = node.path.split('/');
+        parts.pop(); // Remove file itself
+
+        let currentPath = '';
+        runInAction(() => {
+            for (const part of parts) {
+                currentPath = currentPath ? `${currentPath}/${part}` : part;
+                this.collapsedPaths.delete(currentPath);
+            }
+        });
+
+        this.scheduleEffect(() => {
+            node.treeItemRef.current?.scrollIntoView({ block: 'nearest' });
+            node.treeItemRef.current?.focus();
+        });
+
+        // Trigger generic reaction/persist collapsed paths if needed?
+        // toggleDirectory does persist. Here we batch.
+        try {
+            set('collapsedPaths', Array.from(this.collapsedPaths));
+        } catch (e) {
+            console.warn('Failed to persist collapsed paths:', e);
+        }
+    }
+
+    findNodeByHandle(handle: FileSystemHandle): FileNodeModel | undefined {
+        const find = (nodes: FileNodeModel[]): FileNodeModel | undefined => {
+            for (const node of nodes) {
+                if (node.kind === 'file' && node.handle === handle) return node; // Reference check
+                // Fallback to isSameEntry not easy sync. 
+                if (node.children) {
+                    const found = find(node.children);
+                    if (found) return found;
+                }
+            }
+        }
+        // Try async check if reference fails? No, syncSelectedFileWithTree fixes references.
+        return find(this.fileTree);
     }
 
     async clearSelection() {
@@ -664,7 +853,7 @@ class FileSystemStore extends EffectAwareModel {
 
             const newNode = await findNodeAsync(this.fileTree);
             if (newNode) {
-                await this.selectFile(newNode);
+                await this.loadFileContentInEditor(newNode);
             }
 
         } catch (error) {
@@ -818,14 +1007,8 @@ class FileSystemStore extends EffectAwareModel {
                 // We basically need parent path + finalName
                 const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
                 const newPath = parentPath ? `${parentPath}/${finalName}` : finalName;
-                if (focusAfterRename) {
-                    this.pendingFocusPath = newPath;
-                }
-                else {
-                    this.pendingFocusPath = null;
-                }
 
-                await this.refreshTree();
+                await this.refreshTree(focusAfterRename ? newPath : undefined);
                 //console.log('renameFile: success', finalName);
                 return true;
             } catch (error) {
@@ -991,7 +1174,7 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     handleSearchResultClick(item: FileNodeModel) {
-        this.selectFile(item);
+        this.loadFileContentInEditor(item);
         this.closeSearch();
     }
 

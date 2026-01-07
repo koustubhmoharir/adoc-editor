@@ -5,7 +5,8 @@ import * as styles from './Sidebar.css';
 import { useScheduledEffects } from '../hooks/useScheduledEffects';
 
 const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
-    const isSelected = fileSystemStore.currentFileHandle === node.handle;
+
+    const isSelected = fileSystemStore.highlightedPath === node.path;
     const isRenaming = node.isRenaming;
 
     // Consume effects after every render
@@ -16,8 +17,9 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
             <div
                 ref={node.treeItemRef}
                 className={`${styles.fileItem} ${isSelected ? styles.selected : ''}`}
-                onClick={() => {
-                    if (!isRenaming) fileSystemStore.selectFile(node);
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (!isRenaming) fileSystemStore.selectNode(node, 'show');
                 }}
                 onKeyDown={(e) => node.handleTreeItemKeyDown(e)}
                 tabIndex={isSelected ? 0 : -1} // Enable keyboard focus/events
@@ -87,16 +89,18 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
 
     const isCollapsed = fileSystemStore.isCollapsed(node.path);
 
-    const toggle = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        fileSystemStore.toggleDirectory(node.path);
-    };
-
     return (
         <div className={styles.directoryContainer}>
             <div
-                className={styles.directoryItem}
-                onClick={toggle}
+                className={`${styles.directoryItem} ${isSelected ? styles.selected : ''}`}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    fileSystemStore.selectNode(node, 'show');
+                    fileSystemStore.toggleDirectory(node.path);
+                }}
+                onKeyDown={(e) => node.handleTreeItemKeyDown(e)}
+                tabIndex={isSelected ? 0 : -1}
+                ref={node.treeItemRef}
                 data-testid="directory-item"
                 data-dir-path={node.path}
             >
