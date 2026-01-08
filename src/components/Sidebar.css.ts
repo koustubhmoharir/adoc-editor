@@ -65,19 +65,23 @@ export const selected = style({
 
 export const icon = style({
     flexShrink: 0,
-    marginRight: '6px',
     opacity: 1 // Ensure full opacity for colors
 });
 
-export const folderIcon = style({
-    color: themeVars.color.folderIcon
-});
+export const folderIcon = style([icon, {
+    color: themeVars.color.folderIcon,
+    margin: '4px',
+}]);
 
-export const fileIcon = style({
+export const rootFolderIcon = style([folderIcon, {
+    margin: '0 8px 0 0',
+}]);
+
+export const fileIcon = style([icon, {
     color: themeVars.color.fileIcon,
     width: '19px',
     marginRight: '4px',
-});
+}]);
 
 export const header = style({
     padding: '4px 4px 4px 8px',
@@ -278,3 +282,16 @@ export const renameInput = style({
     borderRadius: '2px'
 });
 
+
+export const directoryToggleButton = style({
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    color: 'inherit',
+    padding: '0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: '4px',
+    fontSize: 'inherit',
+});

@@ -52,7 +52,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                         >
                             <i className="fas fa-pencil" />
                         </button>) :
-                    <i className={`fas fa-file-lines ${styles.icon} ${styles.fileIcon}`} />
+                    <i className={`fas fa-file-lines ${styles.fileIcon}`} />
                 }
 
                 {isRenaming ? (
@@ -96,7 +96,6 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 onClick={(e) => {
                     e.stopPropagation();
                     fileSystemStore.selectNode(node, 'show');
-                    fileSystemStore.toggleDirectory(node.path);
                 }}
                 onKeyDown={(e) => node.handleTreeItemKeyDown(e)}
                 tabIndex={isSelected ? 0 : -1}
@@ -104,7 +103,21 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 data-testid="directory-item"
                 data-dir-path={node.path}
             >
-                <i className={`fas ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} ${styles.icon} ${styles.folderIcon}`} />
+                <button
+                    className={styles.directoryToggleButton}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        // If not selected, select it as well? User request says: "Clicking it should toggle and select (if not already selected)."
+                        if (fileSystemStore.highlightedPath !== node.path) {
+                            fileSystemStore.selectNode(node, 'show');
+                        }
+                        fileSystemStore.toggleDirectory(node.path);
+                    }}
+                    title={isCollapsed ? "Expand" : "Collapse"}
+                    data-testid="toggle-directory-btn"
+                >
+                    <i className={`fas ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} ${styles.folderIcon}`} />
+                </button>
                 <span>{node.name}</span>
                 <button
                     className={styles.newFileButton}
@@ -140,7 +153,7 @@ export const Sidebar: React.FC = observer(() => {
                     onClick={() => fileSystemStore.openDirectory()}
                     data-testid="sidebar-header"
                 >
-                    <i className={`fas fa-folder-open ${styles.icon} ${styles.folderIcon}`} />
+                    <i className={`fas fa-folder-open ${styles.rootFolderIcon}`} />
                     <span className={styles.headerText}>{fileSystemStore.directoryHandle?.name}</span>
 
                     <button

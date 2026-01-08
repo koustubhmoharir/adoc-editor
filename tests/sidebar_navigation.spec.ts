@@ -37,19 +37,28 @@ test.describe('Sidebar Navigation', () => {
         await expect(page.locator('data-testid=file-item').first()).toBeVisible();
     });
 
-    test('Directory Selection', async ({ page }) => {
+    test('Directory Selection and Expansion', async ({ page }) => {
         // Use regex for exact match to avoid matching subdir1
         const dira = page.locator('[data-testid="directory-item"][data-dir-path="dir-a"]');
+        const toggleBtn = dira.locator('[data-testid="toggle-directory-btn"]');
+        const fileInDir = page.locator('[data-testid="file-item"][data-file-path="dir-a/file2.adoc"]');
 
-        // Click to select directory
+        // Initial state: Expanded (Default behavior seems to be expanded)
+        await expect(fileInDir).toBeVisible();
+
+        // Click row: Selects ONLY (Does not toggle)
         await dira.click();
-
-        // Verify selected state
         await expect(dira).toHaveClass(/selected/);
+        await expect(fileInDir).toBeVisible(); // Still Expanded
 
-        // Ensure editor content has NOT changed (assuming welcome content is default)
-        const editor = page.locator('.monaco-editor');
-        await expect(editor).toContainText('Welcome to the AsciiDoc Editor!');
+        // Click toggle button: Collapses and Selects
+        await toggleBtn.click();
+        await expect(dira).toHaveClass(/selected/);
+        await expect(fileInDir).not.toBeVisible();
+
+        // Click toggle button again: Expands
+        await toggleBtn.click();
+        await expect(fileInDir).toBeVisible();
     });
 
     test('Keyboard Navigation (Arrows)', async ({ page }) => {
@@ -157,23 +166,24 @@ test.describe('Sidebar Navigation', () => {
 
     test('Space/Enter Navigation (Directory)', async ({ page }) => {
         const dira = page.locator('[data-testid="directory-item"][data-dir-path="dir-a"]');
-        await dira.click(); // select (also toggles!)
+        await dira.click(); // select only
+        await expect(dira).toHaveClass(/selected/);
 
-        // Check initial state (collapsed) - file2 visible
+        // Check initial state (expanded) - file2 visible
         const file2 = page.locator('[data-testid="file-item"][data-file-path="dir-a/file2.adoc"]');
-        await expect(file2).not.toBeVisible();
+        await expect(file2).toBeVisible();
 
         // Press Enter -> Collapse
         await page.keyboard.press('Enter');
-        await expect(file2).toBeVisible();
+        await expect(file2).not.toBeVisible();
 
         // Press Enter -> Expand
         await page.keyboard.press('Enter');
-        await expect(file2).not.toBeVisible();
+        await expect(file2).toBeVisible();
 
         // Press Space -> Collapse
         await page.keyboard.press(' ');
-        await expect(file2).toBeVisible();
+        await expect(file2).not.toBeVisible();
     });
 
     test('Escape Navigation', async ({ page }) => {
