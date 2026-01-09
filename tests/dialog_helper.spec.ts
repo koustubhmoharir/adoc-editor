@@ -44,8 +44,8 @@ test.describe('Helper: handleNextDialog', () => {
         });
 
         // 3. Verify messages intercepted by handlers
-        expect(handle1.getMessage()).toBe('First Call');
-        expect(handle2.getMessage()).toBe('Second Call');
-        expect(handle3.getMessage()).toBe('Third Call');
+        expect(await handle1.getMessage()).toBe('First Call');
+        expect(await handle2.getMessage()).toBe('Second Call');
+        expect(await handle3.getMessage()).toBe('Third Call');
     });
 });

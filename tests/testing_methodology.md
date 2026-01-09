@@ -74,7 +74,7 @@ To maintain clean and robust tests, we use reusable helper functions located in 
     - `setMockPickerConfig(page, config)`: Configures the mock directory picker to simulate different directory selections.
 - **`test_globals.ts`**:
     - `handleNextDialog(page, action)`: Schedules the next dialog to be automatically handled. Returns a handler object.
-    - `handler.getMessage()`: Synchronously retrieves the message of the handled dialog. **Must be called AFTER the UI action has completed.**
+    - `handler.getMessage()`: Retrieves the message of the handled dialog. **Must be called AFTER the UI action has completed.**
 
     **Usage Pattern (Critical):**
     1. Schedule the handler *before* the action.
@@ -96,7 +96,7 @@ To maintain clean and robust tests, we use reusable helper functions located in 
     await expect(page.locator('text=Deleted File')).not.toBeVisible();
 
     // 4. Verify dialog message
-    expect(dialogHandle.getMessage()).toBe('Are you sure you want to delete this file?');
+    expect(await dialogHandle.getMessage()).toBe('Are you sure you want to delete this file?');
     ```
 
 

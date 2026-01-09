@@ -32,12 +32,17 @@ export class FsTestSetup {
         }
     }
 
-    createFile(dir: 'dir1' | 'dir2', relativePath: string, content: string) {
+    createFile(dir: 'dir1' | 'dir2', relativePath: string, content: string | Buffer) {
         const baseDir = dir === 'dir1' ? this.tempDir1 : this.tempDir2;
         const fullPath = path.join(baseDir, relativePath);
         const folder = path.dirname(fullPath);
         if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
-        fs.writeFileSync(fullPath, content);
+
+        if (Buffer.isBuffer(content)) {
+            fs.writeFileSync(fullPath, content);
+        } else {
+            fs.writeFileSync(fullPath, content as string);
+        }
     }
 
     readFile(dir: 'dir1' | 'dir2', relativePath: string): string {
@@ -73,7 +78,8 @@ export class FsTestSetup {
 
         await page.exposeFunction('__fs_readFile', async (filePath: string) => {
             const fullPath = resolvePath(filePath);
-            return fs.readFileSync(fullPath, 'utf8');
+            const buffer = fs.readFileSync(fullPath);
+            return buffer.toString('base64');
         });
 
         await page.exposeFunction('__fs_writeFile', async (filePath: string, content: string) => {

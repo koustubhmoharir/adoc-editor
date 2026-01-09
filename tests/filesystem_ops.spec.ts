@@ -164,8 +164,8 @@ test.describe('Renaming Functionality', () => {
         // 1. Leading dots: .config -> .config
         let input = await triggerRename(page, fileItem);
         await completeRename(page, input, '.config');
-        await expect(page.locator('[data-testid="file-item"][data-file-path=".config.adoc"]'), 'Failed to rename .config -> .config.adoc').toBeVisible();
-        await resetFile('.config.adoc');
+        await expect(page.locator('[data-testid="file-item"][data-file-path=".config"]'), 'Failed to rename file1.adoc -> .config').toBeVisible();
+        await resetFile('.config');
 
         // 2. Multiple dots: my..file.adoc -> my.file.adoc
         const fileItem2 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]'); // Re-locate after reset? Should be same but safer.
@@ -185,8 +185,8 @@ test.describe('Renaming Functionality', () => {
         const fileItem4 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
         input = await triggerRename(page, fileItem4);
         await completeRename(page, input, 'foo..bar');
-        await expect(page.locator('[data-testid="file-item"][data-file-path="foo.bar.adoc"]'), 'Failed to rename foo..bar -> foo.bar.adoc').toBeVisible();
-        await resetFile('foo.bar.adoc');
+        await expect(page.locator('[data-testid="file-item"][data-file-path="foo.bar"]'), 'Failed to rename foo..bar -> foo.bar').toBeVisible();
+        await resetFile('foo.bar');
 
         // 5. Only dots: ... -> . (Disallowed -> Cancel)
         const fileItem5 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
@@ -215,7 +215,7 @@ test.describe('Renaming Functionality', () => {
         await expect(page.locator('[data-testid="rename-input"]')).toBeFocused();
 
         // Verify message synchronously
-        expect(dialogHandle.getMessage()).toContain('Invalid character');
+        expect(await dialogHandle.getMessage()).toContain('Invalid character');
     });
 
     test('Validation - Conflict', async ({ page }) => {
@@ -235,7 +235,7 @@ test.describe('Renaming Functionality', () => {
         await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
         await expect(page.locator('[data-testid="rename-input"]')).toBeFocused();
 
-        expect(dialogHandle.getMessage()).toContain('already exists');
+        expect(await dialogHandle.getMessage()).toContain('already exists');
 
         // 2. Accept override
         // Retrigger enter
@@ -297,7 +297,7 @@ test.describe('Renaming Functionality', () => {
         await expect(input).toBeFocused();
 
         // Expect Alert
-        expect(dialogHandle.getMessage()).toContain('Invalid character');
+        expect(await dialogHandle.getMessage()).toContain('Invalid character');
 
         // Verify old name is NOT visible yet (because input is still there)
         // actually, old name is hidden while renaming input is shown usually, or input sits on top.

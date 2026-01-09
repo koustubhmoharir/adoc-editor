@@ -2,23 +2,28 @@
 import { Page } from '@playwright/test';
 
 interface DialogHandle {
-    getMessage: () => string;
+    getMessage: () => Promise<string>;
 }
 
-// Module-level queue on the Playwright side (node)
-// It stores pending handlers that we have created but not yet fulfilled by the browser.
-const handlersQueue: ((msg: string) => void)[] = [];
+type DialogHandlersQueue = ((msg: string) => void)[];
 
-/**
- * Internal function called by the browser when a dialog is handled.
- */
-function onDialogHandled(message: string) {
-    const handler = handlersQueue.shift();
-    if (handler) {
-        handler(message);
-    } else {
-        console.warn('onDialogHandled called but no handler was waiting in the queue.');
+// Equivalent of a module-level queue on the Playwright side (node)
+// It stores pending handlers that we have created but not yet fulfilled by the browser.
+// It needs to be maintained per page and reset when the page refreshes.
+const handlersQueue: WeakMap<Page, DialogHandlersQueue> = new WeakMap();
+function getOrCreateQueue(page: Page) {
+    let queue = handlersQueue.get(page);
+    if (queue == null) {
+        queue = [];
+        handlersQueue.set(page, queue);
+
+        page.on("framenavigated", frame => {
+            if (frame === page.mainFrame()) {
+                handlersQueue.set(page, []);
+            }
+        });
     }
+    return queue;
 }
 
 /**
@@ -34,7 +39,7 @@ export async function handleNextDialog(page: Page, action: 'confirm' | 'cancel' 
     let capturedMessage: string | undefined;
 
     // Create a promise that will be resolved when the exposed onDialogHandled is called
-    handlersQueue.push(msg => { capturedMessage = msg; });
+    getOrCreateQueue(page).push(msg => { capturedMessage = msg; });
 
     // Schedule the action in the browser
     await page.evaluate((act) => {
@@ -42,7 +47,8 @@ export async function handleNextDialog(page: Page, action: 'confirm' | 'cancel' 
     }, action);
 
     return {
-        getMessage: () => {
+        getMessage: async () => {
+            await page.evaluate(() => { }); // Give the browser a chance to act on the dialog
             if (capturedMessage === undefined) {
                 throw new Error("Dialog action was expected but the dialog callback was never invoked. This usually means the action did not trigger a dialog as expected.");
             }
@@ -52,6 +58,17 @@ export async function handleNextDialog(page: Page, action: 'confirm' | 'cancel' 
 }
 
 export async function enableTestGlobals(page: Page) {
+
+    function onDialogHandled(message: string) {
+        const queue = getOrCreateQueue(page);
+        const handler = queue.shift();
+        if (handler) {
+            handler(message);
+        } else {
+            console.warn('onDialogHandled called but no handler was waiting in the queue.');
+        }
+    }
+    
     // Expose the handler function to the browser context
     await page.exposeFunction('__TEST_onDialogHandled', onDialogHandled);
 

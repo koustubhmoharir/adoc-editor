@@ -46,6 +46,57 @@ export class EditorStore {
     }
 
     @action
+    setLanguage(extensionOrFilename: string) {
+        if (!this.editor) return;
+
+        // Monaco's setModelLanguage needs an ID.
+        let langId = 'plaintext';
+        const ext = extensionOrFilename.startsWith('.') ? extensionOrFilename : '.' + extensionOrFilename;
+
+        // Basic mapping for common types
+        const map: Record<string, string> = {
+            '.js': 'javascript',
+            '.ts': 'typescript',
+            '.jsx': 'javascript',
+            '.tsx': 'typescript',
+            '.html': 'html',
+            '.css': 'css',
+            '.json': 'json',
+            '.md': 'markdown',
+            '.adoc': 'asciidoc',
+            '.xml': 'xml',
+            '.py': 'python',
+            '.java': 'java',
+            '.c': 'c',
+            '.cpp': 'cpp',
+            '.go': 'go',
+            '.rs': 'rust',
+            '.sql': 'sql',
+            '.sh': 'shell',
+            '.yaml': 'yaml',
+            '.yml': 'yaml'
+        };
+
+        if (map[ext]) {
+            langId = map[ext];
+        } else {
+            // Fallback: try to find in registered languages
+            const languages = monaco.languages.getLanguages();
+            for (const lang of languages) {
+                if (lang.extensions?.includes(ext)) {
+                    langId = lang.id;
+                    break;
+                }
+            }
+        }
+
+        const model = this.editor.getModel();
+        if (model) {
+            monaco.editor.setModelLanguage(model, langId);
+        }
+    }
+
+    @action
     focusEditor() {
         this.editor?.focus();
     }

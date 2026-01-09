@@ -28,9 +28,18 @@ class MockFileSystemFileHandle extends MockFileSystemHandle {
     }
 
     async getFile() {
-        const content = await window.__fs_readFile(this._path);
-        // We create a simpler File object since we primarily need .text()
-        const blob = new Blob([content], { type: 'text/PLAIN' });
+        const base64Content = await window.__fs_readFile(this._path);
+
+        // Decode Base64 to Uint8Array
+        const binaryString = atob(base64Content);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // We create a simple File object. 
+        // Note: Using 'application/octet-stream' or just letting it be inferred/empty is fine.
+        const blob = new Blob([bytes], { type: 'application/octet-stream' });
         const file = new File([blob], this.name, { lastModified: Date.now() });
         return file;
     }

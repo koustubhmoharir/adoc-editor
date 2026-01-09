@@ -449,14 +449,12 @@ class FileSystemStore extends EffectAwareModel {
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
 
             if (entry.kind === 'file') {
-                if (entry.name.endsWith('.adoc')) {
-                    models.push(new FileNodeModel({
-                        name: entry.name,
-                        path: currentPath,
-                        kind: 'file',
-                        handle: entry
-                    }));
-                }
+                models.push(new FileNodeModel({
+                    name: entry.name,
+                    path: currentPath,
+                    kind: 'file',
+                    handle: entry
+                }));
             } else if (entry.kind === 'directory') {
                 if (entry.name.startsWith('.')) continue;
                 const children = await this.readDirectory(entry, currentPath);
@@ -601,7 +599,39 @@ class FileSystemStore extends EffectAwareModel {
         let content = '';
         try {
             const file = await fileHandle.getFile();
+
+            // Check for binary content
+            // Read first 1024 bytes
+            const slice = file.slice(0, Math.min(file.size, 1024));
+            const buffer = await slice.arrayBuffer();
+            const view = new Uint8Array(buffer);
+
+            // Heuristic: check for null bytes or other control characters (except common whitespace)
+            // Common text control chars: 9 (TAB), 10 (LF), 13 (CR)
+            let isBinary = false;
+            for (let i = 0; i < view.length; i++) {
+                const byte = view[i];
+                if (byte === 0) {
+                    isBinary = true;
+                    break;
+                }
+                // We could be stricter, but 0x00 is a very strong indicator of binary.
+            }
+
+            if (isBinary) {
+                const confirm = await dialog.confirm(
+                    `The file '${file.name}' appears to be a binary file. Opening it in the editor might display garbage characters or cause the editor to become unresponsive. Do you want to proceed?`,
+                    { title: 'Open Binary File?', yesText: 'Open Anyway', noText: 'Cancel' }
+                );
+                if (!confirm) return;
+            }
+
             content = await file.text();
+
+            // Detect language
+            const ext = file.name.split('.').pop()?.toLowerCase() || '';
+            editorStore.setLanguage(ext);
+
         } catch (e) {
             console.error('Failed to read file:', e);
             await dialog.alert('Failed to read file. It might have been moved or deleted.');
@@ -940,12 +970,6 @@ class FileSystemStore extends EffectAwareModel {
             //console.log('renameFile: invalid finalName', finalName);
             node.cancelRenaming();
             return true;
-        }
-
-        // Ensure extension
-        // Only append .adoc if original had .adoc AND new name doesn't have it
-        if (node.name.endsWith('.adoc') && !finalName.endsWith('.adoc')) {
-            finalName = `${finalName}.adoc`;
         }
 
         // 1. Validation

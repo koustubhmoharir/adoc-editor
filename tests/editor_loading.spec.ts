@@ -21,7 +21,7 @@ test.describe('Editor Functionality', () => {
         fsSetup.createFile('dir1', 'file1.adoc', '== File 1\nContent of file 1.');
         fsSetup.createFile('dir1', 'file2.adoc', '== File 2\nContent of file 2.');
         fsSetup.createFile('dir1', 'subdir/nested.adoc', '== Nested\nContent of nested file.');
-        fsSetup.createFile('dir1', 'other.txt', 'Ignored file');
+        fsSetup.createFile('dir1', 'other.txt', 'Text file');
         fsSetup.createFile('dir2', 'dir2_file.adoc', '== Dir2 File\nContent of dir2 file.');
 
         await fsSetup.init(page);
@@ -47,9 +47,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="file-item"]', { hasText: 'file2.adoc' })).toBeVisible();
         await expect(page.locator('[data-testid="directory-item"]', { hasText: 'subdir' })).toBeVisible();
         await expect(page.locator('[data-testid="file-item"]', { hasText: 'nested.adoc' })).toBeVisible();
-
-        // Check filter (should not show .txt)
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'other.txt' })).not.toBeVisible();
+        await expect(page.locator('[data-testid="file-item"]', { hasText: 'other.txt' })).toBeVisible();
     });
 
     test('Clicking on a file opens the file in the editor', async ({ page }) => {
@@ -219,12 +217,12 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="file-item"]', { hasText: 'deep_file.adoc' })).toBeVisible();
 
         // Collapse level3. (State: level1=Open, level2=Open, level3=Collapsed)
-        await page.click('[data-testid="directory-item"]:has-text("level3")');
+        await page.click('[data-testid="directory-item"]:has-text("level3") [data-testid="toggle-directory-btn"]');
         // deep_file should hide
         await expect(page.locator('[data-testid="file-item"]', { hasText: 'deep_file.adoc' })).not.toBeVisible();
 
         // Collapse level1. (State: level1=Collapsed, level2=? (hidden), level3=Collapsed)
-        await page.click('[data-testid="directory-item"]:has-text("level1")');
+        await page.click('[data-testid="directory-item"]:has-text("level1") [data-testid="toggle-directory-btn"]');
         // level2 should hide
         await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level2' })).not.toBeVisible();
 
@@ -238,7 +236,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level2' })).not.toBeVisible();
 
         // Expand level1
-        await page.click('[data-testid="directory-item"]:has-text("level1")');
+        await page.click('[data-testid="directory-item"]:has-text("level1") [data-testid="toggle-directory-btn"]');
 
         // Verify level2 is visible and expanded (children visible)
         await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level2' })).toBeVisible();
