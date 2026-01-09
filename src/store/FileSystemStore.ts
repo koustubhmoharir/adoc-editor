@@ -142,6 +142,7 @@ export class FileNodeModel extends EffectAwareModel {
         }
     }
 
+
     @action
     handleTreeItemKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
         //console.log('handleTreeItemKeyDown', e.key);
@@ -174,6 +175,18 @@ export class FileNodeModel extends EffectAwareModel {
             fileSystemStore.navigate(direction);
         }
     }
+
+    @action.bound
+    handleContextMenu(e: React.MouseEvent) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (fileSystemStore.highlightedPath !== this.path) {
+            fileSystemStore.selectNode(this, 'show');
+        }
+
+        fileSystemStore.openContextMenu(this);
+    }
 }
 
 export class SearchResultItemModel {
@@ -198,7 +211,39 @@ class FileSystemStore extends EffectAwareModel {
     @observable accessor isSearchVisible: boolean = false;
 
     @observable accessor highlightedPath: string | null = null;
+    @observable accessor contextMenuTarget: FileNodeModel | null = null;
+    readonly contextMenuRef = createRef<HTMLDivElement>();
+
     loadTimeout: number | null = null;
+
+    @action
+    openContextMenu(node: FileNodeModel) {
+        // Clear previous anchor if any
+        if (this.contextMenuTarget && this.contextMenuTarget !== node) {
+            this.contextMenuTarget.treeItemRef.current?.style.removeProperty('anchor-name');
+        }
+
+        this.contextMenuTarget = node;
+
+        // Set new anchor
+        // We do this immediately as it's a DOM side-effect needed for popover positioning
+        node.treeItemRef.current?.style.setProperty('anchor-name', '--context-menu-trigger');
+
+        this.scheduleEffect(() => {
+            if (this.contextMenuRef.current) {
+                this.contextMenuRef.current.showPopover();
+            }
+        });
+    }
+
+    @action.bound
+    onContextMenuClosed() {
+        if (this.contextMenuTarget) {
+            this.contextMenuTarget.treeItemRef.current?.style.removeProperty('anchor-name');
+            this.contextMenuTarget = null;
+        }
+    }
+
 
     @computed
     get visibleNodes(): FileNodeModel[] {
@@ -858,13 +903,13 @@ class FileSystemStore extends EffectAwareModel {
         try {
             // 3. Find unique filename
             let index = 1;
-            let filename = `new-${index}.adoc`;
+            let filename = `new-${index}`;
             while (true) {
                 try {
                     await targetDir.getFileHandle(filename);
                     // If successful, file exists
                     index++;
-                    filename = `new-${index}.adoc`;
+                    filename = `new-${index}`;
                 } catch (e) {
                     // File does not exist (or other error), so we can use this name
                     break;
@@ -895,6 +940,7 @@ class FileSystemStore extends EffectAwareModel {
             const newNode = await findNodeAsync(this.fileTree);
             if (newNode) {
                 await this.loadFileContentInEditor(newNode);
+                newNode.startRenaming(); // Ensure we enter rename mode
             }
 
         } catch (error) {

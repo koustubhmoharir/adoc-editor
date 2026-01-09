@@ -25,14 +25,14 @@
         "mobx": "^6.10.0",
         "mobx-react-lite": "^4.0.0",
         "monaco-editor": "^0.45.0",
-        "react": "^18.2.0",
-        "react-dom": "^18.2.0"
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0"
     },
     "devDependencies": {
         "@playwright/test": "^1.57.0",
         "@types/node": "^25.0.3",
-        "@types/react": "^18.2.0",
-        "@types/react-dom": "^18.2.0",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
         "@types/wicg-file-system-access": "^2023.10.7",
         "@vanilla-extract/css": "^1.18.0",
         "asciidoctor": "^3.0.4",

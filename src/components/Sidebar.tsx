@@ -4,6 +4,8 @@ import { fileSystemStore, FileNodeModel } from '../store/FileSystemStore';
 import * as styles from './Sidebar.css';
 import { useScheduledEffects } from '../hooks/useScheduledEffects';
 
+import { SidebarContextMenu } from './SidebarContextMenu';
+
 const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
 
     const isSelected = fileSystemStore.highlightedPath === node.path;
@@ -25,6 +27,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                     e.stopPropagation();
                     if (!isRenaming) fileSystemStore.selectNode(node, 'focus');
                 }}
+                onContextMenu={node.handleContextMenu}
                 onKeyDown={(e) => node.handleTreeItemKeyDown(e)}
                 tabIndex={isSelected ? 0 : -1} // Enable keyboard focus/events
                 data-testid="file-item"
@@ -105,6 +108,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                     e.stopPropagation();
                     fileSystemStore.toggleDirectory(node.path);
                 }}
+                onContextMenu={node.handleContextMenu}
                 onKeyDown={(e) => node.handleTreeItemKeyDown(e)}
                 tabIndex={isSelected ? 0 : -1}
                 ref={node.treeItemRef}
@@ -152,8 +156,13 @@ export const Sidebar: React.FC = observer(() => {
 
     const hasDirectory = !!fileSystemStore.directoryHandle;
 
+
+
+
+
     return (
         <div className={styles.sidebar}>
+            <SidebarContextMenu />
             {hasDirectory && (
                 <div
                     className={styles.header}
@@ -236,6 +245,7 @@ export const Sidebar: React.FC = observer(() => {
                                         ref={model.ref}
                                         className={`${styles.searchResultItem} ${model.isHighlighted ? styles.highlighted : ''}`}
                                         onClick={() => fileSystemStore.handleSearchResultClick(item)}
+                                        onContextMenu={item.handleContextMenu}
                                         data-testid="search-result-item"
                                         data-file-path={item.path}
                                     >

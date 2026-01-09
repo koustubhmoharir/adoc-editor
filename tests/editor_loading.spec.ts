@@ -262,14 +262,17 @@ test.describe('Editor Functionality', () => {
         await page.click('[data-testid="new-file-button-titlebar"]');
 
         // Should create new-1.adoc
-        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
+        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
 
         // Check file exists on disk
-        const newFilePath = path.join(fsSetup.tempDir1, 'new-1.adoc');
+        const newFilePath = path.join(fsSetup.tempDir1, 'new-1');
         expect(fs.existsSync(newFilePath)).toBe(true);
 
         // Check sidebar has new file selected
-        await expect(page.locator('[data-testid="file-item"]').filter({ hasText: 'new-1.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="new-1"]')).toBeVisible();
+
+        // File should be in rename mode
+        await expect(page.locator('[data-testid="file-item"][data-file-path="new-1"] [data-testid="rename-input"]')).toBeVisible();
     });
 
     test('Creating multiple new files increments counter', async ({ page }) => {
@@ -277,16 +280,16 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="file-item"]', { hasText: 'file1.adoc' })).toBeVisible();
 
         await page.click('[data-testid="new-file-button-titlebar"]');
-        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
+        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
 
         // Allow some time for state to settle/save
         await page.waitForTimeout(500);
 
         await page.click('[data-testid="new-file-button-titlebar"]');
-        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-2.adoc');
+        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-2');
 
-        const path1 = path.join(fsSetup.tempDir1, 'new-1.adoc');
-        const path2 = path.join(fsSetup.tempDir1, 'new-2.adoc');
+        const path1 = path.join(fsSetup.tempDir1, 'new-1');
+        const path2 = path.join(fsSetup.tempDir1, 'new-2');
         expect(fs.existsSync(path1)).toBe(true);
         expect(fs.existsSync(path2)).toBe(true);
     });
@@ -305,7 +308,7 @@ test.describe('Editor Functionality', () => {
 
         // Create new file
         await page.click('[data-testid="new-file-button-titlebar"]');
-        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
+        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
 
         // Check existing file content
         const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
@@ -337,7 +340,7 @@ test.describe('Editor Functionality', () => {
         await newFileBtn.click({ force: true });
 
         // Should create new-1.adoc INSIDE subdir
-        const newFilePath = path.join(fsSetup.tempDir1, 'subdir', 'new-1.adoc');
+        const newFilePath = path.join(fsSetup.tempDir1, 'subdir', 'new-1');
 
         // Allow operation to complete
         await expect(async () => {
@@ -345,7 +348,7 @@ test.describe('Editor Functionality', () => {
         }).toPass();
 
         // Check it is selected in title bar
-        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
+        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
 
         // Verify TitleBar tooltip updates to subdirectory
         // Since we refactored title bar to use data-testid, querying by title is fine for check, or use data-testid
