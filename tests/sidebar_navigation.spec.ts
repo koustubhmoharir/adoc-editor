@@ -200,4 +200,27 @@ test.describe('Sidebar Navigation', () => {
         // Verify sidebar file item (file1) is focused
         await expect(file1).toBeFocused();
     });
+    test('Double Click Navigation', async ({ page }) => {
+        const file1 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
+        const dira = page.locator('[data-testid="directory-item"][data-dir-path="dir-a"]');
+        const fileInDir = page.locator('[data-testid="file-item"][data-file-path="dir-a/file2.adoc"]');
+
+        // Double Click File
+        await file1.dblclick();
+
+        // Verify Editor is focused
+        const monaco = page.locator('.monaco-editor');
+        await expect(monaco.locator(':focus')).toHaveCount(1);
+        await expect(monaco).toContainText('Content of file 1');
+
+        // Double Click Directory (Toggle)
+        // Initial state: Expanded -> fileInDir visible
+        await expect(fileInDir).toBeVisible();
+
+        await dira.dblclick();
+        await expect(fileInDir).not.toBeVisible();
+
+        await dira.dblclick();
+        await expect(fileInDir).toBeVisible();
+    });
 });

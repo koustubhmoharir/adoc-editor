@@ -21,6 +21,10 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                     e.stopPropagation();
                     if (!isRenaming) fileSystemStore.selectNode(node, 'show');
                 }}
+                onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (!isRenaming) fileSystemStore.selectNode(node, 'focus');
+                }}
                 onKeyDown={(e) => node.handleTreeItemKeyDown(e)}
                 tabIndex={isSelected ? 0 : -1} // Enable keyboard focus/events
                 data-testid="file-item"
@@ -96,6 +100,10 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 onClick={(e) => {
                     e.stopPropagation();
                     fileSystemStore.selectNode(node, 'show');
+                }}
+                onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    fileSystemStore.toggleDirectory(node.path);
                 }}
                 onKeyDown={(e) => node.handleTreeItemKeyDown(e)}
                 tabIndex={isSelected ? 0 : -1}
