@@ -264,6 +264,17 @@ class FileSystemStore extends EffectAwareModel {
                 this.saveFile(); // Attempt to save (best effort)
             }
         });
+
+        // Global Keyboard Shortcuts
+        window.addEventListener('keydown', (e: KeyboardEvent) => {
+            // Ctrl + Backtick or Cmd + Backtick (often referred to as Ctrl/Cmd + ~)
+            if ((e.ctrlKey || e.metaKey) && (e.code === 'Backquote' || e.key === '`')) {
+                e.preventDefault();
+                e.stopPropagation();
+                // We don't need to pass 'e' here anymore since we handle prevention above
+                this.toggleSearch();
+            }
+        });
     }
 
 
@@ -1099,8 +1110,11 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    toggleSearch(e: React.MouseEvent) {
-        e.stopPropagation();
+    toggleSearch(e?: React.MouseEvent | KeyboardEvent) {
+        if (e) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
         if (this.isSearchVisible) {
             this.closeSearch();
         } else {

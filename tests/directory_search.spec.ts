@@ -150,9 +150,9 @@ test.describe('Search Functionality', () => {
         expect(topHighlightIndex).toBe(-1);
 
         // Check scroll position is 0 (top)
-        const scrollTop = await page.evaluate(() => {
+        /* const scrollTop = await page.evaluate(() => {
             return document.querySelector('[class*="Sidebar_sidebar"]')?.scrollTop;
-        });
+        }); */
         // Or specific container if strictly defined. 
         // Sidebar usually is the scroll container.
         // Actually, sidebar has overflow-y: auto.
@@ -212,5 +212,38 @@ test.describe('Search Functionality', () => {
         await expect(clearBtn).toBeVisible();
         await clearBtn.click();
         await expect(input).not.toBeVisible();
+    });
+    test('Keyboard Shortcut (Ctrl + ~)', async ({ page }) => {
+        // Toggle on via shortcut
+        await page.keyboard.press('Control+Backquote');
+        await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
+        await expect(page.locator('[data-testid="search-input"]')).toBeFocused();
+
+        // Type something
+        await page.fill('[data-testid="search-input"]', 'apple');
+        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'apple.adoc' })).toBeVisible();
+
+        // Toggle off via shortcut - should clear and close
+        await page.keyboard.press('Control+Backquote');
+        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+
+        // Toggle on again - should be empty
+        await page.keyboard.press('Control+Backquote');
+        await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
+        await expect(page.locator('[data-testid="search-input"]')).toHaveValue('');
+
+        // Close for next test
+        await page.keyboard.press('Control+Backquote');
+    });
+
+    test('Keyboard Shortcut (Meta + ~ for Mac)', async ({ page }) => {
+        // Toggle on via shortcut with Meta
+        await page.keyboard.press('Meta+Backquote');
+        await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
+        await expect(page.locator('[data-testid="search-input"]')).toBeFocused();
+
+        // Toggle off via shortcut - should clear and close
+        await page.keyboard.press('Meta+Backquote');
+        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
     });
 });
