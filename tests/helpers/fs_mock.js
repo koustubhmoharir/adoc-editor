@@ -139,15 +139,15 @@ class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
     }
 }
 
-// Override global
-window.__mockPickerConfig = { name: 'dir1', path: 'dir1' };
 window.showDirectoryPicker = async () => {
-    const { name, path } = window.__mockPickerConfig;
+    const config = window.__TEST_mockPickerConfig;
+    if (!config) throw new Error("Call setMockPickerConfig first");
+    const { name, path } = config;
     return new MockFileSystemDirectoryHandle(name, path);
 };
 
 // Hydration helper for tests
-window.__hydrateHandle = (obj) => {
+window.__TEST_hydrateHandle = (obj) => {
     if (!obj) return obj;
     if (obj.kind === 'file') {
         return new MockFileSystemFileHandle(obj.name, obj._path);

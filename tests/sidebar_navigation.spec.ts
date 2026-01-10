@@ -1,44 +1,41 @@
-import { test, expect } from '@playwright/test';
-import { FsTestSetup } from './helpers/fs_test_setup';
-import { enableTestGlobals } from './helpers/test_globals';
-import { enableTestLogging } from './helpers/test_logging';
+import { Page } from '@playwright/test';
+import { test, expect, setupNewPage } from './fixtures.ts';
+import { FsTestSetup } from './helpers/fs_test_setup.ts';
+import { setMockPickerConfig } from './helpers/mock_helpers.ts';
+
+async function createAndLoadDirectory(page: Page, fsSetup: FsTestSetup) {
+    // Create a file structure for testing
+    // root/
+    //   dir-a/
+    //     subdir1/
+    //       file3.adoc
+    //     file2.adoc
+    //   dir-b/
+    //     file4.adoc
+    //   file1.adoc
+
+    fsSetup.cleanup();
+
+    fsSetup.createFile('dir1', 'file1.adoc', 'Content of file 1');
+    fsSetup.createFile('dir1', 'dir-a/file2.adoc', 'Content of file 2');
+    fsSetup.createFile('dir1', 'dir-a/subdir1/file3.adoc', 'Content of file 3');
+    fsSetup.createFile('dir1', 'dir-b/file4.adoc', 'Content of file 4');
+
+    await setMockPickerConfig(page, 'dir1');
+    // Open the test directory
+    const openDirBtn = page.locator('data-testid=open-folder-button');
+    await openDirBtn.click();
+
+    // Wait for tree to populate
+    await expect(page.locator('data-testid=file-item').first()).toBeVisible();
+}
 
 test.describe('Sidebar Navigation', () => {
-    const fsSetup = new FsTestSetup();
 
-    test.beforeAll(async () => {
-        // Create a file structure for testing
-        // root/
-        //   dir-a/
-        //     subdir1/
-        //       file3.adoc
-        //     file2.adoc
-        //   dir-b/
-        //     file4.adoc
-        //   file1.adoc
-
-        fsSetup.createFile('dir1', 'file1.adoc', 'Content of file 1');
-        fsSetup.createFile('dir1', 'dir-a/file2.adoc', 'Content of file 2');
-        fsSetup.createFile('dir1', 'dir-a/subdir1/file3.adoc', 'Content of file 3');
-        fsSetup.createFile('dir1', 'dir-b/file4.adoc', 'Content of file 4');
-    });
-
-    test.afterAll(() => {
-        fsSetup.cleanup();
-    });
-
-    test.beforeEach(async ({ page }) => {
-        enableTestLogging(page);
-        await fsSetup.init(page);
-        await enableTestGlobals(page);
-        await page.goto('/?skip_restore=true');
-
-        // Open the test directory
-        const openDirBtn = page.locator('data-testid=open-folder-button');
-        await openDirBtn.click();
-
-        // Wait for tree to populate
-        await expect(page.locator('data-testid=file-item').first()).toBeVisible();
+    test.beforeEach(async ({ page, fsSetup }, testInfo) => {
+        if (!testInfo.tags.includes('@isolated')) {
+            await createAndLoadDirectory(page, fsSetup);
+        }
     });
 
     test('Directory Selection and Expansion', async ({ page }) => {
@@ -110,49 +107,48 @@ test.describe('Sidebar Navigation', () => {
         await expect(subdir1).toBeVisible();
     });
 
-    test('Debounced File Loading (Clock Mock)', async ({ page }) => {
-        // Uncomment this if we really care about installing time before page.goto
-        // const context = await browser.newContext();
-        // const page = await context.newPage();
-        // await fsSetup.init(page);
+    test('Debounced File Loading @isolated', async ({ context, fsSetup }) => {
+        // This test is special because it installs a clock and cannot run on the shared page without messing with other tests
+        // Hence we create a new page here and must close it regardless of test status.
+        const page = await context.newPage();
+        try {
+            await page.clock.install();
+            await setupNewPage(page, fsSetup);
+            await createAndLoadDirectory(page, fsSetup);
 
-        // Install clock
-        await page.clock.install();
+            const file1 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
-        // Uncomment this if we really care about installing time before page.goto
-        // await page.goto('/?skip_restore=true');
-        // await page.locator('data-testid=open-folder-button').click();
-        // await expect(page.locator('data-testid=file-item').first()).toBeVisible();
+            // Select file1 (bottom of list) - Loads immediately on click
+            await file1.click();
+            await expect(file1).toBeFocused();
+            await expect(page.locator('.monaco-editor')).toContainText('Content of file 1');
 
-        const file1 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
+            // Navigate UP to file4 (child of dir-b) - Keyboard selection triggers debounce
+            await page.keyboard.press('ArrowUp');
+            const file4 = page.locator('[data-testid="file-item"][data-file-path="dir-b/file4.adoc"]');
+            await expect(file4).toBeFocused();
 
-        // Select file1 (bottom of list) - Loads immediately on click
-        await file1.click();
-        await expect(file1).toBeFocused();
-        await expect(page.locator('.monaco-editor')).toContainText('Content of file 1');
+            // Verify content NOT changed (debounce) - Still file 1 content
+            await page.clock.fastForward(100);
+            await expect(page.locator('.monaco-editor')).toContainText('Content of file 1');
 
-        // Navigate UP to file4 (child of dir-b) - Keyboard selection triggers debounce
-        await page.keyboard.press('ArrowUp');
-        const file4 = page.locator('[data-testid="file-item"][data-file-path="dir-b/file4.adoc"]');
-        await expect(file4).toBeFocused();
+            // Navigate UP twice to file2 (child of dir-a) - Keyboard selection triggers debounce
+            await page.keyboard.press('ArrowUp');
+            await page.keyboard.press('ArrowUp');
+            const file2 = page.locator('[data-testid="file-item"][data-file-path="dir-a/file2.adoc"]');
+            await expect(file2).toBeFocused();
 
-        // Verify content NOT changed (debounce) - Still file 1 content
-        await page.clock.fastForward(100);
-        await expect(page.locator('.monaco-editor')).toContainText('Content of file 1');
+            // Verify content NOT changed (debounce) - Still file 1 content
+            await page.clock.fastForward(100);
+            await expect(page.locator('.monaco-editor')).toContainText('Content of file 1');
 
-        // Navigate UP twice to file2 (child of dir-a) - Keyboard selection triggers debounce
-        await page.keyboard.press('ArrowUp');
-        await page.keyboard.press('ArrowUp');
-        const file2 = page.locator('[data-testid="file-item"][data-file-path="dir-a/file2.adoc"]');
-        await expect(file2).toBeFocused();
-
-        // Verify content NOT changed (debounce) - Still file 1 content
-        await page.clock.fastForward(100);
-        await expect(page.locator('.monaco-editor')).toContainText('Content of file 1');
-
-        // Exceed debounce (750ms totals)
-        await page.clock.fastForward(800);
-        await expect(page.locator('.monaco-editor')).toContainText('Content of file 2');
+            // Exceed debounce (750ms totals)
+            await page.clock.fastForward(800);
+            await expect(page.locator('.monaco-editor')).toContainText('Content of file 2');
+        }
+        finally {
+            page.close();
+        }
     });
 
     test('Enter Navigation (File)', async ({ page }) => {

@@ -78,7 +78,7 @@ export async function enableTestGlobals(page: Page) {
             console.warn('onDialogHandled called but no handler was waiting in the queue.');
         }
     }
-    
+
     // Expose the handler function to the browser context
     await page.exposeFunction('__TEST_onDialogHandled', onDialogHandled);
 

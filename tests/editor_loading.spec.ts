@@ -1,22 +1,16 @@
-import { test, expect } from '@playwright/test';
-import * as fs from 'fs';
+import { test, expect } from './fixtures.ts';
 import * as path from 'path';
-import { FsTestSetup } from './helpers/fs_test_setup';
-import { enableTestLogging } from './helpers/test_logging';
-import { enableTestGlobals, waitForTestGlobals } from './helpers/test_globals';
 
 // Helpers
 import { setEditorContent, getEditorContent, disableAutoSave } from './helpers/editor_helpers';
-import { waitForMonaco } from './helpers/monaco_helpers';
 import { setMockPickerConfig } from './helpers/mock_helpers';
+import { waitForTestGlobals } from './helpers/test_globals.ts';
+import { waitForMonaco } from './helpers/monaco_helpers.ts';
 
 test.describe('Editor Functionality', () => {
-    let fsSetup: FsTestSetup;
 
-    test.beforeEach(async ({ page }) => {
-        enableTestLogging(page);
-        fsSetup = new FsTestSetup();
-
+    test.beforeEach(async ({ page, fsSetup }) => {
+        fsSetup.cleanup();
         // Populate setup
         fsSetup.createFile('dir1', 'file1.adoc', '== File 1\nContent of file 1.');
         fsSetup.createFile('dir1', 'file2.adoc', '== File 2\nContent of file 2.');
@@ -24,18 +18,7 @@ test.describe('Editor Functionality', () => {
         fsSetup.createFile('dir1', 'other.txt', 'Text file');
         fsSetup.createFile('dir2', 'dir2_file.adoc', '== Dir2 File\nContent of dir2 file.');
 
-        await fsSetup.init(page);
-        await enableTestGlobals(page);
-
-        await page.goto('/?skip_restore=true');
-
-        // Wait for Monaco to be ready just in case
-        await waitForTestGlobals(page);
-        await waitForMonaco(page);
-    });
-
-    test.afterEach(() => {
-        fsSetup.cleanup();
+        await setMockPickerConfig(page, 'dir1');
     });
 
     test('Opening a directory shows all adoc files within it recursively', async ({ page }) => {
@@ -68,7 +51,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
     });
 
-    test('If there are no unsaved changes, opening a new directory does not change content on disk', async ({ page }) => {
+    test('If there are no unsaved changes, opening a new directory does not change content on disk', async ({ page, fsSetup }) => {
         await page.click('[data-testid="open-folder-button"]');
         await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
@@ -76,7 +59,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
         // Switch to dir2
-        await setMockPickerConfig(page, { name: 'dir2', path: 'dir2' });
+        await setMockPickerConfig(page, 'dir2');
 
         // Open directory again (click current directory name in sidebar)
         await page.click('[data-testid="sidebar-header"]');
@@ -89,11 +72,11 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('dir2_file.adoc');
 
         // Check disk content of file1 in dir1 was not changed
-        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
+        const content = fsSetup.readFile('dir1', 'file1.adoc');
         expect(content).toBe('== File 1\nContent of file 1.');
     });
 
-    test('If there are no unsaved changes, opening a different file does not change content on disk', async ({ page }) => {
+    test('If there are no unsaved changes, opening a different file does not change content on disk', async ({ page, fsSetup }) => {
         await page.click('[data-testid="open-folder-button"]');
         await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
@@ -102,11 +85,11 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file2.adoc');
 
         // Check file1 content intact
-        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
+        const content = fsSetup.readFile('dir1', 'file1.adoc');
         expect(content).toBe('== File 1\nContent of file 1.');
     });
 
-    test('If any changes are made to the current file, they are auto-saved after a short delay', async ({ page }) => {
+    test('If any changes are made to the current file, they are auto-saved after a short delay', async ({ page, fsSetup }) => {
         await page.click('[data-testid="open-folder-button"]');
         await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
@@ -125,19 +108,19 @@ test.describe('Editor Functionality', () => {
         await page.waitForTimeout(5500);
 
         // Check disk content
-        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
+        const content = fsSetup.readFile('dir1', 'file1.adoc');
         expect(content).toBe('Updated content.');
 
         // Check dirty indicator gone
         await expect(page.locator('[data-testid="dirty-indicator"]')).not.toBeVisible();
     });
 
-    test('If changes are made and a new file is opened, changes are saved before new file is opened', async ({ page }) => {
+    test('If changes are made and a new file is opened, changes are saved before new file is opened', async ({ page, fsSetup }) => {
         await page.click('[data-testid="open-folder-button"]');
         await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
         // Disable auto-save
-        await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
+        await disableAutoSave(page);
 
         // Edit
         await setEditorContent(page, 'Modified content before switch.');
@@ -152,11 +135,11 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file2.adoc');
 
         // Verify file 1 saved
-        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
+        const content = fsSetup.readFile('dir1', 'file1.adoc');
         expect(content).toBe('Modified content before switch.');
     });
 
-    test('If changes are made and page is refreshed, changes are saved', async ({ page }) => {
+    test('If changes are made and page is refreshed, changes are saved', async ({ page, fsSetup }) => {
         await page.click('[data-testid="open-folder-button"]');
         await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
@@ -173,7 +156,7 @@ test.describe('Editor Functionality', () => {
         await page.reload();
 
         // Verify file 1 saved
-        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
+        const content = fsSetup.readFile('dir1', 'file1.adoc');
         expect(content).toBe('Modified content before refresh.');
     });
 
@@ -183,7 +166,10 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
         // Reload without skip_restore to test retention
-        await page.goto('/');
+        await page.goto('/', { waitUntil: "domcontentloaded" });
+        await waitForTestGlobals(page);
+        await waitForMonaco(page);
+        await setMockPickerConfig(page, 'dir1');
 
         // Wait for restoration
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc'); // Filename should appear
@@ -196,13 +182,9 @@ test.describe('Editor Functionality', () => {
         }).toPass();
     });
 
-    test('Nested directory states are persisted correctly', async ({ page }) => {
-        // Setup deep structure in tempDir1
-        const level1 = path.join(fsSetup.tempDir1, 'level1');
-        const level2 = path.join(level1, 'level2');
-        const level3 = path.join(level2, 'level3');
-        fs.mkdirSync(level3, { recursive: true });
-        fs.writeFileSync(path.join(level3, 'deep_file.adoc'), '== Deep File');
+    test('Nested directory states are persisted correctly', async ({ page, fsSetup }) => {
+        // Setup deep structure in dir1
+        fsSetup.createFile('dir1', path.join('level1', 'level2', 'level3', 'deep_file.adoc'), '== Deep File');
 
         // Refresh file explorer by opening folder again (or just start here)
         await page.click('[data-testid="open-folder-button"]');
@@ -228,7 +210,10 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1/level2"]')).not.toBeVisible();
 
         // Simulate reload without skip_restore
-        await page.goto('/');
+        await page.goto('/', { waitUntil: "domcontentloaded" });
+        await waitForTestGlobals(page);
+        await waitForMonaco(page);
+        await setMockPickerConfig(page, 'dir1');
 
         // Wait for restoration
         await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1"]')).toBeVisible();
@@ -250,7 +235,7 @@ test.describe('Editor Functionality', () => {
 
     // New File Feature Tests
 
-    test('Creating a new file from Title Bar', async ({ page }) => {
+    test('Creating a new file from Title Bar', async ({ page, fsSetup }) => {
         await page.click('[data-testid="open-folder-button"]');
         // Wait for file tree to load
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
@@ -261,41 +246,42 @@ test.describe('Editor Functionality', () => {
         // Initially in root, no file selected.
         // Click New File button in Title Bar.
         await page.click('[data-testid="new-file-button-titlebar"]');
+        await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('[data-testid="rename-input"]')).not.toBeVisible();
 
         // Should create new-1.adoc
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
 
         // Check file exists on disk
-        const newFilePath = path.join(fsSetup.tempDir1, 'new-1');
-        expect(fs.existsSync(newFilePath)).toBe(true);
+        const newFileContent = fsSetup.readFile('dir1', 'new-1');
+        expect(newFileContent).toBe('');
 
         // Check sidebar has new file selected
         await expect(page.locator('[data-testid="file-item"][data-file-path="new-1"]')).toBeVisible();
-
-        // File should be in rename mode
-        await expect(page.locator('[data-testid="file-item"][data-file-path="new-1"] [data-testid="rename-input"]')).toBeVisible();
     });
 
-    test('Creating multiple new files increments counter', async ({ page }) => {
+    test('Creating multiple new files increments counter', async ({ page, fsSetup }) => {
         await page.click('[data-testid="open-folder-button"]');
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
 
         await page.click('[data-testid="new-file-button-titlebar"]');
+        await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('[data-testid="rename-input"]')).not.toBeVisible();
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
 
-        // Allow some time for state to settle/save
-        await page.waitForTimeout(500);
-
         await page.click('[data-testid="new-file-button-titlebar"]');
+        await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('[data-testid="rename-input"]')).not.toBeVisible();
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-2');
 
-        const path1 = path.join(fsSetup.tempDir1, 'new-1');
-        const path2 = path.join(fsSetup.tempDir1, 'new-2');
-        expect(fs.existsSync(path1)).toBe(true);
-        expect(fs.existsSync(path2)).toBe(true);
+        expect(fsSetup.readFile('dir1', 'new-1')).toBe('');
+        expect(fsSetup.readFile('dir1', 'new-2')).toBe('');
     });
 
-    test('Creating new file auto-saves current dirty file', async ({ page }) => {
+    test('Creating new file auto-saves current dirty file', async ({ page, fsSetup }) => {
         await page.click('[data-testid="open-folder-button"]');
         await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
@@ -309,14 +295,17 @@ test.describe('Editor Functionality', () => {
 
         // Create new file
         await page.click('[data-testid="new-file-button-titlebar"]');
+        await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('[data-testid="rename-input"]')).not.toBeVisible();
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
 
         // Check existing file content
-        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'file1.adoc'), 'utf8');
+        const content = fsSetup.readFile('dir1', 'file1.adoc');
         expect(content).toBe('Modified content.');
     });
 
-    test('Creating new file in subdirectory via Sidebar', async ({ page }) => {
+    test('Creating new file in subdirectory via Sidebar', async ({ page, fsSetup }) => {
         await page.click('[data-testid="open-folder-button"]');
 
         // Expand subdirectory if needed (it is empty so might show as empty)
@@ -336,14 +325,14 @@ test.describe('Editor Functionality', () => {
 
         // Click New File in context menu
         await newFileBtn.click();
+        await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('[data-testid="rename-input"]')).not.toBeVisible();
 
         // Should create new-1.adoc INSIDE subdir
-        const newFilePath = path.join(fsSetup.tempDir1, 'subdir', 'new-1');
 
         // Allow operation to complete
-        await expect(async () => {
-            expect(fs.existsSync(newFilePath)).toBe(true);
-        }).toPass();
+        expect(fsSetup.readFile('dir1', 'subdir/new-1')).toBe('');
 
         // Check it is selected in title bar
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');

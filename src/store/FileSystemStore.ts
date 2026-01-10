@@ -1,5 +1,5 @@
 import { observable, action, runInAction, reaction, computed } from "mobx";
-import { get, set } from 'idb-keyval';
+import { get as getDbValue, set as setDbValue, clear as clearAllDbValues } from 'idb-keyval';
 import { Fzf } from 'fzf';
 import { editorStore } from './EditorStore';
 import { createRef } from "react";
@@ -335,7 +335,7 @@ class FileSystemStore extends EffectAwareModel {
                 this.directoryHandle = handle;
             });
             try {
-                await set('directoryHandle', handle);
+                await setDbValue('directoryHandle', handle);
             } catch (e) {
                 console.warn('Failed to persist directory handle:', e);
             }
@@ -343,6 +343,26 @@ class FileSystemStore extends EffectAwareModel {
         } catch (error) {
             console.error('Error opening directory:', error);
         }
+    }
+
+    @action
+    async clearDirectory() {
+        this.directoryHandle = null;
+        this.fileTree = [];
+        this.currentFileHandle = null;
+        this.dirty = false;
+        this.isLoading = false;
+        this.collapsedPaths = new Set();
+        this.searchQuery = '';
+        this.isSearchVisible = false;
+        this.highlightedPath = null;
+        this.contextMenuTarget = null;
+        if (this.loadTimeout) {
+            window.clearTimeout(this.loadTimeout);
+            this.loadTimeout = null;
+        }
+        editorStore.showHelp();
+        await clearAllDbValues();
     }
 
     async restoreDirectory() {
@@ -354,11 +374,11 @@ class FileSystemStore extends EffectAwareModel {
                 return;
             }
 
-            const handle = await get('directoryHandle') as FileSystemDirectoryHandle | undefined;
+            const handle = await getDbValue('directoryHandle') as FileSystemDirectoryHandle | undefined;
             if (handle) {
                 runInAction(() => {
                     // Test support: Hydrate handle if it's a plain object (mock)
-                    const hydrator = (window as any).__hydrateHandle;
+                    const hydrator = (window as any).__TEST_hydrateHandle;
                     this.directoryHandle = hydrator ? hydrator(handle) : handle;
                 });
 
@@ -380,10 +400,10 @@ class FileSystemStore extends EffectAwareModel {
 
     async restoreLastFile() {
         try {
-            const handle = await get('lastOpenFile') as FileSystemFileHandle | undefined;
+            const handle = await getDbValue('lastOpenFile') as FileSystemFileHandle | undefined;
             if (handle) {
                 // Verify permission for the file (should be inherited from directory usually, or re-verified)
-                const hydrator = (window as any).__hydrateHandle;
+                const hydrator = (window as any).__TEST_hydrateHandle;
                 const hydratedHandle = hydrator ? hydrator(handle) : handle;
 
                 const perm = await hydratedHandle.queryPermission({ mode: 'read' });
@@ -636,7 +656,7 @@ class FileSystemStore extends EffectAwareModel {
 
         // Persist file handle
         try {
-            await set('lastOpenFile', fileHandle);
+            await setDbValue('lastOpenFile', fileHandle);
         } catch (e) {
             console.warn('Failed to persist file handle:', e);
         }
@@ -729,7 +749,7 @@ class FileSystemStore extends EffectAwareModel {
         // Trigger generic reaction/persist collapsed paths if needed?
         // toggleDirectory does persist. Here we batch.
         try {
-            set('collapsedPaths', Array.from(this.collapsedPaths));
+            setDbValue('collapsedPaths', Array.from(this.collapsedPaths));
         } catch (e) {
             console.warn('Failed to persist collapsed paths:', e);
         }
@@ -756,7 +776,7 @@ class FileSystemStore extends EffectAwareModel {
         }
 
         // Clear persisted handle
-        await set('lastOpenFile', null);
+        await setDbValue('lastOpenFile', null);
 
         runInAction(() => {
             this.currentFileHandle = null;
@@ -1112,7 +1132,7 @@ class FileSystemStore extends EffectAwareModel {
         }
         // Trigger generic reaction/persist
         try {
-            set('collapsedPaths', Array.from(this.collapsedPaths));
+            setDbValue('collapsedPaths', Array.from(this.collapsedPaths));
         } catch (e) {
             console.warn('Failed to persist collapsed paths:', e);
         }
@@ -1124,7 +1144,7 @@ class FileSystemStore extends EffectAwareModel {
 
     async restoreCollapsedPaths() {
         try {
-            const stored = await get('collapsedPaths') as Set<string> | string[] | undefined;
+            const stored = await getDbValue('collapsedPaths') as Set<string> | string[] | undefined;
             if (stored) {
                 runInAction(() => {
                     if (Array.isArray(stored)) {

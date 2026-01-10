@@ -13,26 +13,25 @@ export const createTempDir = () => {
 };
 
 export class FsTestSetup {
-    tempDir1: string;
-    tempDir2: string;
-
-    constructor() {
-        this.tempDir1 = createTempDir();
-        this.tempDir2 = createTempDir();
-        // console.log(`Test running in temp dirs: ${this.tempDir1}, ${this.tempDir2}`);
-    }
+    private readonly tempDirs = new Map<string, string>();
 
     cleanup() {
-        try {
-            fs.rmSync(this.tempDir1, { recursive: true, force: true });
-            fs.rmSync(this.tempDir2, { recursive: true, force: true });
-        } catch (e) {
-            console.error(`Failed to cleanup temp dirs`, e);
+        for (const path of this.tempDirs.values()) {
+            try {
+                fs.rmSync(path, { recursive: true, force: true });
+            } catch (e) {
+                console.error(`Failed to cleanup temp dirs`, e);
+            }
         }
+        this.tempDirs.clear();
     }
 
-    createFile(dir: 'dir1' | 'dir2', relativePath: string, content: string | Buffer) {
-        const baseDir = dir === 'dir1' ? this.tempDir1 : this.tempDir2;
+    createFile(dirName: string, relativePath: string, content: string | Buffer) {
+        let baseDir = this.tempDirs.get(dirName);
+        if (baseDir === undefined) {
+            baseDir = createTempDir();
+            this.tempDirs.set(dirName, baseDir);
+        }
         const fullPath = path.join(baseDir, relativePath);
         const folder = path.dirname(fullPath);
         if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
@@ -44,24 +43,30 @@ export class FsTestSetup {
         }
     }
 
-    readFile(dir: 'dir1' | 'dir2', relativePath: string): string {
-        const baseDir = dir === 'dir1' ? this.tempDir1 : this.tempDir2;
+    readFile(dirName: string, relativePath: string): string {
+        const baseDir = this.tempDirs.get(dirName);
+        if (baseDir === undefined) throw new Error(`Directory not created for ${dirName}`);
         return fs.readFileSync(path.join(baseDir, relativePath), 'utf8');
     }
 
-    async init(page: Page) {
+    exists(dirName: string, relativePath: string): boolean {
+        const baseDir = this.tempDirs.get(dirName);
+        if (baseDir === undefined) throw new Error(`Directory not created for ${dirName}`);
+        return fs.existsSync(path.join(baseDir, relativePath));
+    }
+
+    // Renamed from init to register to verify it is only called once per page
+    async register(page: Page) {
         // Helper to resolve path based on prefix (dir1 or dir2)
         const resolvePath = (virtualPath: string) => {
+            if (virtualPath === '.') throw new Error(`A single . as path is not supported`);
             const parts = virtualPath.split(/[/\\]/);
             const root = parts[0];
             const rest = parts.slice(1).join(path.sep);
 
-            if (root === 'dir1') return path.join(this.tempDir1, rest);
-            if (root === 'dir2') return path.join(this.tempDir2, rest);
-
-            if (virtualPath === '.') return this.tempDir1;
-
-            throw new Error(`Unknown virtual path root: ${root} in ${virtualPath}`);
+            const baseDir = this.tempDirs.get(root);
+            if (baseDir === undefined) throw new Error(`Directory not created for ${root}`);
+            return path.join(baseDir, rest);
         };
 
         // Expose bindings to bridge the mocked FS access in browser to Node fs

@@ -12,7 +12,7 @@ declare global {
         __TEST_monaco?: typeof monaco;
         __TEST_dialog: Dialog;
         __TEST_DISABLE_AUTO_SAVE__?: boolean;
-        __hydrateHandle?: (handle: any) => any;
-        __mockPickerConfig?: { name: string; path: string };
+        __TEST_hydrateHandle?: (handle: any) => any;
+        __TEST_mockPickerConfig?: { name: string; path: string };
     }
 }

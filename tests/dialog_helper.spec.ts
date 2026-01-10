@@ -1,22 +1,7 @@
-import { test, expect } from '@playwright/test';
-import { enableTestLogging } from './helpers/test_logging';
-import { waitForTestGlobals, handleNextDialog, enableTestGlobals } from './helpers/test_globals';
+import { test, expect } from './fixtures.ts';
+import { handleNextDialog } from './helpers/test_globals';
 
 test.describe('Helper: handleNextDialog', () => {
-    test.beforeEach(async ({ page }) => {
-        enableTestLogging(page);
-        // Set up dialog helpers (exposes __TEST_onDialogHandled and injects scheduleDialogAction)
-        await enableTestGlobals(page);
-
-        // Inject flag to enable test globals in the app
-        await page.addInitScript(() => {
-            window.__ENABLE_TEST_GLOBALS__ = true;
-        });
-        await page.goto('/?skip_restore=true');
-
-        // Wait for dialog global
-        await waitForTestGlobals(page);
-    });
 
     test('should handle multiple sequential dialogs', async ({ page }) => {
         // 1. Prepare the handlers in expected order

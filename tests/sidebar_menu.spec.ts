@@ -1,35 +1,20 @@
-import { test, expect } from '@playwright/test';
-import { FsTestSetup } from './helpers/fs_test_setup';
-import { enableTestLogging } from './helpers/test_logging';
-import { enableTestGlobals, waitForTestGlobals } from './helpers/test_globals';
+import { test, expect } from './fixtures.ts';
+import { setMockPickerConfig } from './helpers/mock_helpers.ts';
 
-test.describe('Sicebar Context Menu Functionality', () => {
-    let fsSetup: FsTestSetup;
+test.describe('Sidebar Context Menu Functionality', () => {
 
-    test.beforeEach(async ({ page }) => {
-        enableTestLogging(page);
-
+    test.beforeEach(async ({ page, fsSetup }) => {
+        fsSetup.cleanup();
         // Reset and setup basic file system using FsTestSetup class
-        fsSetup = new FsTestSetup();
         fsSetup.createFile('dir1', 'file1.txt', 'content1');
         fsSetup.createFile('dir1', 'folder1/nested_file.txt', 'nested content');
 
-        await fsSetup.init(page);
-        await enableTestGlobals(page);
-
-        // Open the editor, skipping restore to start clean with our directory
-        await page.goto('/?skip_restore=true');
-        await waitForTestGlobals(page);
-
+        await setMockPickerConfig(page, 'dir1');
         // Open the folder (dir1 matches the first mock dir)
         await page.click('button:has-text("Open Folder")');
 
         // Wait for file1 to be visible to ensure tree is loaded
         await expect(page.locator('[data-file-path="file1.txt"]')).toBeVisible();
-    });
-
-    test.afterEach(() => {
-        fsSetup.cleanup();
     });
 
     test('should show context menu for file with correct options', async ({ page }) => {
@@ -45,6 +30,9 @@ test.describe('Sicebar Context Menu Functionality', () => {
         await expect(contextMenu).toContainText('Rename');
         await expect(contextMenu).toContainText('Delete');
         await expect(contextMenu).not.toContainText('New File');
+
+        await fileItem.click();
+        await expect(contextMenu).not.toBeVisible();
     });
 
     test('should show context menu for directory with correct options', async ({ page }) => {
@@ -60,6 +48,9 @@ test.describe('Sicebar Context Menu Functionality', () => {
         await expect(contextMenu).not.toContainText('Open');
         await expect(contextMenu).not.toContainText('Rename');
         await expect(contextMenu).not.toContainText('Delete');
+
+        await dirItem.click();
+        await expect(contextMenu).not.toBeVisible();
     });
 
     test('should trigger rename from context menu', async ({ page }) => {
@@ -73,6 +64,9 @@ test.describe('Sicebar Context Menu Functionality', () => {
         const renameInput = page.getByTestId('rename-input');
         await expect(renameInput).toBeVisible();
         await expect(renameInput).toHaveValue('file1.txt');
+
+        await page.keyboard.press('Escape');
+        await expect(renameInput).not.toBeVisible();
     });
 
     test('should create new file from context menu', async ({ page }) => {
@@ -85,6 +79,9 @@ test.describe('Sicebar Context Menu Functionality', () => {
         // The input for renaming the new file should appear
         const renameInput = page.getByTestId('rename-input');
         await expect(renameInput).toBeVisible();
+
+        await page.keyboard.press('Escape');
+        await expect(renameInput).not.toBeVisible();
     });
 
     test('should navigate context menu items with arrow keys', async ({ page }) => {
@@ -118,6 +115,9 @@ test.describe('Sicebar Context Menu Functionality', () => {
         // Press ArrowUp -> Last item (Delete) should be focused
         await page.keyboard.press('ArrowUp');
         await expect(page.getByTestId('ctx-delete')).toBeFocused();
+
+        await fileItem.click();
+        await expect(contextMenu).not.toBeVisible();
     });
 
     test('should execute action with Enter key', async ({ page }) => {
@@ -137,6 +137,9 @@ test.describe('Sicebar Context Menu Functionality', () => {
         const renameInput = page.getByTestId('rename-input');
         await expect(renameInput).toBeVisible();
         await expect(renameInput).toHaveValue('file1.txt');
+
+        await page.keyboard.press('Escape');
+        await expect(renameInput).not.toBeVisible();
     });
 });
 

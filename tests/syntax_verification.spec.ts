@@ -1,11 +1,8 @@
-import { test as base, expect, Page } from '@playwright/test';
+import { test, expect } from './fixtures.ts';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Token } from 'monaco-editor';
-// Import shared helpers. Note .js extension for resolution if needed, or rely on toolchain.
-// Since this is Playwright (TS), .ts import usually fine or .js if ESM.
-// Given strict browser/node separation in previous steps, let's try .js for consistency.
-import { getTokens, enrichTokens, waitForMonaco } from './helpers/monaco_helpers.ts';
+import { getTokens, enrichTokens } from './helpers/monaco_helpers.ts';
 
 interface TokenCheck {
     line: number;
@@ -19,8 +16,6 @@ interface TestFixture {
 }
 
 import { fileURLToPath } from 'url';
-import { enableTestLogging } from './helpers/test_logging.ts';
-import { enableTestGlobals } from './helpers/test_globals.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,36 +24,8 @@ const fixturesDir = path.join(__dirname, 'fixtures');
 const repoRoot = path.join(__dirname, '..');
 const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.adoc'));
 
-interface SharedContextPageFixtureArgs {
-    page: Page;
-};
-
-interface SharedContextFixtureArgs {
-    sharedPage: Page;
-};
-
-const test = base.extend<SharedContextPageFixtureArgs, SharedContextFixtureArgs>({
-    sharedPage: [
-        async ({ browser }, use) => {
-            const context = await browser.newContext();
-            const page = await context.newPage();
-            
-            enableTestLogging(page);
-            await enableTestGlobals(page);
-            await page.goto('/?skip_restore=true', { waitUntil: "domcontentloaded" });
-            await waitForMonaco(page);
-
-            await use(page);
-            
-            await page.close();
-            await context.close();
-        },
-        { scope: 'worker' },
-    ],
-    page: async ({ sharedPage }, use) => {
-        await use(sharedPage);
-    },
-});
+// Test definition using shared fixture
+// We don't need to extend base here, we use the test object exported from fixtures.ts
 
 test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 

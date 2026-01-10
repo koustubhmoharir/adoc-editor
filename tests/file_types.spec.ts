@@ -1,19 +1,12 @@
-import { test, expect } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
-import { FsTestSetup } from './helpers/fs_test_setup';
-import { enableTestLogging } from './helpers/test_logging';
-import { waitForTestGlobals, handleNextDialog, enableTestGlobals } from './helpers/test_globals';
-import { waitForMonaco } from './helpers/monaco_helpers';
+import { test, expect } from './fixtures.ts';
+import { handleNextDialog } from './helpers/test_globals';
 import { getEditorContent } from './helpers/editor_helpers';
+import { setMockPickerConfig } from './helpers/mock_helpers.ts';
 
 test.describe('File Types and Extensions', () => {
-    let fsSetup: FsTestSetup;
 
-    test.beforeEach(async ({ page }) => {
-        enableTestLogging(page);
-        fsSetup = new FsTestSetup();
-
+    test.beforeEach(async ({ page, fsSetup }) => {
+        fsSetup.cleanup();
         // Setup various file types
         fsSetup.createFile('dir1', 'script.js', 'console.log("hello");');
         fsSetup.createFile('dir1', 'style.css', 'body { color: red; }');
@@ -26,16 +19,8 @@ test.describe('File Types and Extensions', () => {
         const binaryContent = Buffer.from([0x00, 0x01, 0x02, 0x03, 0xFF]);
         fsSetup.createFile('dir1', 'image.bin', binaryContent);
 
-        await fsSetup.init(page);
-        await enableTestGlobals(page);
-        await page.goto('/?skip_restore=true');
-        await waitForTestGlobals(page);
-        await waitForMonaco(page);
+        await setMockPickerConfig(page, 'dir1');
         await page.click('[data-testid="open-folder-button"]');
-    });
-
-    test.afterEach(() => {
-        fsSetup.cleanup();
     });
 
     test('Lists all file types including dotfiles', async ({ page }) => {
@@ -102,7 +87,7 @@ test.describe('File Types and Extensions', () => {
         }).toPass();
     });
 
-    test('Renaming allows changing extension from .adoc', async ({ page }) => {
+    test('Renaming allows changing extension from .adoc', async ({ page, fsSetup }) => {
         // Create an adoc file to test renaming FROM adoc
         // actually we can rename script.js to script.ts too. 
         // But user specifically asked about hardcoded adoc.
@@ -117,7 +102,7 @@ test.describe('File Types and Extensions', () => {
         await page.keyboard.press('Enter');
 
         await expect(page.locator('[data-testid="file-item"][data-file-path="script.ts"]')).toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'script.ts'))).toBe(true);
+        expect(fsSetup.exists('dir1', 'script.ts'), 'script.ts exists');
 
         // Rename .gitignore -> .config
         const gitignore = page.locator('[data-testid="file-item"][data-file-path=".gitignore"]');

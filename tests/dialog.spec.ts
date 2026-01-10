@@ -1,19 +1,6 @@
-import { test, expect } from '@playwright/test';
-import { enableTestLogging } from './helpers/test_logging';
-import { waitForTestGlobals } from './helpers/test_globals';
+import { test, expect } from './fixtures.ts';
 
 test.describe('Dialog API', () => {
-    test.beforeEach(async ({ page }) => {
-        enableTestLogging(page);
-        // Inject flag to enable test globals
-        await page.addInitScript(() => {
-            window.__ENABLE_TEST_GLOBALS__ = true;
-        });
-        await page.goto('/?skip_restore=true');
-
-        // Wait for dialog global
-        await waitForTestGlobals(page);
-    });
 
     test('alert(message, options) should render correctly and resolve on OK', async ({ page }) => {
         let defaultTitle = await page.evaluate(() => {

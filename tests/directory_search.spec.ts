@@ -1,16 +1,9 @@
-import { test, expect } from '@playwright/test';
-import { FsTestSetup } from './helpers/fs_test_setup';
-import { enableTestLogging } from './helpers/test_logging';
-import { waitForMonaco } from './helpers/monaco_helpers';
-import { enableTestGlobals } from './helpers/test_globals';
+import { test, expect } from './fixtures.ts';
+import { setMockPickerConfig } from './helpers/mock_helpers.ts';
 
 test.describe('Search Functionality', () => {
-    let fsSetup: FsTestSetup;
 
-    test.beforeEach(async ({ page }) => {
-        enableTestLogging(page);
-        fsSetup = new FsTestSetup();
-
+    test.beforeEach(async ({ page, fsSetup }) => {
         // 1. Create large set of files for scrolling
         for (let i = 1; i <= 30; i++) {
             const num = i.toString().padStart(2, '0');
@@ -20,32 +13,16 @@ test.describe('Search Functionality', () => {
         // 2. Create distinct files for filtering
         fsSetup.createFile('dir1', 'apple.adoc', '== Apple');
         fsSetup.createFile('dir1', 'banana.adoc', '== Banana');
-        fsSetup.createFile('dir1', 'cherry.txt', 'Ignored'); // Should not show up in ADOC filter anyway if we filter by extension, but search finds all files provided by store which might include txt if we allow it?
-        // Wait, store.allFiles currently recurses everything in directory. 
-        // Our file tree logic filters based on some criteria? 
-        // FileSystemStore.ts:36 `allFiles` recurses `fileTree`. 
-        // Logic in sidebar uses `allFiles`. 
-        // If file system returns .txt, it will be in `allFiles`.
-        // Let's assume standard behavior: if it's in tree, it's searchable.
+        fsSetup.createFile('dir1', 'cherry.txt', 'Ignored');
 
         // Set viewport height to 400px to force scrolling
         await page.setViewportSize({ width: 1280, height: 400 });
 
-        await fsSetup.init(page);
-        await enableTestGlobals(page);
-        await page.goto('/?skip_restore=true');
-
-        // Wait for Monaco
-        await waitForMonaco(page);
-
+        await setMockPickerConfig(page, 'dir1');
         // Open folder
         await page.click('[data-testid="open-folder-button"]');
         // Wait for tree to populate
         await expect(page.locator('[data-testid="file-item"][data-file-path="file-01.adoc"]')).toBeVisible();
-    });
-
-    test.afterEach(() => {
-        fsSetup.cleanup();
     });
 
     test('UI Compatibility: Toggling search', async ({ page }) => {

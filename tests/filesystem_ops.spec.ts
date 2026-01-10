@@ -1,39 +1,24 @@
-import { test, expect } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
-import { FsTestSetup } from './helpers/fs_test_setup';
-import { enableTestLogging } from './helpers/test_logging';
-import { enableTestGlobals, waitForTestGlobals } from './helpers/test_globals';
+import { test, expect } from './fixtures.ts';
+import { FsTestSetup } from './helpers/fs_test_setup'; // Import type for helpers
 import { handleNextDialog } from './helpers/test_globals';
-
-import { waitForMonaco } from './helpers/monaco_helpers';
 import { getEditorContent } from './helpers/editor_helpers';
 
-test.describe('Renaming Functionality', () => {
-    let fsSetup: FsTestSetup;
-    test.beforeEach(async ({ page }) => {
-        enableTestLogging(page);
+// Helper Functions
+import { Page, Locator } from '@playwright/test';
+import { setMockPickerConfig } from './helpers/mock_helpers.ts';
 
-        fsSetup = new FsTestSetup();
+test.describe('Renaming Functionality', () => {
+    test.beforeEach(async ({ page, fsSetup }) => {
+        fsSetup.cleanup();
         fsSetup.createFile('dir1', 'file1.adoc', '== File 1 content');
         fsSetup.createFile('dir1', 'file2.adoc', '== File 2 content');
         fsSetup.createFile('dir1', 'conflict.adoc', '== Conflict File');
-        await fsSetup.init(page);
-        await enableTestGlobals(page);
-        await page.goto('/?skip_restore=true');
-        await waitForTestGlobals(page);
-        await waitForMonaco(page);
+        await setMockPickerConfig(page, 'dir1');
         await page.click('button:has-text("Open Folder")');
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
     });
 
-    test.afterEach(() => {
-        fsSetup.cleanup();
-    });
-
-
-
-    test('Enter and exit renaming via keyboard (F2, Enter)', async ({ page }) => {
+    test('Enter and exit renaming via keyboard (F2, Enter)', async ({ page, fsSetup }) => {
         // Select file using robust selector
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
@@ -44,10 +29,10 @@ test.describe('Renaming Functionality', () => {
         await completeRename(page, input, 'renamed.adoc', 'enter');
 
         await expect(page.locator('[data-testid="file-item"][data-file-path="renamed.adoc"]')).toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'renamed.adoc'))).toBe(true);
+        expect(fsSetup.exists('dir1', 'renamed.adoc'));
     });
 
-    test('Cancel renaming via Esc', async ({ page }) => {
+    test('Cancel renaming via Esc', async ({ page, fsSetup }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
         const input = await triggerRename(page, fileItem);
 
@@ -55,11 +40,11 @@ test.describe('Renaming Functionality', () => {
 
         // Input gone, old name remains
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'file1.adoc'))).toBe(true);
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'aborted_change.adoc'))).toBe(false);
+        expect(fsSetup.exists('dir1', 'file1.adoc'));
+        expect(fsSetup.exists('dir1', 'aborted_change.adoc'));
     });
 
-    test('Cancel renaming via cancel button', async ({ page }) => {
+    test('Cancel renaming via cancel button', async ({ page, fsSetup }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
         const input = await triggerRename(page, fileItem);
 
@@ -73,8 +58,8 @@ test.describe('Renaming Functionality', () => {
 
         // Input gone, old name remains
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'file1.adoc'))).toBe(true);
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'aborted_change.adoc'))).toBe(false);
+        expect(fsSetup.exists('dir1', 'file1.adoc'));
+        expect(!fsSetup.exists('dir1', 'aborted_change.adoc'));
     });
 
     test('Cancel renaming resets to original name if empty or same', async ({ page }) => {
@@ -103,7 +88,7 @@ test.describe('Renaming Functionality', () => {
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
     });
 
-    test('Entering rename mode selects filename without extension', async ({ page }) => {
+    test('Entering rename mode selects filename without extension', async ({ page, fsSetup }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
         await triggerRename(page, fileItem);
 
@@ -117,10 +102,10 @@ test.describe('Renaming Functionality', () => {
 
         // Check result
         await expect(page.locator('[data-testid="file-item"][data-file-path="changed.adoc"]')).toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'changed.adoc'))).toBe(true);
+        expect(fsSetup.exists('dir1', 'changed.adoc'));
     });
 
-    test('Renaming preserves file content and editor content', async ({ page }) => {
+    test('Renaming preserves file content and editor content', async ({ page, fsSetup }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
         await fileItem.click(); // Ensure selection for content load check first
 
@@ -141,7 +126,7 @@ test.describe('Renaming Functionality', () => {
         }).toPass();
 
         // Verify disk content
-        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'preserved.adoc'), 'utf8');
+        const content = fsSetup.readFile('dir1', 'preserved.adoc');
         expect(content).toBe('== File 1 content');
 
         // Cancelled rename also preserves
@@ -222,7 +207,7 @@ test.describe('Renaming Functionality', () => {
         expect(await dialogHandle.getMessage()).toContain('Invalid character');
     });
 
-    test('Validation - Conflict', async ({ page }) => {
+    test('Validation - Conflict', async ({ page, fsSetup }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
         const input = await triggerRename(page, fileItem);
 
@@ -249,22 +234,22 @@ test.describe('Renaming Functionality', () => {
         // Should succeed now
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).not.toBeVisible();
         await expect(page.locator('[data-testid="file-item"][data-file-path="conflict.adoc"]')).toBeVisible();
-        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'conflict.adoc'), 'utf8');
+        const content = fsSetup.readFile('dir1', 'conflict.adoc');
         expect(content).toBe('== File 1 content');
     });
 
-    test('Rename commits when clicking another file', async ({ page }) => {
+    test('Rename commits when clicking another file', async ({ page, fsSetup }) => {
         await verifyRenameOnFocusChange(page, fsSetup, 'file1.adoc', 'renamed_via_file_click.adoc', async () => {
             const otherFile = page.locator('[data-testid="file-item"][data-file-path="file2.adoc"]');
             await otherFile.click();
         });
 
         // Verify content preserved after file click rename
-        const content = fs.readFileSync(path.join(fsSetup.tempDir1, 'renamed_via_file_click.adoc'), 'utf8');
+        const content = fsSetup.readFile('dir1', 'renamed_via_file_click.adoc');
         expect(content).toBe('== File 1 content');
     });
 
-    test('Rename commits when clicking editor', async ({ page }) => {
+    test('Rename commits when clicking editor', async ({ page, fsSetup }) => {
         // Use file2.adoc
         await verifyRenameOnFocusChange(page, fsSetup, 'file2.adoc', 'renamed_via_editor_click.adoc', async () => {
             const editor = page.locator('.monaco-editor').first();
@@ -272,7 +257,7 @@ test.describe('Renaming Functionality', () => {
         });
     });
 
-    test('Rename commits when clicking title bar', async ({ page }) => {
+    test('Rename commits when clicking title bar', async ({ page, fsSetup }) => {
         // Use conflict.adoc (available from setup) or create a temp file if needed.
         // The setup creates: file1.adoc, file2.adoc, conflict.adoc
         // Let's use conflict.adoc
@@ -312,9 +297,6 @@ test.describe('Renaming Functionality', () => {
     });
 });
 
-// Helper Functions
-import { Page, Locator } from '@playwright/test';
-
 
 // Helper to verify rename behavior on focus change
 async function verifyRenameOnFocusChange(
@@ -339,10 +321,10 @@ async function verifyRenameOnFocusChange(
 
     // Verify new name exists
     await expect(page.locator(`[data-testid="file-item"][data-file-path="${newName}"]`)).toBeVisible();
-    expect(fs.existsSync(path.join(fsSetup.tempDir1, newName))).toBe(true);
+    expect(fsSetup.exists('dir1', newName));
     // Verify old name gone
     await expect(page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`)).not.toBeVisible();
-    expect(fs.existsSync(path.join(fsSetup.tempDir1, originalName))).toBe(false);
+    expect(!fsSetup.exists('dir1', originalName));
 
 }
 

@@ -202,7 +202,7 @@ export const Sidebar: React.FC = observer(() => {
                     <div>No folder opened</div>
                     <button
                         className={styles.actionButton}
-                        onClick={() => fileSystemStore.openDirectory()}
+                        onClick={async () => await fileSystemStore.openDirectory()}
                         data-testid="open-folder-button"
                     >
                         Open Folder
