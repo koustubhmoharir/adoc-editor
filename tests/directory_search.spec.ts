@@ -41,7 +41,7 @@ test.describe('Search Functionality', () => {
         // Open folder
         await page.click('[data-testid="open-folder-button"]');
         // Wait for tree to populate
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'file-01.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="file-01.adoc"]')).toBeVisible();
     });
 
     test.afterEach(() => {
@@ -67,14 +67,14 @@ test.describe('Search Functionality', () => {
 
         // Search "apple"
         await page.fill('[data-testid="search-input"]', 'apple');
-        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'apple.adoc' })).toBeVisible();
-        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'banana.adoc' })).not.toBeVisible();
+        await expect(page.locator('[data-testid="search-result-item"][data-file-path="apple.adoc"]')).toBeVisible();
+        await expect(page.locator('[data-testid="search-result-item"][data-file-path="banana.adoc"]')).not.toBeVisible();
 
         // Search "file"
         await page.fill('[data-testid="search-input"]', 'file');
-        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'file-01.adoc' })).toBeVisible();
-        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'file-30.adoc' })).toBeVisible();
-        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'apple.adoc' })).not.toBeVisible();
+        await expect(page.locator('[data-testid="search-result-item"][data-file-path="file-01.adoc"]')).toBeVisible();
+        await expect(page.locator('[data-testid="search-result-item"][data-file-path="file-30.adoc"]')).toBeVisible();
+        await expect(page.locator('[data-testid="search-result-item"][data-file-path="apple.adoc"]')).not.toBeVisible();
     });
 
     test('Scrolling & Navigation', async ({ page }) => {
@@ -90,21 +90,21 @@ test.describe('Search Functionality', () => {
 
         // Arrow Down -> Select first
         await page.keyboard.press('ArrowDown');
-        await expect(resultItems.nth(0)).toHaveClass(/highlighted/);
+        await expect(resultItems.nth(0)).toHaveAttribute('data-highlighted', 'true');
         await expect(resultItems.nth(0)).toBeInViewport();
 
         // Arrow Down -> Select second
         await page.keyboard.press('ArrowDown');
-        await expect(resultItems.nth(1)).toHaveClass(/highlighted/);
-        await expect(resultItems.nth(0)).not.toHaveClass(/highlighted/);
+        await expect(resultItems.nth(1)).toHaveAttribute('data-highlighted', 'true');
+        await expect(resultItems.nth(0)).not.toHaveAttribute('data-highlighted', 'true');
 
         // Arrow Up -> Select first
         await page.keyboard.press('ArrowUp');
-        await expect(resultItems.nth(0)).toHaveClass(/highlighted/);
+        await expect(resultItems.nth(0)).toHaveAttribute('data-highlighted', 'true');
 
         // Arrow Up from first -> Clear highlight, focus input/top
         await page.keyboard.press('ArrowUp');
-        await expect(resultItems.nth(0)).not.toHaveClass(/highlighted/);
+        await expect(resultItems.nth(0)).not.toHaveAttribute('data-highlighted', 'true');
         // Verify input is still focused or at least visible/accessible
         await expect(page.locator('[data-testid="search-input"]')).toBeFocused(); // If implementation sets focus
 
@@ -117,7 +117,7 @@ test.describe('Search Functionality', () => {
         // Determine which item is highlighted. 
         // We expect delta > 1. Let's find the highlighted index.
         const firstPageHighlightIndex = await resultItems.evaluateAll(items =>
-            items.findIndex(item => item.className.includes('highlighted'))
+            items.findIndex(item => item.getAttribute('data-highlighted') === 'true')
         );
         expect(firstPageHighlightIndex).toBeGreaterThan(1);
         await expect(resultItems.nth(firstPageHighlightIndex)).toBeInViewport();
@@ -129,7 +129,7 @@ test.describe('Search Functionality', () => {
 
         // Should be at last item
         const lastIndex = 29; // file-30
-        await expect(resultItems.nth(lastIndex)).toHaveClass(/highlighted/);
+        await expect(resultItems.nth(lastIndex)).toHaveAttribute('data-highlighted', 'true');
         await expect(resultItems.nth(lastIndex)).toBeInViewport();
 
         // --- Page Up ---
@@ -137,7 +137,7 @@ test.describe('Search Functionality', () => {
         // Page Up once
         await page.keyboard.press('PageUp');
         const endPageHighlightIndex = await resultItems.evaluateAll(items =>
-            items.findIndex(item => item.className.includes('highlighted'))
+            items.findIndex(item => item.getAttribute('data-highlighted') === 'true')
         );
         expect(endPageHighlightIndex).toBeLessThan(lastIndex - 1);
         await expect(resultItems.nth(endPageHighlightIndex)).toBeInViewport();
@@ -147,7 +147,7 @@ test.describe('Search Functionality', () => {
 
         // Should clear highlight
         const topHighlightIndex = await resultItems.evaluateAll(items =>
-            items.findIndex(item => item.className.includes('highlighted'))
+            items.findIndex(item => item.getAttribute('data-highlighted') === 'true')
         );
         expect(topHighlightIndex).toBe(-1);
 
@@ -178,7 +178,7 @@ test.describe('Search Functionality', () => {
         // Select via Click
         await page.click('[data-testid="search-toggle-button"]');
         await page.fill('[data-testid="search-input"]', 'banana');
-        await page.click('[data-testid="search-result-item"]:has-text("banana.adoc")');
+        await page.click('[data-testid="search-result-item"][data-file-path="banana.adoc"]');
 
         await expect(page.locator('[data-testid="title-bar"]')).toContainText('banana.adoc');
         await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
@@ -223,7 +223,7 @@ test.describe('Search Functionality', () => {
 
         // Type something
         await page.fill('[data-testid="search-input"]', 'apple');
-        await expect(page.locator('[data-testid="search-result-item"]', { hasText: 'apple.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="search-result-item"][data-file-path="apple.adoc"]')).toBeVisible();
 
         // Toggle off via shortcut - should clear and close
         await page.keyboard.press('Control+Backquote');

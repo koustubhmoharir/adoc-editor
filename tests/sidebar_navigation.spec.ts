@@ -52,12 +52,12 @@ test.describe('Sidebar Navigation', () => {
 
         // Click row: Selects ONLY (Does not toggle)
         await dira.click();
-        await expect(dira).toHaveClass(/selected/);
+        await expect(dira).toHaveAttribute('data-selected', 'true');
         await expect(fileInDir).toBeVisible(); // Still Expanded
 
         // Click toggle button: Collapses and Selects
         await toggleBtn.click();
-        await expect(dira).toHaveClass(/selected/);
+        await expect(dira).toHaveAttribute('data-selected', 'true');
         await expect(fileInDir).not.toBeVisible();
 
         // Click toggle button again: Expands
@@ -171,7 +171,7 @@ test.describe('Sidebar Navigation', () => {
     test('Space/Enter Navigation (Directory)', async ({ page }) => {
         const dira = page.locator('[data-testid="directory-item"][data-dir-path="dir-a"]');
         await dira.click(); // select only
-        await expect(dira).toHaveClass(/selected/);
+        await expect(dira).toHaveAttribute('data-selected', 'true');
 
         // Check initial state (expanded) - file2 visible
         const file2 = page.locator('[data-testid="file-item"][data-file-path="dir-a/file2.adoc"]');

@@ -32,6 +32,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 tabIndex={isSelected ? 0 : -1} // Enable keyboard focus/events
                 data-testid="file-item"
                 data-file-path={node.path}
+                data-selected={isSelected}
             >
                 {isRenaming ? (
                     <button key="cancel-rename-button"
@@ -104,6 +105,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 ref={node.treeItemRef}
                 data-testid="directory-item"
                 data-dir-path={node.path}
+                data-selected={isSelected}
             >
                 <button
                     className={styles.directoryToggleButton}
@@ -224,6 +226,7 @@ export const Sidebar: React.FC = observer(() => {
                                         onContextMenu={item.handleContextMenu}
                                         data-testid="search-result-item"
                                         data-file-path={item.path}
+                                        data-highlighted={model.isHighlighted}
                                     >
                                         <span className={styles.resultName}>{item.name}</span>
                                         <span className={styles.resultPath} title={item.path}>{item.path.substring(0, item.path.length - item.name.length - 1)}</span>

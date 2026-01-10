@@ -24,7 +24,7 @@ test.describe('Renaming Functionality', () => {
         await waitForTestGlobals(page);
         await waitForMonaco(page);
         await page.click('button:has-text("Open Folder")');
-        await expect(page.locator('text=file1.adoc')).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
     });
 
     test.afterEach(() => {
@@ -326,7 +326,7 @@ async function verifyRenameOnFocusChange(
 ) {
     const fileItem = page.locator(`[data-testid="file-item"][data-file-path="${originalName}"]`);
     await fileItem.click();
-    await expect(fileItem).toHaveClass(/selected/);
+    await expect(fileItem).toHaveAttribute('data-selected', 'true');
 
     const input = await triggerRename(page, fileItem);
     await input.fill(newName);
@@ -348,10 +348,10 @@ async function verifyRenameOnFocusChange(
 
 async function triggerRename(page: Page, fileItem: Locator): Promise<Locator> {
     await fileItem.click();
-    await expect(fileItem).toHaveClass(/selected/);
+    await expect(fileItem).toHaveAttribute('data-selected', 'true');
 
     await fileItem.press('F2');
-    
+
     const input = page.locator('[data-testid="rename-input"]');
     await expect(input).toBeVisible();
     await expect(input).toBeFocused();

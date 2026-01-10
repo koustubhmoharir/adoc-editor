@@ -44,18 +44,18 @@ test.describe('Editor Functionality', () => {
 
         // Check for file items in sidebar using text
         // We look for the file names which should be rendered in the tree
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'file1.adoc' })).toBeVisible();
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'file2.adoc' })).toBeVisible();
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'subdir' })).toBeVisible();
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'nested.adoc' })).toBeVisible();
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'other.txt' })).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="file2.adoc"]')).toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="subdir"]')).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="subdir/nested.adoc"]')).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="other.txt"]')).toBeVisible();
     });
 
     test('Clicking on a file opens the file in the editor', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
 
         // Click file1.adoc
-        await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
         // Check editor content
         // We wait for content to be set
@@ -70,7 +70,7 @@ test.describe('Editor Functionality', () => {
 
     test('If there are no unsaved changes, opening a new directory does not change content on disk', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
-        await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
         // Ensure loaded
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
@@ -82,10 +82,10 @@ test.describe('Editor Functionality', () => {
         await page.click('[data-testid="sidebar-header"]');
 
         // Check if dir2 loaded
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'dir2_file.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="dir2_file.adoc"]')).toBeVisible();
 
         // Select file in dir2
-        await page.click('[data-testid="file-item"]:has-text("dir2_file.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="dir2_file.adoc"]');
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('dir2_file.adoc');
 
         // Check disk content of file1 in dir1 was not changed
@@ -95,10 +95,10 @@ test.describe('Editor Functionality', () => {
 
     test('If there are no unsaved changes, opening a different file does not change content on disk', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
-        await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
         // Switch to file 2
-        await page.click('[data-testid="file-item"]:has-text("file2.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file2.adoc"]');
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file2.adoc');
 
         // Check file1 content intact
@@ -108,7 +108,7 @@ test.describe('Editor Functionality', () => {
 
     test('If any changes are made to the current file, they are auto-saved after a short delay', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
-        await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
         // Wait for file to load
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
@@ -134,7 +134,7 @@ test.describe('Editor Functionality', () => {
 
     test('If changes are made and a new file is opened, changes are saved before new file is opened', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
-        await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
         // Disable auto-save
         await page.evaluate(() => window.__TEST_DISABLE_AUTO_SAVE__ = true);
@@ -146,7 +146,7 @@ test.describe('Editor Functionality', () => {
         await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
 
         // Switch to file 2 immediately
-        await page.click('[data-testid="file-item"]:has-text("file2.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file2.adoc"]');
 
         // Verify file 2 loaded
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file2.adoc');
@@ -158,7 +158,7 @@ test.describe('Editor Functionality', () => {
 
     test('If changes are made and page is refreshed, changes are saved', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
-        await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
         // Disable auto-save
         await disableAutoSave(page);
@@ -179,7 +179,7 @@ test.describe('Editor Functionality', () => {
 
     test('Refreshing the page retains the selection', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
-        await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
         // Reload without skip_restore to test retention
@@ -209,43 +209,43 @@ test.describe('Editor Functionality', () => {
 
         // Verify initial state: All expanded by default
         // level1 visible in Sidebar
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level1' })).toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1"]')).toBeVisible();
         // level2 visible
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level2' })).toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1/level2"]')).toBeVisible();
         // level3 visible
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level3' })).toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1/level2/level3"]')).toBeVisible();
         // deep_file visible
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'deep_file.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="level1/level2/level3/deep_file.adoc"]')).toBeVisible();
 
         // Collapse level3. (State: level1=Open, level2=Open, level3=Collapsed)
-        await page.click('[data-testid="directory-item"]:has-text("level3") [data-testid="toggle-directory-btn"]');
+        await page.click('[data-testid="directory-item"][data-dir-path="level1/level2/level3"] [data-testid="toggle-directory-btn"]');
         // deep_file should hide
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'deep_file.adoc' })).not.toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="level1/level2/level3/deep_file.adoc"]')).not.toBeVisible();
 
         // Collapse level1. (State: level1=Collapsed, level2=? (hidden), level3=Collapsed)
-        await page.click('[data-testid="directory-item"]:has-text("level1") [data-testid="toggle-directory-btn"]');
+        await page.click('[data-testid="directory-item"][data-dir-path="level1"] [data-testid="toggle-directory-btn"]');
         // level2 should hide
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level2' })).not.toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1/level2"]')).not.toBeVisible();
 
         // Simulate reload without skip_restore
         await page.goto('/');
 
         // Wait for restoration
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level1' })).toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1"]')).toBeVisible();
 
         // Verify level1 is collapsed immediately after load
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level2' })).not.toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1/level2"]')).not.toBeVisible();
 
         // Expand level1
-        await page.click('[data-testid="directory-item"]:has-text("level1") [data-testid="toggle-directory-btn"]');
+        await page.click('[data-testid="directory-item"][data-dir-path="level1"] [data-testid="toggle-directory-btn"]');
 
         // Verify level2 is visible and expanded (children visible)
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level2' })).toBeVisible();
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'level3' })).toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1/level2"]')).toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1/level2/level3"]')).toBeVisible();
 
         // Verify level3 is visible but collapsed (children NOT visible)
         // deep_file should still be hidden
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'deep_file.adoc' })).not.toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="level1/level2/level3/deep_file.adoc"]')).not.toBeVisible();
     });
 
     // New File Feature Tests
@@ -253,7 +253,7 @@ test.describe('Editor Functionality', () => {
     test('Creating a new file from Title Bar', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
         // Wait for file tree to load
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'file1.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
 
         const title = await page.locator('[data-testid="new-file-button-titlebar"]').getAttribute('title');
         expect(title).toBe('New File in dir1');
@@ -278,7 +278,7 @@ test.describe('Editor Functionality', () => {
 
     test('Creating multiple new files increments counter', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
-        await expect(page.locator('[data-testid="file-item"]', { hasText: 'file1.adoc' })).toBeVisible();
+        await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
 
         await page.click('[data-testid="new-file-button-titlebar"]');
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
@@ -297,7 +297,7 @@ test.describe('Editor Functionality', () => {
 
     test('Creating new file auto-saves current dirty file', async ({ page }) => {
         await page.click('[data-testid="open-folder-button"]');
-        await page.click('[data-testid="file-item"]:has-text("file1.adoc")');
+        await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
         await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
         // Disable auto-save
@@ -321,10 +321,10 @@ test.describe('Editor Functionality', () => {
 
         // Expand subdirectory if needed (it is empty so might show as empty)
         // wait for sidebar items
-        await expect(page.locator('[data-testid="directory-item"]', { hasText: 'subdir' })).toBeVisible();
+        await expect(page.locator('[data-testid="directory-item"][data-dir-path="subdir"]')).toBeVisible();
 
         // We select based on 'subdir' text, finding the parent container
-        const subdirItem = page.locator('[data-testid="directory-item"]', { hasText: 'subdir' });
+        const subdirItem = page.locator('[data-testid="directory-item"][data-dir-path="subdir"]');
 
 
 

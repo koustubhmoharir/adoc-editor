@@ -31,7 +31,7 @@ test.describe('File Types and Extensions', () => {
         await page.goto('/?skip_restore=true');
         await waitForTestGlobals(page);
         await waitForMonaco(page);
-        await page.click('button:has-text("Open Folder")');
+        await page.click('[data-testid="open-folder-button"]');
     });
 
     test.afterEach(() => {
@@ -70,8 +70,8 @@ test.describe('File Types and Extensions', () => {
         const dialogHandle = await handleNextDialog(page, 'cancel');
 
         await fileItem.click();
-        await expect(fileItem).toHaveClass(/selected/);
-        
+        await expect(fileItem).toHaveAttribute('data-selected', 'true');
+
         // Dialog should have appeared
         expect(await dialogHandle.getMessage()).toContain('appears to be a binary file');
 
@@ -88,7 +88,7 @@ test.describe('File Types and Extensions', () => {
         const dialogHandle = await handleNextDialog(page, 'confirm');
 
         await fileItem.click();
-        await expect(fileItem).toHaveClass(/selected/);
+        await expect(fileItem).toHaveAttribute('data-selected', 'true');
 
         // Dialog check
         expect(await dialogHandle.getMessage()).toContain('appears to be a binary file');
