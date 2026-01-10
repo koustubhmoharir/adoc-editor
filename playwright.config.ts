@@ -11,6 +11,9 @@ export default defineConfig({
     use: {
         baseURL: SERVER_URL,
         trace: 'on-first-retry',
+        // trace: 'off',
+        video: 'off',
+        screenshot: 'off'
     },
     projects: [
         {

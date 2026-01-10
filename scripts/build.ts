@@ -42,7 +42,8 @@ async function build() {
         bundle: true,
         outdir: 'dist',
         sourcemap: true,
-        minify: !isServe, // Only minify in production/non-serve mode? Or maybe just keep it simple.
+        sourcesContent: isWatch,
+        minify: !isWatch, // Only minify in non-dev mode
         target: 'es2020',
         loader: {
             '.ttf': 'dataurl',
@@ -52,7 +53,7 @@ async function build() {
             '.css': 'css'
         },
         define: {
-            'process.env.NODE_ENV': isServe ? '"development"' : '"production"'
+            'process.env.NODE_ENV': isWatch ? '"development"' : '"production"'
         },
         plugins: [vanillaExtractPlugin()]
     });

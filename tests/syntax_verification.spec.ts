@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test as base, BrowserContext, expect, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Token } from 'monaco-editor';
@@ -29,17 +29,38 @@ const fixturesDir = path.join(__dirname, 'fixtures');
 const repoRoot = path.join(__dirname, '..');
 const files = fs.readdirSync(fixturesDir).filter(f => f.endsWith('.adoc'));
 
+interface SharedContextPageFixtureArgs {
+    page: Page;
+};
+
+interface SharedContextFixtureArgs {
+    sharedPage: Page;
+};
+
+const test = base.extend<SharedContextPageFixtureArgs, SharedContextFixtureArgs>({
+    sharedPage: [
+        async ({ browser }, use) => {
+            const context = await browser.newContext();
+            const page = await context.newPage();
+            
+            enableTestLogging(page);
+            await enableTestGlobals(page);
+            await page.goto('/?skip_restore=true', { waitUntil: "domcontentloaded" });
+            await waitForMonaco(page);
+
+            await use(page);
+            
+            await page.close();
+            await context.close();
+        },
+        { scope: 'worker' },
+    ],
+    page: async ({ sharedPage }, use) => {
+        await use(sharedPage);
+    },
+});
+
 test.describe('AsciiDoc Syntax Highlighting Verification', () => {
-
-    test.beforeEach(async ({ page }) => {
-        enableTestLogging(page);
-        await enableTestGlobals(page);
-        await page.goto('/?skip_restore=true');
-        await page.waitForSelector('.monaco-editor');
-
-        // Wait for monaco to be exposed
-        await waitForMonaco(page);
-    });
 
     for (const file of files) {
         const adocPath = path.join(fixturesDir, file);
@@ -50,7 +71,10 @@ test.describe('AsciiDoc Syntax Highlighting Verification', () => {
 
         test(testName, async ({ page }) => {
             try {
-                const tokens = await getTokens(page, adocContent);
+                let tokens!: Token[][];
+                await test.step('Get Tokens', async () => {
+                    tokens = await getTokens(page, adocContent);
+                });
                 const lines = adocContent.split(/\r?\n/);
 
                 // 1. Generate {test_name}-tokens.json with rich structure using helper
