@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { FsTestSetup } from './helpers/fs_test_setup';
+import { enableTestGlobals } from './helpers/test_globals';
+import { enableTestLogging } from './helpers/test_logging';
 
 test.describe('Sidebar Navigation', () => {
     const fsSetup = new FsTestSetup();
@@ -26,7 +28,9 @@ test.describe('Sidebar Navigation', () => {
     });
 
     test.beforeEach(async ({ page }) => {
+        enableTestLogging(page);
         await fsSetup.init(page);
+        await enableTestGlobals(page);
         await page.goto('/?skip_restore=true');
 
         // Open the test directory

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
-import { waitForTestGlobals } from './helpers/test_globals';
+import { enableTestGlobals, waitForTestGlobals } from './helpers/test_globals';
 import { handleNextDialog } from './helpers/test_globals';
 
 import { waitForMonaco } from './helpers/monaco_helpers';
@@ -19,6 +19,7 @@ test.describe('Renaming Functionality', () => {
         fsSetup.createFile('dir1', 'file2.adoc', '== File 2 content');
         fsSetup.createFile('dir1', 'conflict.adoc', '== Conflict File');
         await fsSetup.init(page);
+        await enableTestGlobals(page);
         await page.goto('/?skip_restore=true');
         await waitForTestGlobals(page);
         await waitForMonaco(page);

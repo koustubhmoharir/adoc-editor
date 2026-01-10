@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
-import { waitForTestGlobals } from './helpers/test_globals';
+import { enableTestGlobals, waitForTestGlobals } from './helpers/test_globals';
 
 // Helpers
 import { setEditorContent, getEditorContent, disableAutoSave } from './helpers/editor_helpers';
@@ -25,6 +25,7 @@ test.describe('Editor Functionality', () => {
         fsSetup.createFile('dir2', 'dir2_file.adoc', '== Dir2 File\nContent of dir2 file.');
 
         await fsSetup.init(page);
+        await enableTestGlobals(page);
 
         await page.goto('/?skip_restore=true');
 

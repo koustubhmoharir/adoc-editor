@@ -5,21 +5,26 @@ interface DialogHandle {
     getMessage: () => Promise<string>;
 }
 
-type DialogHandlersQueue = ((msg: string) => void)[];
+interface DialogResult {
+    message: string;
+    actionFound: boolean;
+}
+
+type DialogResolversQueue = ((result: DialogResult) => void)[];
 
 // Equivalent of a module-level queue on the Playwright side (node)
 // It stores pending handlers that we have created but not yet fulfilled by the browser.
 // It needs to be maintained per page and reset when the page refreshes.
-const handlersQueue: WeakMap<Page, DialogHandlersQueue> = new WeakMap();
+const resolversQueue: WeakMap<Page, DialogResolversQueue> = new WeakMap();
 function getOrCreateQueue(page: Page) {
-    let queue = handlersQueue.get(page);
+    let queue = resolversQueue.get(page);
     if (queue == null) {
         queue = [];
-        handlersQueue.set(page, queue);
+        resolversQueue.set(page, queue);
 
         page.on("framenavigated", frame => {
             if (frame === page.mainFrame()) {
-                handlersQueue.set(page, []);
+                resolversQueue.set(page, []);
             }
         });
     }
@@ -36,10 +41,11 @@ function getOrCreateQueue(page: Page) {
  * @returns An object with a getMessage() method.
  */
 export async function handleNextDialog(page: Page, action: 'confirm' | 'cancel' = 'confirm'): Promise<DialogHandle> {
-    let capturedMessage: string | undefined;
-
-    // Create a promise that will be resolved when the exposed onDialogHandled is called
-    getOrCreateQueue(page).push(msg => { capturedMessage = msg; });
+    const resultPromise = new Promise<DialogResult>(resolve => {
+        // Add the resolver to a queue
+        // This will be called when onDialogHandled is called
+        getOrCreateQueue(page).push(resolve);
+    });
 
     // Schedule the action in the browser
     await page.evaluate((act) => {
@@ -47,23 +53,27 @@ export async function handleNextDialog(page: Page, action: 'confirm' | 'cancel' 
     }, action);
 
     return {
-        getMessage: async () => {
-            await page.evaluate(() => { }); // Give the browser a chance to act on the dialog
-            if (capturedMessage === undefined) {
-                throw new Error("Dialog action was expected but the dialog callback was never invoked. This usually means the action did not trigger a dialog as expected.");
+        getMessage: async (timeoutInMilliseconds = 5000) => {
+            const timeoutPromise = new Promise<DialogResult>((_, reject) =>
+                setTimeout(() => reject(new Error("Dialog action was expected but the dialog callback was never invoked. This usually means the action did not trigger a dialog as expected.")), timeoutInMilliseconds)
+            );
+            const result = await Promise.race([resultPromise, timeoutPromise]);
+
+            if (!result.actionFound) {
+                throw new Error("The expected button was not found on the dialog. This usually means the action did not trigger a dialog at all or triggered dialog.alert when dialog.confirm was expected.");
             }
-            return capturedMessage;
+            return result.message;
         }
     };
 }
 
 export async function enableTestGlobals(page: Page) {
 
-    function onDialogHandled(message: string) {
+    function onDialogHandled(message: string, actionFound: boolean) {
         const queue = getOrCreateQueue(page);
-        const handler = queue.shift();
-        if (handler) {
-            handler(message);
+        const resolve = queue.shift();
+        if (resolve) {
+            resolve({ message, actionFound });
         } else {
             console.warn('onDialogHandled called but no handler was waiting in the queue.');
         }
@@ -103,9 +113,6 @@ export async function enableTestGlobals(page: Page) {
                     const msgEl = document.querySelector('[data-testid="dialog-message"]');
                     const message = msgEl ? msgEl.textContent : '';
 
-                    // Notify Playwright
-                    (window as any).__TEST_onDialogHandled(message);
-
                     // Perform action
                     const btnSelector = action === 'confirm'
                         ? '[data-testid="dialog-confirm-button"]'
@@ -114,8 +121,12 @@ export async function enableTestGlobals(page: Page) {
                     const btn = document.querySelector(btnSelector) as HTMLButtonElement | null;
                     if (btn) {
                         btn.click();
+
+                        // Notify Playwright
+                        (window as any).__TEST_onDialogHandled(message, true);
                     } else {
-                        console.error(`__TEST_scheduleDialogAction: Button ${action} not found`);
+                        // Notify Playwright
+                        (window as any).__TEST_onDialogHandled(message, false);
                     }
                 }
             }, 50);

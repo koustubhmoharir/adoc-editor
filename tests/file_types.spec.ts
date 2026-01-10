@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
-import { waitForTestGlobals, handleNextDialog } from './helpers/test_globals';
+import { waitForTestGlobals, handleNextDialog, enableTestGlobals } from './helpers/test_globals';
 import { waitForMonaco } from './helpers/monaco_helpers';
 import { getEditorContent } from './helpers/editor_helpers';
 
@@ -27,6 +27,7 @@ test.describe('File Types and Extensions', () => {
         fsSetup.createFile('dir1', 'image.bin', binaryContent);
 
         await fsSetup.init(page);
+        await enableTestGlobals(page);
         await page.goto('/?skip_restore=true');
         await waitForTestGlobals(page);
         await waitForMonaco(page);

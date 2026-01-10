@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { FsTestSetup } from './helpers/fs_test_setup';
 import { enableTestLogging } from './helpers/test_logging';
-import { waitForTestGlobals } from './helpers/test_globals';
+import { enableTestGlobals, waitForTestGlobals } from './helpers/test_globals';
 
 test.describe('Sicebar Context Menu Functionality', () => {
     let fsSetup: FsTestSetup;
@@ -15,6 +15,7 @@ test.describe('Sicebar Context Menu Functionality', () => {
         fsSetup.createFile('dir1', 'folder1/nested_file.txt', 'nested content');
 
         await fsSetup.init(page);
+        await enableTestGlobals(page);
 
         // Open the editor, skipping restore to start clean with our directory
         await page.goto('/?skip_restore=true');
