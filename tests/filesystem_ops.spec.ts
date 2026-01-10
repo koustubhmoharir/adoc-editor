@@ -30,29 +30,14 @@ test.describe('Renaming Functionality', () => {
         fsSetup.cleanup();
     });
 
-    test('Enter and exit renaming via buttons', async ({ page }) => {
-        // Select file using robust data-file-path locator
-        const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
-        // Use helper to trigger rename via button
-        const input = await triggerRename(page, fileItem, 'button');
-
-        // Rename and complete via button
-        await completeRename(page, input, 'newname.adoc', 'button');
-
-        // Verify rename
-        // The file item should now have the new path
-        await expect(page.locator('[data-testid="file-item"][data-file-path="newname.adoc"]')).toBeVisible();
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'newname.adoc'))).toBe(true);
-        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'file1.adoc'))).toBe(false);
-    });
 
     test('Enter and exit renaming via keyboard (F2, Enter)', async ({ page }) => {
         // Select file using robust selector
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
         // Use helper to trigger rename via F2
-        const input = await triggerRename(page, fileItem, 'f2');
+        const input = await triggerRename(page, fileItem);
 
         // Rename and complete via Enter
         await completeRename(page, input, 'renamed.adoc', 'enter');
@@ -63,9 +48,27 @@ test.describe('Renaming Functionality', () => {
 
     test('Cancel renaming via Esc', async ({ page }) => {
         const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
-        const input = await triggerRename(page, fileItem, 'f2');
+        const input = await triggerRename(page, fileItem);
 
         await cancelRename(page, input, 'aborted_change.adoc');
+
+        // Input gone, old name remains
+        await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
+        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'file1.adoc'))).toBe(true);
+        expect(fs.existsSync(path.join(fsSetup.tempDir1, 'aborted_change.adoc'))).toBe(false);
+    });
+
+    test('Cancel renaming via cancel button', async ({ page }) => {
+        const fileItem = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
+        const input = await triggerRename(page, fileItem);
+
+        await input.fill('aborted_change.adoc');
+
+        const cancelBtn = page.locator('[data-testid="cancel-rename-button"]');
+        await expect(cancelBtn).toBeVisible();
+        await cancelBtn.click();
+
+        await expect(input).not.toBeVisible();
 
         // Input gone, old name remains
         await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
@@ -342,19 +345,12 @@ async function verifyRenameOnFocusChange(
 
 }
 
-async function triggerRename(page: Page, fileItem: Locator, method: 'f2' | 'button' = 'f2'): Promise<Locator> {
+async function triggerRename(page: Page, fileItem: Locator): Promise<Locator> {
     await fileItem.click();
     await expect(fileItem).toHaveClass(/selected/);
 
-    if (method === 'button') {
-        await fileItem.hover();
-        const renameBtn = fileItem.locator('[data-testid="rename-button"]');
-        await expect(renameBtn).toBeVisible();
-        await renameBtn.click();
-    } else {
-        await page.keyboard.press('F2');
-    }
-
+    await fileItem.press('F2');
+    
     const input = page.locator('[data-testid="rename-input"]');
     await expect(input).toBeVisible();
     await expect(input).toBeFocused();

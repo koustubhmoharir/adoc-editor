@@ -70,11 +70,11 @@ export const icon = style({
 
 export const folderIcon = style([icon, {
     color: themeVars.color.folderIcon,
-    margin: '4px',
+    margin: '0',
 }]);
 
 export const rootFolderIcon = style([folderIcon, {
-    margin: '0 8px 0 0',
+    margin: '0 4px 0 0',
 }]);
 
 export const fileIcon = style([icon, {
@@ -229,37 +229,24 @@ export const highlighted = style({
     backgroundColor: themeVars.color.hoverBackground
 });
 
-export const renameButton = style({
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    color: themeVars.color.rename,
-    padding: '2px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '12px',
-    marginRight: '4px',
-});
-
-export const deleteButton = style({
-    margin: '-2px 0 -2px auto',
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    color: themeVars.color.delete,
-    padding: '2px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '14px',
-});
-
 export const acceptButton = style({
     background: 'transparent',
     border: 'none',
     cursor: 'pointer',
     color: themeVars.color.checkForeground,
+    padding: '2px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '12px',
+    marginRight: '-6px',
+});
+
+export const cancelButton = style({
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    color: themeVars.color.delete, // Use delete color (red) for cancel
     padding: '2px',
     display: 'flex',
     alignItems: 'center',

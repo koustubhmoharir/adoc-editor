@@ -325,19 +325,16 @@ test.describe('Editor Functionality', () => {
         // We select based on 'subdir' text, finding the parent container
         const subdirItem = page.locator('[data-testid="directory-item"]', { hasText: 'subdir' });
 
-        const newFileBtn = subdirItem.locator('[data-testid="new-file-button-nested"]');
 
-        // Force hover
-        await subdirItem.hover();
-        // Wait for opacity transition
-        await page.waitForTimeout(300);
 
-        // Check tooltip
-        await expect(newFileBtn).toHaveAttribute('title', 'New File in dir1/subdir');
+        // Right click to open context menu
+        await subdirItem.click({ button: 'right' });
 
-        // Click might need force if hidden? But hover should reveal it.
-        // Let's force click just in case
-        await newFileBtn.click({ force: true });
+        const newFileBtn = page.locator('[data-testid="ctx-new-file"]');
+        await expect(newFileBtn).toBeVisible();
+
+        // Click New File in context menu
+        await newFileBtn.click();
 
         // Should create new-1.adoc INSIDE subdir
         const newFilePath = path.join(fsSetup.tempDir1, 'subdir', 'new-1');

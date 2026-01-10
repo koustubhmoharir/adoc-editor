@@ -33,34 +33,22 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 data-testid="file-item"
                 data-file-path={node.path}
             >
-                {isSelected ? (
-                    isRenaming ?
-                        <button key="accept-rename-button"
-                            ref={node.acceptRenameBtnRef}
-                            className={styles.acceptButton}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                node.commitRenaming();
-                            }}
-                            title="Accept Rename"
-                            data-testid="accept-rename-button"
-                        >
-                            <i className="fas fa-check" />
-                        </button>
-                        :
-                        <button key="rename-button"
-                            className={styles.renameButton}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                node.startRenaming();
-                            }}
-                            title="Rename (F2)"
-                            data-testid="rename-button"
-                        >
-                            <i className="fas fa-pencil" />
-                        </button>) :
+                {isRenaming ? (
+                    <button key="cancel-rename-button"
+                        className={styles.cancelButton}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            node.cancelRenaming();
+                        }}
+                        onMouseDown={(e) => e.preventDefault()} // Prevent blur on input
+                        title="Cancel Rename (Esc)"
+                        data-testid="cancel-rename-button"
+                    >
+                        <i className="fas fa-times" />
+                    </button>
+                ) : (
                     <i className={`fas fa-file-lines ${styles.fileIcon}`} />
-                }
+                )}
 
                 {isRenaming ? (
                     <input
@@ -77,19 +65,21 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                     <span>{node.name}</span>
                 )}
 
-                {isRenaming ? null : isSelected && (
-                    <button
-                        className={styles.deleteButton}
+                {isRenaming ? (
+                    <button key="accept-rename-button"
+                        ref={node.acceptRenameBtnRef}
+                        className={styles.acceptButton}
                         onClick={(e) => {
                             e.stopPropagation();
-                            node.delete();
+                            node.commitRenaming();
                         }}
-                        title="Delete (Del)"
-                        data-testid="delete-button"
+                        onMouseDown={(e) => e.preventDefault()} // Prevent blur on input
+                        title="Accept Rename"
+                        data-testid="accept-rename-button"
                     >
-                        <i className="fas fa-trash-alt" />
+                        <i className="fas fa-check" />
                     </button>
-                )}
+                ) : null}
             </div>
         );
     }
@@ -131,17 +121,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                     <i className={`fas ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} ${styles.folderIcon}`} />
                 </button>
                 <span>{node.name}</span>
-                <button
-                    className={styles.newFileButton}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        fileSystemStore.createNewFile(node.handle as FileSystemDirectoryHandle);
-                    }}
-                    title={`New File in ${fileSystemStore.directoryHandle?.name}/${node.path}`}
-                    data-testid="new-file-button-nested"
-                >
-                    <i className="fas fa-file-circle-plus" />
-                </button>
+
             </div>
             {!isCollapsed && node.children && node.children.map((child, i) => (
                 <FileTreeItem key={i} node={child} />
@@ -155,10 +135,6 @@ export const Sidebar: React.FC = observer(() => {
     useScheduledEffects(fileSystemStore);
 
     const hasDirectory = !!fileSystemStore.directoryHandle;
-
-
-
-
 
     return (
         <div className={styles.sidebar}>
