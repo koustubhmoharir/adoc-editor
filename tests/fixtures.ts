@@ -1,4 +1,4 @@
-import { test as base, Page, expect, BrowserContext } from '@playwright/test';
+import { test as base, Page, expect, BrowserContext, Browser } from '@playwright/test';
 import { FsTestSetup } from './helpers/fs_test_setup.ts'; // Explicit .ts to match project style
 
 
@@ -125,18 +125,6 @@ async function waitForTestGlobals(page: Page) {
     });
 }
 
-async function checkDialogState(page: Page): Promise<boolean> {
-    const queue = pageGlobalState.get(page)?.dialogResolversQueue;
-    const nodeQueueEmpty = !queue || queue.length === 0;
-
-    const browserStateClean = await page.evaluate(() => {
-        return (window as any).__TEST_checkDialogState ? (window as any).__TEST_checkDialogState() : true;
-    });
-
-    return nodeQueueEmpty && browserStateClean;
-}
-
-
 export const helpers = {
     defaultDialogTitle(page: Page) {
         return getPageState(page).defaultDialogTitle;
@@ -210,26 +198,9 @@ export const helpers = {
     },
 
     async reloadPage(page: Page, { path, skipRestore }: { path?: string, skipRestore?: boolean } = { path: '/', skipRestore: true }): Promise<void> {
-        await this.flushPendingDbOperations(page);
+        await flushPendingDbOperations(page);
         await page.goto((path ?? '/') + ((skipRestore ?? true) ? '?skip_restore=true' : ''), { waitUntil: "domcontentloaded" });
         await waitForTestGlobals(page);
-    },
-
-    async clearFileSystemDirectory(page: Page): Promise<void> {
-        await page.evaluate(async () => {
-            window.localStorage.clear();
-            if (window.__TEST_fileSystemStore) {
-                await window.__TEST_fileSystemStore.clearDirectory();
-            }
-        });
-    },
-
-    async flushPendingDbOperations(page: Page): Promise<void> {
-        await page.evaluate(async () => {
-            if (window.__TEST_fileSystemStore) {
-                await window.__TEST_fileSystemStore.flushPendingDbOperations();
-            }
-        });
     },
 
     async setDirectoryPickerChoice(page: Page, dirName: string): Promise<void> {
@@ -283,14 +254,16 @@ export const helpers = {
     },
 }
 
+interface WorkerState {
+    context: BrowserContext;
+    page: Page;
+    fsSetup: FsTestSetup;
+    isDirty: boolean;
+    viewport: { width: number; height: number };
+}
+
 type WorkerFixture = {
-    workerState: {
-        context: BrowserContext;
-        page: Page;
-        fsSetup: FsTestSetup;
-        isDirty: boolean;
-        viewport: { width: number; height: number };
-    };
+    workerState: WorkerState;
 };
 
 type TestFixture = {
@@ -298,49 +271,79 @@ type TestFixture = {
     // We override 'page' so tests get the shared one
 };
 
-export const test = base.extend<TestFixture, WorkerFixture>({
-    workerState: [async ({ browser }, use) => {
-        const context = await browser.newContext();
-        const page = await context.newPage();
-        const fsSetup = new FsTestSetup();
+async function checkDialogState(page: Page): Promise<boolean> {
+    const queue = pageGlobalState.get(page)?.dialogResolversQueue;
+    const nodeQueueEmpty = !queue || queue.length === 0;
 
-        const viewport = page.viewportSize()!;
+    const browserStateClean = await page.evaluate(() => {
+        return (window as any).__TEST_checkDialogState ? (window as any).__TEST_checkDialogState() : true;
+    });
 
-        await helpers.setupNewPage(page, fsSetup);
+    return nodeQueueEmpty && browserStateClean;
+}
 
-        // State object to track dirtiness across tests in this worker
-        await use({ context, page, fsSetup, isDirty: false, viewport });
+async function prepareWorkerForTest(browser: Browser, workerState: WorkerState): Promise<void> {
+    // Check if dialog state is clean
+    const isDialogClean = await checkDialogState(workerState.page);
+    if (workerState.isDirty || !isDialogClean) {
+        console.warn(`Creating a new context. Dirty: ${workerState.isDirty}, DialogClean: ${isDialogClean}`);
+        workerState.context.close();
 
-        // Cleanup after all tests in worker are done
-        await page.close();
-        await context.close();
-        fsSetup.cleanup();
-    }, { scope: 'worker' }],
-
-    page: async ({ workerState }, use, testInfo) => {
-        const { page, viewport } = workerState;
-
+        workerState.context = await browser.newContext();
+        workerState.page = await workerState.context.newPage();
+        workerState.isDirty = false;
+        await helpers.setupNewPage(workerState.page, workerState.fsSetup);
+    }
+    else {
         // Reset state before each test
-        page.setViewportSize(viewport);
+        workerState.page.setViewportSize(workerState.viewport);
         // Reset file system state
-        await helpers.clearFileSystemDirectory(page);
-
-        // Reset auto save
-        await page.evaluate(() => {
+        await workerState.page.evaluate(async () => {
+            window.localStorage.clear();
+            if (window.__TEST_fileSystemStore) {
+                await window.__TEST_fileSystemStore.clearDirectory();
+            }
             window.__TEST_DISABLE_AUTO_SAVE = false;
         });
+    }
+}
 
-        // Check if dialog state is clean
-        const isDialogClean = await checkDialogState(page);
-
-        if (workerState.isDirty || !isDialogClean) {
-            console.warn(`Reloading page. Dirty: ${workerState.isDirty}, DialogClean: ${isDialogClean}`);
-            await helpers.reloadPage(page);
-            workerState.isDirty = false;
+async function flushPendingDbOperations(page: Page): Promise<void> {
+    await page.evaluate(async () => {
+        if (window.__TEST_fileSystemStore) {
+            await window.__TEST_fileSystemStore.flushPendingDbOperations();
         }
+    });
+}
 
-        await use(page);
+export const test = base.extend<TestFixture, WorkerFixture>({
+    workerState: [async ({ browser }, use) => {
 
+        const state: WorkerState = {} as any;
+        state.context = await browser.newContext();
+        state.page = await state.context.newPage();
+        state.fsSetup = new FsTestSetup();
+        state.isDirty = false;
+        state.viewport = state.page.viewportSize()!;
+        
+        await helpers.setupNewPage(state.page, state.fsSetup);
+
+        // State object to track dirtiness across tests in this worker
+        await use(state);
+
+        // Cleanup after all tests in worker are done
+        await state.context.close();
+        state.fsSetup.cleanup();
+    }, { scope: 'worker' }],
+
+    page: async ({ browser, workerState }, use, testInfo) => {
+        
+        await prepareWorkerForTest(browser, workerState);
+
+        await use(workerState.page);
+        
+        await flushPendingDbOperations(workerState.page);
+        
         // Mark as dirty if failed
         if (testInfo.status !== 'passed' && testInfo.status !== 'skipped') {
             workerState.isDirty = true;
