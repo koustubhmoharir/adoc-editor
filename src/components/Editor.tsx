@@ -3,7 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { editorStore } from '../store/EditorStore';
 import * as monaco from 'monaco-editor';
 
-if (window.__ENABLE_TEST_GLOBALS__) {
+if (window.__TEST_ENABLE_GLOBALS) {
     window.__TEST_monaco = monaco;
 }
 

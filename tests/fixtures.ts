@@ -1,8 +1,287 @@
 import { test as base, Page, expect, BrowserContext } from '@playwright/test';
 import { FsTestSetup } from './helpers/fs_test_setup.ts'; // Explicit .ts to match project style
-import { enableTestLogging } from './helpers/test_logging.ts';
-import { enableTestGlobals, waitForTestGlobals, checkDialogState } from './helpers/test_globals.ts';
-import { waitForMonaco } from './helpers/monaco_helpers.ts';
+
+
+interface DialogHandle {
+    getMessage: () => Promise<string>;
+}
+
+interface DialogResult {
+    message: string;
+    actionFound: boolean;
+}
+
+type DialogResolversQueue = ((result: DialogResult) => void)[];
+
+interface PageGlobalState {
+    dialogResolversQueue: DialogResolversQueue;
+    defaultDialogTitle: string;
+}
+
+// Equivalent of a module-level variable on the Playwright side (node)
+// dialogResolversQueue stores pending handlers that we have created but have not yet fulfilled by the browser.
+// It needs to be maintained per page and reset when the page refreshes.
+const pageGlobalState: WeakMap<Page, PageGlobalState> = new WeakMap();
+function getOrCreatePageState(page: Page) {
+    let pageState = pageGlobalState.get(page);
+    if (pageState == null) {
+        pageState = { dialogResolversQueue: [], defaultDialogTitle: '' };
+        pageGlobalState.set(page, pageState);
+
+        page.on("framenavigated", frame => {
+            if (frame === page.mainFrame()) {
+                pageGlobalState.set(page, { dialogResolversQueue: [], defaultDialogTitle: '' });
+            }
+        });
+    }
+    return pageState;
+}
+
+function getPageState(page: Page) {
+    const pageState = pageGlobalState.get(page);
+    if (!pageState) throw new Error('waitForTestGlobals was not called');
+    return pageState
+}
+
+async function enableTestGlobals(page: Page) {
+
+    function onDialogHandled(message: string, actionFound: boolean) {
+        const queue = getOrCreatePageState(page).dialogResolversQueue;
+        const resolve = queue.shift();
+        if (resolve) {
+            resolve({ message, actionFound });
+        } else {
+            console.warn('onDialogHandled called but no handler was waiting in the queue.');
+        }
+    }
+
+    // Expose the handler function to the browser context
+    await page.exposeFunction('__TEST_onDialogHandled', onDialogHandled);
+
+    await page.addInitScript(() => {
+        window.__TEST_ENABLE_GLOBALS = true;
+        const dialogActionsQueue: ('confirm' | 'cancel')[] = [];
+        let dialogInterval: number | null = null;
+
+        (window as any).__TEST_scheduleDialogAction = (action: 'confirm' | 'cancel') => {
+            dialogActionsQueue.push(action);
+
+            // Start the watcher loop only if not already running
+            if (dialogInterval) return;
+
+            dialogInterval = window.setInterval(() => {
+                const dialog = window.__TEST_dialog;
+
+                // Stop if queue empty
+                if (dialogActionsQueue.length === 0) {
+                    if (dialogInterval != null) {
+                        clearInterval(dialogInterval);
+                        dialogInterval = null;
+                    }
+                    return;
+                }
+
+                // If dialog is open and we have a pending action
+                if (dialog.isOpen) {
+                    const action = dialogActionsQueue.shift(); // Get next action
+
+                    // Capture message via DOM for consistency
+                    const msgEl = document.querySelector('[data-testid="dialog-message"]');
+                    const message = msgEl ? msgEl.textContent : '';
+
+                    // Perform action
+                    const btnSelector = action === 'confirm'
+                        ? '[data-testid="dialog-confirm-button"]'
+                        : '[data-testid="dialog-cancel-button"]';
+
+                    const btn = document.querySelector(btnSelector) as HTMLButtonElement | null;
+                    if (btn) {
+                        btn.click();
+
+                        // Notify Playwright
+                        (window as any).__TEST_onDialogHandled(message, true);
+                    } else {
+                        // Notify Playwright
+                        (window as any).__TEST_onDialogHandled(message, false);
+                    }
+                }
+            }, 50);
+        };
+
+        (window as any).__TEST_checkDialogState = () => {
+            const dialog = window.__TEST_dialog;
+            const isDialogOpen = dialog ? dialog.isOpen : false;
+            return dialogActionsQueue.length === 0 && !isDialogOpen;
+        };
+    });
+}
+
+async function waitForTestGlobals(page: Page) {
+    await page.waitForFunction(() => {
+        return window.__TEST_ENABLE_GLOBALS === true && window.__TEST_monaco !== undefined && window.__TEST_dialog !== undefined;
+    });
+    getOrCreatePageState(page).defaultDialogTitle = await page.evaluate(() => {
+        return window.__TEST_dialog.defaultTitle
+    });
+}
+
+async function checkDialogState(page: Page): Promise<boolean> {
+    const queue = pageGlobalState.get(page)?.dialogResolversQueue;
+    const nodeQueueEmpty = !queue || queue.length === 0;
+
+    const browserStateClean = await page.evaluate(() => {
+        return (window as any).__TEST_checkDialogState ? (window as any).__TEST_checkDialogState() : true;
+    });
+
+    return nodeQueueEmpty && browserStateClean;
+}
+
+
+export const helpers = {
+    defaultDialogTitle(page: Page) {
+        return getPageState(page).defaultDialogTitle;
+    },
+
+    /**
+     * Schedules a dialog action to be performed automatically when the dialog appears.
+     * Returns a handler object that can be used to synchronously retrieve the dialog message
+     * *after* the UI action has completed.
+     * 
+     * @param page Playwright Page object
+     * @param action The action to perform ('confirm' or 'cancel')
+     * @returns An object with a getMessage() method.
+     */
+    async handleNextDialog(page: Page, action: 'confirm' | 'cancel' = 'confirm'): Promise<DialogHandle> {
+        const resultPromise = new Promise<DialogResult>(resolve => {
+            // Add the resolver to a queue
+            // This will be called when onDialogHandled is called
+            getOrCreatePageState(page).dialogResolversQueue.push(resolve);
+        });
+
+        // Schedule the action in the browser
+        await page.evaluate((act) => {
+            (window as any).__TEST_scheduleDialogAction(act);
+        }, action);
+
+        return {
+            getMessage: async (timeoutInMilliseconds = 5000) => {
+                const timeoutPromise = new Promise<DialogResult>((_, reject) =>
+                    setTimeout(() => reject(new Error("Dialog action was expected but the dialog callback was never invoked. This usually means the action did not trigger a dialog as expected.")), timeoutInMilliseconds)
+                );
+                const result = await Promise.race([resultPromise, timeoutPromise]);
+
+                if (!result.actionFound) {
+                    throw new Error("The expected button was not found on the dialog. This usually means the action did not trigger a dialog at all or triggered dialog.alert when dialog.confirm was expected.");
+                }
+                return result.message;
+            }
+        };
+    },
+    enableTestLogging(page: Page) {
+        page.on('pageerror', err => { throw err; });
+        page.on('console', msg => {
+            const t = msg.type();
+            if (t === 'error') {
+                console.error(`BROWSER: ${msg.text()}`);
+            }
+            if (t === 'warning') {
+                console.warn(`BROWSER: ${msg.text()}`);
+            }
+            if (process.env.DEBUG_TESTS) {
+                console.log(`BROWSER: ${msg.text()}`);
+            }
+        });
+        if (process.env.DEBUG_TESTS) {
+            page.on('dialog', async dialog => {
+                console.log(`DIALOG: ${dialog.type()} "${dialog.message()}"`);
+            });
+        }
+    },
+
+    async setupNewPage(page: Page, fsSetup: FsTestSetup) {
+        // Setup environment
+        this.enableTestLogging(page);
+        await fsSetup.register(page);
+        await enableTestGlobals(page);
+
+        // Navigate once per worker
+        await page.goto('/?skip_restore=true', { waitUntil: "domcontentloaded" });
+        await waitForTestGlobals(page);
+    },
+
+    async reloadPage(page: Page, { path, skipRestore }: { path?: string, skipRestore?: boolean } = { path: '/', skipRestore: true }): Promise<void> {
+        await this.flushPendingDbOperations(page);
+        await page.goto((path ?? '/') + ((skipRestore ?? true) ? '?skip_restore=true' : ''), { waitUntil: "domcontentloaded" });
+        await waitForTestGlobals(page);
+    },
+
+    async clearFileSystemDirectory(page: Page): Promise<void> {
+        await page.evaluate(async () => {
+            window.localStorage.clear();
+            if (window.__TEST_fileSystemStore) {
+                await window.__TEST_fileSystemStore.clearDirectory();
+            }
+        });
+    },
+
+    async flushPendingDbOperations(page: Page): Promise<void> {
+        await page.evaluate(async () => {
+            if (window.__TEST_fileSystemStore) {
+                await window.__TEST_fileSystemStore.flushPendingDbOperations();
+            }
+        });
+    },
+
+    async setDirectoryPickerChoice(page: Page, dirName: string): Promise<void> {
+        await page.evaluate((dirName) => {
+            window.__TEST_mockPickerConfig = { name: dirName, path: dirName };
+        }, dirName);
+    },
+
+    async disableAutoSave(page: Page): Promise<void> {
+        await page.evaluate(() => {
+            window.__TEST_DISABLE_AUTO_SAVE = true;
+        });
+    },
+
+    async getEditorContent(page: Page): Promise<string> {
+        return await page.evaluate(() => window.__TEST_editorStore.content);
+    },
+
+    async replaceEditorContentByTyping(page: Page, content: string): Promise<void> {
+        // Click the editor to focus it
+        await page.click('.monaco-editor');
+        // Select all content
+        await page.keyboard.press('Control+A');
+        // Type the new content
+        await page.keyboard.type(content);
+    },
+
+    /**
+     * Sets the content of the Monaco editor directly using the store.
+     * This is faster than typing and avoids keyboard interaction issues when clock is mocked.
+     * 
+     * @param page - The Playwright Page object.
+     * @param content - The new content to set.
+     */
+    async setEditorContentDirect(page: Page, content: string): Promise<void> {
+        return page.evaluate(content => {
+            window.__TEST_editorStore.setContent(content);
+        }, content);
+    },
+
+    /**
+     * Retrieves the current language ID of the editor.
+     * 
+     * @param page - The Playwright Page object.
+     * @returns The language ID (e.g., 'asciidoc', 'javascript').
+     */
+    async getEditorLanguageId(page: Page): Promise<string> {
+        return page.evaluate(() => {
+            return window.__TEST_editorStore.editor?.getModel()?.getLanguageId() ?? '';
+        });
+    },
+}
 
 type WorkerFixture = {
     workerState: {
@@ -19,18 +298,6 @@ type TestFixture = {
     // We override 'page' so tests get the shared one
 };
 
-export async function setupNewPage(page: Page, fsSetup: FsTestSetup) {
-    // Setup environment
-    enableTestLogging(page);
-    await fsSetup.register(page);
-    await enableTestGlobals(page);
-
-    // Navigate once per worker
-    await page.goto('/?skip_restore=true', { waitUntil: "domcontentloaded" });
-    await waitForTestGlobals(page);
-    await waitForMonaco(page);
-}
-
 export const test = base.extend<TestFixture, WorkerFixture>({
     workerState: [async ({ browser }, use) => {
         const context = await browser.newContext();
@@ -39,7 +306,7 @@ export const test = base.extend<TestFixture, WorkerFixture>({
 
         const viewport = page.viewportSize()!;
 
-        await setupNewPage(page, fsSetup);
+        await helpers.setupNewPage(page, fsSetup);
 
         // State object to track dirtiness across tests in this worker
         await use({ context, page, fsSetup, isDirty: false, viewport });
@@ -55,23 +322,20 @@ export const test = base.extend<TestFixture, WorkerFixture>({
 
         // Reset state before each test
         page.setViewportSize(viewport);
-        await page.evaluate(async () => {
-            // Clear LocalStorage
-            window.localStorage.clear();
-            // clearDirectory also clears IndexedDB
-            await window.__TEST_fileSystemStore.clearDirectory();
-            // Re-enable AutoSave
-            window.__TEST_DISABLE_AUTO_SAVE__ = false;
+        // Reset file system state
+        await helpers.clearFileSystemDirectory(page);
+
+        // Reset auto save
+        await page.evaluate(() => {
+            window.__TEST_DISABLE_AUTO_SAVE = false;
         });
 
         // Check if dialog state is clean
         const isDialogClean = await checkDialogState(page);
 
         if (workerState.isDirty || !isDialogClean) {
-            console.log(`Reloading page. Dirty: ${workerState.isDirty}, DialogClean: ${isDialogClean}`);
-            await page.reload();
-            await waitForTestGlobals(page);
-            await waitForMonaco(page);
+            console.warn(`Reloading page. Dirty: ${workerState.isDirty}, DialogClean: ${isDialogClean}`);
+            await helpers.reloadPage(page);
             workerState.isDirty = false;
         }
 

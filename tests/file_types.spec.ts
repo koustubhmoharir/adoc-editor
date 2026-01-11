@@ -1,6 +1,4 @@
-import { test, expect } from './fixtures.ts';
-import { handleNextDialog } from './helpers/test_globals';
-import { getEditorContent } from './helpers/editor_helpers';
+import { helpers, test, expect } from './fixtures.ts';
 import { loadInitialDirectory } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
@@ -33,15 +31,12 @@ test('Opens text files and sets language', async ({ page }) => {
 
     // Check content
     await expect(async () => {
-        const content = await getEditorContent(page);
+        const content = await helpers.getEditorContent(page);
         expect(content).toBe('console.log("hello");');
     }).toPass();
 
     // Check language (we need to access monaco instance)
-    const lang = await page.evaluate(() => {
-        const editor = (window as any).__TEST_editorStore.editor;
-        return editor.getModel().getLanguageId();
-    });
+    const lang = await helpers.getEditorLanguageId(page);
     expect(lang).toBe('javascript');
 });
 
@@ -51,7 +46,7 @@ test('Detects binary file and asks for confirmation (Cancel)', async ({ page }) 
     const fileItem = page.locator('[data-testid="file-item"][data-file-path="image.bin"]');
 
     // Prepare to handle confirm dialog - Cancel
-    const dialogHandle = await handleNextDialog(page, 'cancel');
+    const dialogHandle = await helpers.handleNextDialog(page, 'cancel');
 
     await fileItem.click();
     await expect(fileItem).toHaveAttribute('data-selected', 'true');
@@ -61,7 +56,7 @@ test('Detects binary file and asks for confirmation (Cancel)', async ({ page }) 
 
     // Content should NOT change (should remain default or whatever was before)
     // Since we just loaded, it might be the welcome screen.
-    const content = await getEditorContent(page);
+    const content = await helpers.getEditorContent(page);
     expect(content).toContain('Welcome to the AsciiDoc Editor');
 });
 
@@ -71,7 +66,7 @@ test('Detects binary file and asks for confirmation (Proceed)', async ({ page })
     const fileItem = page.locator('[data-testid="file-item"][data-file-path="image.bin"]');
 
     // Prepare to handle confirm dialog - Confirm
-    const dialogHandle = await handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
 
     await fileItem.click();
     await expect(fileItem).toHaveAttribute('data-selected', 'true');
@@ -81,7 +76,7 @@ test('Detects binary file and asks for confirmation (Proceed)', async ({ page })
 
     // Content should load (it will be garbage text)
     await expect(async () => {
-        const content = await getEditorContent(page);
+        const content = await helpers.getEditorContent(page);
         // The binary content 0x00 0x01 might look empty or weird.
         // But it shouldn't be the Welcome message.
         expect(content).not.toContain('Welcome to the AsciiDoc Editor');

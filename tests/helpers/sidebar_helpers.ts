@@ -2,7 +2,7 @@
 import { Page, Locator, expect } from '@playwright/test';
 import { FsTestSetup } from './fs_test_setup';
 import { getFileItem, getRenameInput } from './locators';
-import { setMockPickerConfig } from './mock_helpers';
+import { helpers } from '../fixtures';
 
 export async function triggerRename(page: Page, fileItem: Locator): Promise<Locator> {
     await fileItem.click();
@@ -67,7 +67,7 @@ export async function verifyRenameOnFocusChange(
 }
 
 export async function loadInitialDirectory(page: Page, dir: string) {
-    await setMockPickerConfig(page, dir);
+    await helpers.setDirectoryPickerChoice(page, dir);
     // Open the test directory
     const openDirBtn = page.locator('data-testid=open-folder-button');
     await openDirBtn.click();

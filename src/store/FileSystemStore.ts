@@ -809,7 +809,7 @@ class FileSystemStore extends EffectAwareModel {
             clearInterval(this.saveInterval);
         }
         this.saveInterval = window.setInterval(async () => {
-            if ((window as any).__TEST_DISABLE_AUTO_SAVE__) return;
+            if ((window as any).__TEST_DISABLE_AUTO_SAVE) return;
 
             if (this.dirty) {
                 await this.saveFile();
@@ -1286,6 +1286,6 @@ class FileSystemStore extends EffectAwareModel {
 export const fileSystemStore = new FileSystemStore();
 
 // Expose for testing/debugging
-if (typeof window !== 'undefined' && window.__ENABLE_TEST_GLOBALS__) {
+if (typeof window !== 'undefined' && window.__TEST_ENABLE_GLOBALS) {
     window.__TEST_fileSystemStore = fileSystemStore;
 }

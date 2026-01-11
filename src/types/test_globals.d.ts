@@ -6,13 +6,14 @@ import type { Dialog } from '../components/Dialog';
 
 declare global {
     interface Window {
-        __ENABLE_TEST_GLOBALS__?: boolean;
+        __TEST_ENABLE_GLOBALS?: boolean;
         __TEST_editorStore: EditorStore;
         __TEST_fileSystemStore: FileSystemStore;
         __TEST_monaco?: typeof monaco;
         __TEST_dialog: Dialog;
-        __TEST_DISABLE_AUTO_SAVE__?: boolean;
+        __TEST_DISABLE_AUTO_SAVE?: boolean;
         __TEST_hydrateHandle?: (handle: any) => any;
         __TEST_mockPickerConfig?: { name: string; path: string };
     }
+
 }

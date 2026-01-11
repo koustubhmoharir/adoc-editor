@@ -1,11 +1,7 @@
-import { test, expect, setupNewPage } from './fixtures.ts';
+import { helpers, test, expect } from './fixtures.ts';
 import * as path from 'path';
 
 // Helpers
-import { setEditorContent, getEditorContent, disableAutoSave } from './helpers/editor_helpers';
-import { setMockPickerConfig } from './helpers/mock_helpers';
-import { waitForTestGlobals } from './helpers/test_globals.ts';
-import { waitForMonaco } from './helpers/monaco_helpers.ts';
 import { loadInitialDirectory } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
@@ -40,7 +36,7 @@ test('Clicking on a file opens the file in the editor', async ({ page }) => {
     // Check editor content
     // We wait for content to be set
     await expect(async () => {
-        const editorContent = await getEditorContent(page);
+        const editorContent = await helpers.getEditorContent(page);
         expect(editorContent).toBe('== File 1\nContent of file 1.');
     }).toPass();
 
@@ -56,7 +52,7 @@ test('If there are no unsaved changes, opening a new directory does not change c
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
     // Switch to dir2
-    await setMockPickerConfig(page, 'dir2');
+    await helpers.setDirectoryPickerChoice(page, 'dir2');
 
     // Open directory again (click current directory name in sidebar)
     await page.click('[data-testid="sidebar-header"]');
@@ -86,12 +82,15 @@ test('If there are no unsaved changes, opening a different file does not change 
     expect(content).toBe('== File 1\nContent of file 1.');
 });
 
-test('If any changes are made to the current file, they are auto-saved after a short delay', async ({ context, fsSetup }) => {
-    const page = await context.newPage();
+test('If any changes are made to the current file, they are auto-saved after a short delay @OwnContext', async ({ browser, fsSetup }) => {
+    // This test is special because it installs a clock and cannot run on the shared page without messing with other tests
+    // Hence we create a new context here and must close it regardless of test status.
+    const context = await browser.newContext();
     try {
+        const page = await context.newPage();
         await page.clock.install();
 
-        await setupNewPage(page, fsSetup);
+        await helpers.setupNewPage(page, fsSetup);
         await loadInitialDirectory(page, 'dir1');
 
         await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
@@ -101,9 +100,7 @@ test('If any changes are made to the current file, they are auto-saved after a s
 
         // Edit content
         // IMPORTANT: Cannot call setEditorContent when clocks are mocked
-        await page.evaluate((value) => {
-            window.__TEST_editorStore.setContent(value);
-        }, 'Updated content.');
+        await helpers.setEditorContentDirect(page, 'Updated content.');
 
         // Dirty indicator visible
         await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
@@ -116,8 +113,9 @@ test('If any changes are made to the current file, they are auto-saved after a s
 
         // Check dirty indicator gone
         await expect(page.locator('[data-testid="dirty-indicator"]')).not.toBeVisible();
-    } finally {
-        await page.close();
+    }
+    finally {
+        await context.close();
     }
 });
 
@@ -126,10 +124,10 @@ test('If changes are made and a new file is opened, changes are saved before new
     await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
     // Disable auto-save
-    await disableAutoSave(page);
+    await helpers.disableAutoSave(page);
 
     // Edit
-    await setEditorContent(page, 'Modified content before switch.');
+    await helpers.replaceEditorContentByTyping(page, 'Modified content before switch.');
 
     // Wait for dirty state
     await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
@@ -150,16 +148,16 @@ test('If changes are made and page is refreshed, changes are saved', async ({ pa
     await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
 
     // Disable auto-save
-    await disableAutoSave(page);
+    await helpers.disableAutoSave(page);
 
     // Edit
-    await setEditorContent(page, 'Modified content before refresh.');
+    await helpers.replaceEditorContentByTyping(page, 'Modified content before refresh.');
 
     // Wait for dirty state
     await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
 
     // Reload
-    await page.reload();
+    await helpers.reloadPage(page);
 
     // Verify file 1 saved
     const content = fsSetup.readFile('dir1', 'file1.adoc');
@@ -171,19 +169,16 @@ test('Refreshing the page retains the selection', async ({ page }) => {
     await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
-    await page.evaluate(async () => { await window.__TEST_fileSystemStore.flushPendingDbOperations(); });
     // Reload without skip_restore to test retention
-    await page.goto('/', { waitUntil: "domcontentloaded" });
-    await waitForTestGlobals(page);
-    await waitForMonaco(page);
-    await setMockPickerConfig(page, 'dir1');
+    await helpers.reloadPage(page, { skipRestore: false });
+    await helpers.setDirectoryPickerChoice(page, 'dir1');
 
     // Wait for restoration
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc'); // Filename should appear
 
     // Content should match
     await expect(async () => {
-        const editorContent = await getEditorContent(page);
+        const editorContent = await helpers.getEditorContent(page);
         // Should be original content if no edits
         expect(editorContent).toBe('== File 1\nContent of file 1.');
     }).toPass();
@@ -217,11 +212,8 @@ test('Nested directory states are persisted correctly', async ({ page, fsSetup }
     await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1/level2"]')).not.toBeVisible();
 
     // Simulate reload without skip_restore
-    await page.evaluate(async () => { await window.__TEST_fileSystemStore.flushPendingDbOperations(); });
-    await page.goto('/', { waitUntil: "domcontentloaded" });
-    await waitForTestGlobals(page);
-    await waitForMonaco(page);
-    await setMockPickerConfig(page, 'dir1');
+    await helpers.reloadPage(page, { skipRestore: false });
+    await helpers.setDirectoryPickerChoice(page, 'dir1');
 
     // Wait for restoration
     await expect(page.locator('[data-testid="directory-item"][data-dir-path="level1"]')).toBeVisible();
@@ -295,10 +287,10 @@ test('Creating new file auto-saves current dirty file', async ({ page, fsSetup }
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
 
     // Disable auto-save
-    await disableAutoSave(page);
+    await helpers.disableAutoSave(page);
 
     // Edit
-    await setEditorContent(page, 'Modified content.');
+    await helpers.replaceEditorContentByTyping(page, 'Modified content.');
     await expect(page.locator('[data-testid="dirty-indicator"]')).toBeVisible();
 
     // Create new file

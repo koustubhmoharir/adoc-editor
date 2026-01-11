@@ -1,4 +1,4 @@
-import { test, expect, setupNewPage } from './fixtures.ts';
+import { helpers, test, expect } from './fixtures.ts';
 import { loadInitialDirectory } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
@@ -91,13 +91,14 @@ test('Keyboard Navigation (Arrows)', async ({ page }) => {
     await expect(subdir1).toBeVisible();
 });
 
-test('Debounced File Loading', async ({ context, fsSetup }) => {
+test('Debounced File Loading @OwnContext', async ({ browser, fsSetup }) => {
     // This test is special because it installs a clock and cannot run on the shared page without messing with other tests
-    // Hence we create a new page here and must close it regardless of test status.
-    const page = await context.newPage();
+    // Hence we create a new context here and must close it regardless of test status.
+    const context = await browser.newContext();
     try {
+        const page = await context.newPage();
         await page.clock.install();
-        await setupNewPage(page, fsSetup);
+        await helpers.setupNewPage(page, fsSetup);
         await loadInitialDirectory(page, 'dir1');
 
         const file1 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');
@@ -131,7 +132,7 @@ test('Debounced File Loading', async ({ context, fsSetup }) => {
         await expect(page.locator('.monaco-editor')).toContainText('Content of file 2');
     }
     finally {
-        page.close();
+        context.close();
     }
 });
 

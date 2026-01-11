@@ -1,13 +1,24 @@
-import { test, expect } from './fixtures.ts';
+import { Page } from '@playwright/test';
+import { test, expect, helpers } from './fixtures.ts';
+import type { AlertOptions, ConfirmOptions } from '../src/components/Dialog.tsx';
+
+function dialogAlert(page: Page, message: string, options?: AlertOptions) {
+    return page.evaluate(({ message, options }) => {
+        return window.__TEST_dialog.alert(message, options);
+    }, { message, options });
+}
+
+function dialogConfirm(page: Page, message: string, options?: ConfirmOptions) {
+    return page.evaluate(({ message, options }) => {
+        return window.__TEST_dialog.confirm(message, options);
+    }, { message, options });
+}
 
 test('alert(message, options) should render correctly and resolve on OK', async ({ page }) => {
-    let defaultTitle = await page.evaluate(() => {
-        return window.__TEST_dialog.defaultTitle;
-    });
+    let defaultTitle = helpers.defaultDialogTitle(page);
     // 1. Basic Alert
-    let alertPromise = page.evaluate(() => {
-        return window.__TEST_dialog.alert('Basic alert message');
-    });
+
+    let alertPromise = dialogAlert(page, 'Basic alert message');
 
     await expect(page.getByTestId('dialog-overlay')).toBeVisible();
     await expect(page.getByTestId('dialog-title')).toHaveText(defaultTitle); // Default title
@@ -20,12 +31,10 @@ test('alert(message, options) should render correctly and resolve on OK', async 
     await expect(page.getByTestId('dialog-overlay')).not.toBeVisible();
 
     // 2. Alert with Options (Title, Icon, Custom Button)
-    alertPromise = page.evaluate(() => {
-        return window.__TEST_dialog.alert('Error occurred', {
-            title: 'Error Title',
-            icon: 'error',
-            okText: 'Understood'
-        });
+    alertPromise = dialogAlert(page, 'Error occurred', {
+        title: 'Error Title',
+        icon: 'error',
+        okText: 'Understood'
     });
 
     await expect(page.getByTestId('dialog-overlay')).toBeVisible();
@@ -47,13 +56,9 @@ test('alert(message, options) should render correctly and resolve on OK', async 
 });
 
 test('confirm(message, options) should render correctly and resolve true/false', async ({ page }) => {
-    let defaultTitle = await page.evaluate(() => {
-        return window.__TEST_dialog.defaultTitle;
-    });
+    let defaultTitle = helpers.defaultDialogTitle(page);
     // 1. Confirm with defaults
-    let confirmPromise = page.evaluate(() => {
-        return window.__TEST_dialog.confirm('Are you sure?');
-    });
+    let confirmPromise = dialogConfirm(page, 'Are you sure?');
 
     await expect(page.getByTestId('dialog-overlay')).toBeVisible();
     await expect(page.getByTestId('dialog-title')).toHaveText(defaultTitle);
@@ -70,12 +75,10 @@ test('confirm(message, options) should render correctly and resolve true/false',
     await expect(page.getByTestId('dialog-overlay')).not.toBeVisible();
 
     // 2. Confirm with Options
-    confirmPromise = page.evaluate(() => {
-        return window.__TEST_dialog.confirm('Delete data?', {
-            title: 'Unsafe Action',
-            yesText: 'Delete!',
-            noText: 'Keep it'
-        });
+    confirmPromise = dialogConfirm(page, 'Delete data?', {
+        title: 'Unsafe Action',
+        yesText: 'Delete!',
+        noText: 'Keep it'
     });
 
     await expect(page.getByTestId('dialog-overlay')).toBeVisible();
@@ -88,4 +91,34 @@ test('confirm(message, options) should render correctly and resolve true/false',
     result = await confirmPromise;
     expect(result).toBe(true);
     await expect(page.getByTestId('dialog-overlay')).not.toBeVisible();
+});
+
+
+test('should handle multiple sequential dialogs', async ({ page }) => {
+    // 1. Prepare the handlers in expected order
+    // First dialog: Alert "First Call" -> OK
+    const handle1 = await helpers.handleNextDialog(page, 'confirm');
+
+    // Second dialog: Confirm "Second Call" -> Cancel
+    const handle2 = await helpers.handleNextDialog(page, 'cancel');
+
+    // Third dialog: Alert "Third Call" -> OK
+    const handle3 = await helpers.handleNextDialog(page, 'confirm');
+
+    // 2. Trigger the sequence of dialogs in the browser
+    await page.evaluate((async () => {
+        await window.__TEST_dialog.alert('First Call');
+
+        const confirmResult = await window.__TEST_dialog.confirm('Second Call');
+        if (confirmResult !== false) {
+            throw new Error('Expected confirm to be cancelled (false)');
+        }
+
+        await window.__TEST_dialog.alert('Third Call');
+    }));
+
+    // 3. Verify messages intercepted by handlers
+    expect(await handle1.getMessage()).toBe('First Call');
+    expect(await handle2.getMessage()).toBe('Second Call');
+    expect(await handle3.getMessage()).toBe('Third Call');
 });

@@ -1,6 +1,4 @@
-import { test, expect } from './fixtures.ts';
-import { handleNextDialog } from './helpers/test_globals';
-import { getEditorContent } from './helpers/editor_helpers';
+import { helpers, test, expect } from './fixtures.ts';
 
 // Helpers
 import { getFileItem, getRenameInput } from './helpers/locators.ts';
@@ -103,7 +101,7 @@ test('Renaming preserves file content and editor content', async ({ page, fsSetu
 
     // Ensure content loaded
     await expect(async () => {
-        const editorContent = await getEditorContent(page);
+        const editorContent = await helpers.getEditorContent(page);
         expect(editorContent).toBe('== File 1 content');
     }).toPass();
 
@@ -113,7 +111,7 @@ test('Renaming preserves file content and editor content', async ({ page, fsSetu
 
     // Verify editor content
     await expect(async () => {
-        const editorContent = await getEditorContent(page);
+        const editorContent = await helpers.getEditorContent(page);
         expect(editorContent).toBe('== File 1 content');
     }).toPass();
 
@@ -126,7 +124,7 @@ test('Renaming preserves file content and editor content', async ({ page, fsSetu
     await cancelRename(page, input2, 'broken.adoc');
 
     await expect(async () => {
-        const editorContent = await getEditorContent(page);
+        const editorContent = await helpers.getEditorContent(page);
         expect(editorContent).toBe('== File 1 content');
     }).toPass();
 });
@@ -192,7 +190,7 @@ test('Validation - Unsafe characters', async ({ page }) => {
     await input.fill('bad/name.adoc');
 
     // Schedule dialog handling BEFORE the blocking action (Enter)
-    const dialogHandle = await handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
     await page.keyboard.press('Enter');
 
     // Input should still be visible because validation failed
@@ -212,7 +210,7 @@ test('Validation - Conflict', async ({ page, fsSetup }) => {
     // 1. Decline override
     await input.fill('conflict.adoc');
 
-    let dialogHandle = await handleNextDialog(page, 'cancel');
+    let dialogHandle = await helpers.handleNextDialog(page, 'cancel');
     await page.keyboard.press('Enter');
 
     // Should still be in rename mode (dialog dismissed)
@@ -223,7 +221,7 @@ test('Validation - Conflict', async ({ page, fsSetup }) => {
 
     // 2. Accept override
     // Retrigger enter
-    dialogHandle = await handleNextDialog(page, 'confirm');
+    dialogHandle = await helpers.handleNextDialog(page, 'confirm');
     await page.keyboard.press('Enter');
 
     // Should succeed now
@@ -280,7 +278,7 @@ test('Rename stays active on invalid name when clicking another file', async ({ 
     // Trigger the focus change (click other file)
     const otherFile = getFileItem(page, 'file2.adoc');
 
-    const dialogHandle = await handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
     await otherFile.click();
 
     // Now input should STILL be visible and focused

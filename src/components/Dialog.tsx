@@ -39,8 +39,8 @@ class DialogStore implements Dialog {
     @observable accessor yesText: string = 'OK';
     @observable accessor noText: string = 'Cancel';
 
-    dialogRef: React.RefObject<HTMLDialogElement> = React.createRef();
-    confirmButtonRef: React.RefObject<HTMLButtonElement> = React.createRef();
+    dialogRef: React.RefObject<HTMLDialogElement | null> = React.createRef();
+    confirmButtonRef: React.RefObject<HTMLButtonElement | null> = React.createRef();
     private resolvePromise: ((value: any) => void) | null = null;
     private pendingResult: any = undefined;
     get isOpen() { return this.dialogRef.current?.open ?? false; }
@@ -208,6 +208,6 @@ export const NativeDialog: React.FC = observer(() => {
 export const dialog: Dialog = dialogStore;
 
 // Expose for testing/debugging
-if (typeof window !== 'undefined' && window.__ENABLE_TEST_GLOBALS__) {
+if (typeof window !== 'undefined' && window.__TEST_ENABLE_GLOBALS) {
     window.__TEST_dialog = dialog;
 }
