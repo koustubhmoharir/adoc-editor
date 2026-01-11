@@ -1,145 +1,146 @@
 import { test, expect } from './fixtures.ts';
-import { setMockPickerConfig } from './helpers/mock_helpers.ts';
+import { loadInitialDirectory } from './helpers/sidebar_helpers.ts';
 
-test.describe('Sidebar Context Menu Functionality', () => {
+test.beforeEach(async ({ fsSetup }) => {
+    fsSetup.cleanup();
+    // Reset and setup basic file system using FsTestSetup class
+    fsSetup.createFile('dir1', 'file1.txt', 'content1');
+    fsSetup.createFile('dir1', 'folder1/nested_file.txt', 'nested content');
+});
 
-    test.beforeEach(async ({ page, fsSetup }) => {
-        fsSetup.cleanup();
-        // Reset and setup basic file system using FsTestSetup class
-        fsSetup.createFile('dir1', 'file1.txt', 'content1');
-        fsSetup.createFile('dir1', 'folder1/nested_file.txt', 'nested content');
+test('should show context menu for file with correct options', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
+    const fileItem = page.locator('[data-file-path="file1.txt"]');
+    await fileItem.click({ button: 'right' });
 
-        await setMockPickerConfig(page, 'dir1');
-        // Open the folder (dir1 matches the first mock dir)
-        await page.click('button:has-text("Open Folder")');
+    // Verify context menu appears
+    const contextMenu = page.locator('[data-testid="sidebar-contextmenu"]');
+    await expect(contextMenu).toBeVisible();
 
-        // Wait for file1 to be visible to ensure tree is loaded
-        await expect(page.locator('[data-file-path="file1.txt"]')).toBeVisible();
-    });
+    // Verify options
+    await expect(contextMenu).toContainText('Open');
+    await expect(contextMenu).toContainText('Rename');
+    await expect(contextMenu).toContainText('Delete');
+    await expect(contextMenu).not.toContainText('New File');
 
-    test('should show context menu for file with correct options', async ({ page }) => {
-        const fileItem = page.locator('[data-file-path="file1.txt"]');
-        await fileItem.click({ button: 'right' });
+    await fileItem.click();
+    await expect(contextMenu).not.toBeVisible();
+});
 
-        // Verify context menu appears
-        const contextMenu = page.locator('[data-testid="sidebar-contextmenu"]');
-        await expect(contextMenu).toBeVisible();
+test('should show context menu for directory with correct options', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-        // Verify options
-        await expect(contextMenu).toContainText('Open');
-        await expect(contextMenu).toContainText('Rename');
-        await expect(contextMenu).toContainText('Delete');
-        await expect(contextMenu).not.toContainText('New File');
+    const dirItem = page.locator('[data-dir-path="folder1"]');
+    await dirItem.click({ button: 'right' });
 
-        await fileItem.click();
-        await expect(contextMenu).not.toBeVisible();
-    });
+    // Verify context menu appears
+    const contextMenu = page.getByTestId('sidebar-contextmenu');
+    await expect(contextMenu).toBeVisible();
 
-    test('should show context menu for directory with correct options', async ({ page }) => {
-        const dirItem = page.locator('[data-dir-path="folder1"]');
-        await dirItem.click({ button: 'right' });
+    // Verify options
+    await expect(contextMenu).toContainText('New File');
+    await expect(contextMenu).not.toContainText('Open');
+    await expect(contextMenu).not.toContainText('Rename');
+    await expect(contextMenu).not.toContainText('Delete');
 
-        // Verify context menu appears
-        const contextMenu = page.getByTestId('sidebar-contextmenu');
-        await expect(contextMenu).toBeVisible();
+    await dirItem.click();
+    await expect(contextMenu).not.toBeVisible();
+});
 
-        // Verify options
-        await expect(contextMenu).toContainText('New File');
-        await expect(contextMenu).not.toContainText('Open');
-        await expect(contextMenu).not.toContainText('Rename');
-        await expect(contextMenu).not.toContainText('Delete');
+test('should trigger rename from context menu', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-        await dirItem.click();
-        await expect(contextMenu).not.toBeVisible();
-    });
+    const fileItem = page.locator('[data-file-path="file1.txt"]');
+    await fileItem.click({ button: 'right' });
 
-    test('should trigger rename from context menu', async ({ page }) => {
-        const fileItem = page.locator('[data-file-path="file1.txt"]');
-        await fileItem.click({ button: 'right' });
+    const renameBtn = page.getByTestId('ctx-rename');
+    await renameBtn.click();
 
-        const renameBtn = page.getByTestId('ctx-rename');
-        await renameBtn.click();
+    // Verify rename input appears
+    const renameInput = page.getByTestId('rename-input');
+    await expect(renameInput).toBeVisible();
+    await expect(renameInput).toHaveValue('file1.txt');
 
-        // Verify rename input appears
-        const renameInput = page.getByTestId('rename-input');
-        await expect(renameInput).toBeVisible();
-        await expect(renameInput).toHaveValue('file1.txt');
+    await page.keyboard.press('Escape');
+    await expect(renameInput).not.toBeVisible();
+});
 
-        await page.keyboard.press('Escape');
-        await expect(renameInput).not.toBeVisible();
-    });
+test('should create new file from context menu', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-    test('should create new file from context menu', async ({ page }) => {
-        const dirItem = page.locator('[data-dir-path="folder1"]');
-        await dirItem.click({ button: 'right' });
+    const dirItem = page.locator('[data-dir-path="folder1"]');
+    await dirItem.click({ button: 'right' });
 
-        const newFileBtn = page.getByTestId('ctx-new-file');
-        await newFileBtn.click();
+    const newFileBtn = page.getByTestId('ctx-new-file');
+    await newFileBtn.click();
 
-        // The input for renaming the new file should appear
-        const renameInput = page.getByTestId('rename-input');
-        await expect(renameInput).toBeVisible();
+    // The input for renaming the new file should appear
+    const renameInput = page.getByTestId('rename-input');
+    await expect(renameInput).toBeVisible();
 
-        await page.keyboard.press('Escape');
-        await expect(renameInput).not.toBeVisible();
-    });
+    await page.keyboard.press('Escape');
+    await expect(renameInput).not.toBeVisible();
+});
 
-    test('should navigate context menu items with arrow keys', async ({ page }) => {
-        const fileItem = page.locator('[data-file-path="file1.txt"]');
-        const contextMenu = page.getByTestId('sidebar-contextmenu');
-        await expect(contextMenu).not.toBeVisible();
+test('should navigate context menu items with arrow keys', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-        await fileItem.click({ button: 'right' });
+    const fileItem = page.locator('[data-file-path="file1.txt"]');
+    const contextMenu = page.getByTestId('sidebar-contextmenu');
+    await expect(contextMenu).not.toBeVisible();
 
-        await expect(contextMenu).toBeVisible();
+    await fileItem.click({ button: 'right' });
 
-        // Interaction:
-        // Press ArrowDown -> First item (Open) should be focused
-        await page.keyboard.press('ArrowDown');
-        await expect(page.getByTestId('ctx-open')).toBeFocused();
+    await expect(contextMenu).toBeVisible();
 
-        // Press ArrowDown -> Second item (Rename) should be focused
-        await page.keyboard.press('ArrowDown');
-        await expect(page.getByTestId('ctx-rename')).toBeFocused();
+    // Interaction:
+    // Press ArrowDown -> First item (Open) should be focused
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('ctx-open')).toBeFocused();
 
-        // Press ArrowDown -> Third item (Delete) should be focused
-        await page.keyboard.press('ArrowDown');
-        await expect(page.getByTestId('ctx-delete')).toBeFocused();
+    // Press ArrowDown -> Second item (Rename) should be focused
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('ctx-rename')).toBeFocused();
 
-        // Loop around
-        // Press ArrowDown -> First item (Open) should be focused
-        await page.keyboard.press('ArrowDown');
-        await expect(page.getByTestId('ctx-open')).toBeFocused();
+    // Press ArrowDown -> Third item (Delete) should be focused
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('ctx-delete')).toBeFocused();
 
-        // Go backwards
-        // Press ArrowUp -> Last item (Delete) should be focused
-        await page.keyboard.press('ArrowUp');
-        await expect(page.getByTestId('ctx-delete')).toBeFocused();
+    // Loop around
+    // Press ArrowDown -> First item (Open) should be focused
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('ctx-open')).toBeFocused();
 
-        await fileItem.click();
-        await expect(contextMenu).not.toBeVisible();
-    });
+    // Go backwards
+    // Press ArrowUp -> Last item (Delete) should be focused
+    await page.keyboard.press('ArrowUp');
+    await expect(page.getByTestId('ctx-delete')).toBeFocused();
 
-    test('should execute action with Enter key', async ({ page }) => {
-        const fileItem = page.locator('[data-file-path="file1.txt"]');
-        await fileItem.click({ button: 'right' });
+    await fileItem.click();
+    await expect(contextMenu).not.toBeVisible();
+});
 
-        // Navigate to Rename
-        await page.keyboard.press('ArrowDown'); // Focus Open
-        await page.keyboard.press('ArrowDown'); // Focus Rename
+test('should execute action with Enter key', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-        await expect(page.getByTestId('ctx-rename')).toBeFocused();
+    const fileItem = page.locator('[data-file-path="file1.txt"]');
+    await fileItem.click({ button: 'right' });
 
-        // Press Enter
-        await page.keyboard.press('Enter');
+    // Navigate to Rename
+    await page.keyboard.press('ArrowDown'); // Focus Open
+    await page.keyboard.press('ArrowDown'); // Focus Rename
 
-        // Check rename input appears
-        const renameInput = page.getByTestId('rename-input');
-        await expect(renameInput).toBeVisible();
-        await expect(renameInput).toHaveValue('file1.txt');
+    await expect(page.getByTestId('ctx-rename')).toBeFocused();
 
-        await page.keyboard.press('Escape');
-        await expect(renameInput).not.toBeVisible();
-    });
+    // Press Enter
+    await page.keyboard.press('Enter');
+
+    // Check rename input appears
+    const renameInput = page.getByTestId('rename-input');
+    await expect(renameInput).toBeVisible();
+    await expect(renameInput).toHaveValue('file1.txt');
+
+    await page.keyboard.press('Escape');
+    await expect(renameInput).not.toBeVisible();
 });
 

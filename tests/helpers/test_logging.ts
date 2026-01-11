@@ -7,7 +7,7 @@ import { Page } from '@playwright/test';
  * @param page The Playwright Page object.
  */
 export function enableTestLogging(page: Page) {
-    page.on('pageerror', err => console.log(`BROWSER EXCEPTION: ${err}`));
+    page.on('pageerror', err => { throw err; });
     page.on('console', msg => {
         const t = msg.type();
         if (t === 'error') {

@@ -216,6 +216,17 @@ class FileSystemStore extends EffectAwareModel {
 
     loadTimeout: number | null = null;
 
+    private dbOperations: Promise<void>[] = [];
+    
+    private async pushDbOperation(op: Promise<void>, message: string) {
+        op = op.catch(reason => console.warn(message, reason));
+        this.dbOperations.push(op);
+        await op.finally(() => this.dbOperations.splice(this.dbOperations.indexOf(op), 1));
+    }
+    async flushPendingDbOperations() {
+        await Promise.all(this.dbOperations.slice());
+    }
+
     @action
     openContextMenu(node: FileNodeModel) {
         // Clear previous anchor if any
@@ -334,11 +345,7 @@ class FileSystemStore extends EffectAwareModel {
             runInAction(() => {
                 this.directoryHandle = handle;
             });
-            try {
-                await setDbValue('directoryHandle', handle);
-            } catch (e) {
-                console.warn('Failed to persist directory handle:', e);
-            }
+            await this.pushDbOperation(setDbValue('directoryHandle', handle), 'Failed to persist directory handle:');
             await this.refreshTree();
         } catch (error) {
             console.error('Error opening directory:', error);
@@ -655,11 +662,7 @@ class FileSystemStore extends EffectAwareModel {
         const fileHandle = node.handle as FileSystemFileHandle;
 
         // Persist file handle
-        try {
-            await setDbValue('lastOpenFile', fileHandle);
-        } catch (e) {
-            console.warn('Failed to persist file handle:', e);
-        }
+        await this.pushDbOperation(setDbValue('lastOpenFile', fileHandle), 'Failed to persist file handle:');
 
         let content = '';
         try {
@@ -720,7 +723,7 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action.bound
-    focusCurrentFileInSidebar() {
+    async focusCurrentFileInSidebar() {
         if (!this.currentFileHandle) return;
 
         const node = this.findNodeByHandle(this.currentFileHandle);
@@ -748,11 +751,7 @@ class FileSystemStore extends EffectAwareModel {
 
         // Trigger generic reaction/persist collapsed paths if needed?
         // toggleDirectory does persist. Here we batch.
-        try {
-            setDbValue('collapsedPaths', Array.from(this.collapsedPaths));
-        } catch (e) {
-            console.warn('Failed to persist collapsed paths:', e);
-        }
+        await this.pushDbOperation(setDbValue('collapsedPaths', Array.from(this.collapsedPaths)), 'Failed to persist collapsed paths:');
     }
 
     findNodeByHandle(handle: FileSystemHandle): FileNodeModel | undefined {
@@ -776,7 +775,7 @@ class FileSystemStore extends EffectAwareModel {
         }
 
         // Clear persisted handle
-        await setDbValue('lastOpenFile', null);
+        await this.pushDbOperation(setDbValue('lastOpenFile', null), 'failed to clear lastOpenFile');
 
         runInAction(() => {
             this.currentFileHandle = null;
@@ -1124,18 +1123,14 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    toggleDirectory(path: string) {
+    async toggleDirectory(path: string) {
         if (this.collapsedPaths.has(path)) {
             this.collapsedPaths.delete(path);
         } else {
             this.collapsedPaths.add(path);
         }
         // Trigger generic reaction/persist
-        try {
-            setDbValue('collapsedPaths', Array.from(this.collapsedPaths));
-        } catch (e) {
-            console.warn('Failed to persist collapsed paths:', e);
-        }
+        await this.pushDbOperation(setDbValue('collapsedPaths', Array.from(this.collapsedPaths)), 'Failed to persist collapsed paths:');
     }
 
     isCollapsed(path: string) {

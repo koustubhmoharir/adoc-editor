@@ -1,228 +1,233 @@
 import { test, expect } from './fixtures.ts';
-import { setMockPickerConfig } from './helpers/mock_helpers.ts';
+import { loadInitialDirectory } from './helpers/sidebar_helpers.ts';
 
-test.describe('Search Functionality', () => {
+test.beforeEach(async ({ page, fsSetup }) => {
+    // 1. Create large set of files for scrolling
+    for (let i = 1; i <= 30; i++) {
+        const num = i.toString().padStart(2, '0');
+        fsSetup.createFile('dir1', `file-${num}.adoc`, `== File ${num}`);
+    }
 
-    test.beforeEach(async ({ page, fsSetup }) => {
-        // 1. Create large set of files for scrolling
-        for (let i = 1; i <= 30; i++) {
-            const num = i.toString().padStart(2, '0');
-            fsSetup.createFile('dir1', `file-${num}.adoc`, `== File ${num}`);
-        }
+    // 2. Create distinct files for filtering
+    fsSetup.createFile('dir1', 'apple.adoc', '== Apple');
+    fsSetup.createFile('dir1', 'banana.adoc', '== Banana');
+    fsSetup.createFile('dir1', 'cherry.txt', 'Ignored');
 
-        // 2. Create distinct files for filtering
-        fsSetup.createFile('dir1', 'apple.adoc', '== Apple');
-        fsSetup.createFile('dir1', 'banana.adoc', '== Banana');
-        fsSetup.createFile('dir1', 'cherry.txt', 'Ignored');
+    // Set viewport height to 400px to force scrolling
+    await page.setViewportSize({ width: 1280, height: 400 });
+});
 
-        // Set viewport height to 400px to force scrolling
-        await page.setViewportSize({ width: 1280, height: 400 });
+test('UI Compatibility: Toggling search', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-        await setMockPickerConfig(page, 'dir1');
-        // Open folder
-        await page.click('[data-testid="open-folder-button"]');
-        // Wait for tree to populate
-        await expect(page.locator('[data-testid="file-item"][data-file-path="file-01.adoc"]')).toBeVisible();
-    });
+    // Initially search input hidden
+    await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
 
-    test('UI Compatibility: Toggling search', async ({ page }) => {
-        // Initially search input hidden
-        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+    // Toggle on
+    await page.click('[data-testid="search-toggle-button"]');
+    await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
+    await expect(page.locator('[data-testid="search-input"]')).toBeFocused();
 
-        // Toggle on
-        await page.click('[data-testid="search-toggle-button"]');
-        await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
-        await expect(page.locator('[data-testid="search-input"]')).toBeFocused();
+    // Toggle off via button - actually toggle button usually toggles visibility
+    await page.click('[data-testid="search-toggle-button"]');
+    await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+});
 
-        // Toggle off via button - actually toggle button usually toggles visibility
-        await page.click('[data-testid="search-toggle-button"]');
-        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
-    });
+test('Filtering Logic', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-    test('Filtering Logic', async ({ page }) => {
-        await page.click('[data-testid="search-toggle-button"]');
+    await page.click('[data-testid="search-toggle-button"]');
 
-        // Search "apple"
-        await page.fill('[data-testid="search-input"]', 'apple');
-        await expect(page.locator('[data-testid="search-result-item"][data-file-path="apple.adoc"]')).toBeVisible();
-        await expect(page.locator('[data-testid="search-result-item"][data-file-path="banana.adoc"]')).not.toBeVisible();
+    // Search "apple"
+    await page.fill('[data-testid="search-input"]', 'apple');
+    await expect(page.locator('[data-testid="search-result-item"][data-file-path="apple.adoc"]')).toBeVisible();
+    await expect(page.locator('[data-testid="search-result-item"][data-file-path="banana.adoc"]')).not.toBeVisible();
 
-        // Search "file"
-        await page.fill('[data-testid="search-input"]', 'file');
-        await expect(page.locator('[data-testid="search-result-item"][data-file-path="file-01.adoc"]')).toBeVisible();
-        await expect(page.locator('[data-testid="search-result-item"][data-file-path="file-30.adoc"]')).toBeVisible();
-        await expect(page.locator('[data-testid="search-result-item"][data-file-path="apple.adoc"]')).not.toBeVisible();
-    });
+    // Search "file"
+    await page.fill('[data-testid="search-input"]', 'file');
+    await expect(page.locator('[data-testid="search-result-item"][data-file-path="file-01.adoc"]')).toBeVisible();
+    await expect(page.locator('[data-testid="search-result-item"][data-file-path="file-30.adoc"]')).toBeVisible();
+    await expect(page.locator('[data-testid="search-result-item"][data-file-path="apple.adoc"]')).not.toBeVisible();
+});
 
-    test('Scrolling & Navigation', async ({ page }) => {
-        await page.click('[data-testid="search-toggle-button"]');
-        await page.fill('[data-testid="search-input"]', 'file');
+test('Scrolling & Navigation', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-        // Locate results
-        const resultItems = page.locator('[data-testid="search-result-item"]');
-        // Wait for results
-        await expect(resultItems.first()).toBeVisible();
+    await page.click('[data-testid="search-toggle-button"]');
+    await page.fill('[data-testid="search-input"]', 'file');
 
-        // --- Arrow Navigation ---
+    // Locate results
+    const resultItems = page.locator('[data-testid="search-result-item"]');
+    // Wait for results
+    await expect(resultItems.first()).toBeVisible();
 
-        // Arrow Down -> Select first
-        await page.keyboard.press('ArrowDown');
-        await expect(resultItems.nth(0)).toHaveAttribute('data-highlighted', 'true');
-        await expect(resultItems.nth(0)).toBeInViewport();
+    // --- Arrow Navigation ---
 
-        // Arrow Down -> Select second
-        await page.keyboard.press('ArrowDown');
-        await expect(resultItems.nth(1)).toHaveAttribute('data-highlighted', 'true');
-        await expect(resultItems.nth(0)).not.toHaveAttribute('data-highlighted', 'true');
+    // Arrow Down -> Select first
+    await page.keyboard.press('ArrowDown');
+    await expect(resultItems.nth(0)).toHaveAttribute('data-highlighted', 'true');
+    await expect(resultItems.nth(0)).toBeInViewport();
 
-        // Arrow Up -> Select first
-        await page.keyboard.press('ArrowUp');
-        await expect(resultItems.nth(0)).toHaveAttribute('data-highlighted', 'true');
+    // Arrow Down -> Select second
+    await page.keyboard.press('ArrowDown');
+    await expect(resultItems.nth(1)).toHaveAttribute('data-highlighted', 'true');
+    await expect(resultItems.nth(0)).not.toHaveAttribute('data-highlighted', 'true');
 
-        // Arrow Up from first -> Clear highlight, focus input/top
-        await page.keyboard.press('ArrowUp');
-        await expect(resultItems.nth(0)).not.toHaveAttribute('data-highlighted', 'true');
-        // Verify input is still focused or at least visible/accessible
-        await expect(page.locator('[data-testid="search-input"]')).toBeFocused(); // If implementation sets focus
+    // Arrow Up -> Select first
+    await page.keyboard.press('ArrowUp');
+    await expect(resultItems.nth(0)).toHaveAttribute('data-highlighted', 'true');
 
-        // --- Page Navigation ---
+    // Arrow Up from first -> Clear highlight, focus input/top
+    await page.keyboard.press('ArrowUp');
+    await expect(resultItems.nth(0)).not.toHaveAttribute('data-highlighted', 'true');
+    // Verify input is still focused or at least visible/accessible
+    await expect(page.locator('[data-testid="search-input"]')).toBeFocused(); // If implementation sets focus
 
-        // Start from -1 (input focused)
-        // PageDown -> Should jump down.
-        await page.keyboard.press('PageDown');
+    // --- Page Navigation ---
 
-        // Determine which item is highlighted. 
-        // We expect delta > 1. Let's find the highlighted index.
-        const firstPageHighlightIndex = await resultItems.evaluateAll(items =>
-            items.findIndex(item => item.getAttribute('data-highlighted') === 'true')
-        );
-        expect(firstPageHighlightIndex).toBeGreaterThan(1);
-        await expect(resultItems.nth(firstPageHighlightIndex)).toBeInViewport();
+    // Start from -1 (input focused)
+    // PageDown -> Should jump down.
+    await page.keyboard.press('PageDown');
 
-        // Repeated PageDown to end
-        // We have 30 files. Page size ~400px / ~30px item ~ 10-15 items?
-        // Let's press PageDown 5 times to be safe.
-        for (let i = 0; i < 5; i++) await page.keyboard.press('PageDown');
+    // Determine which item is highlighted. 
+    // We expect delta > 1. Let's find the highlighted index.
+    const firstPageHighlightIndex = await resultItems.evaluateAll(items =>
+        items.findIndex(item => item.getAttribute('data-highlighted') === 'true')
+    );
+    expect(firstPageHighlightIndex).toBeGreaterThan(1);
+    await expect(resultItems.nth(firstPageHighlightIndex)).toBeInViewport();
 
-        // Should be at last item
-        const lastIndex = 29; // file-30
-        await expect(resultItems.nth(lastIndex)).toHaveAttribute('data-highlighted', 'true');
-        await expect(resultItems.nth(lastIndex)).toBeInViewport();
+    // Repeated PageDown to end
+    // We have 30 files. Page size ~400px / ~30px item ~ 10-15 items?
+    // Let's press PageDown 5 times to be safe.
+    for (let i = 0; i < 5; i++) await page.keyboard.press('PageDown');
 
-        // --- Page Up ---
+    // Should be at last item
+    const lastIndex = 29; // file-30
+    await expect(resultItems.nth(lastIndex)).toHaveAttribute('data-highlighted', 'true');
+    await expect(resultItems.nth(lastIndex)).toBeInViewport();
 
-        // Page Up once
-        await page.keyboard.press('PageUp');
-        const endPageHighlightIndex = await resultItems.evaluateAll(items =>
-            items.findIndex(item => item.getAttribute('data-highlighted') === 'true')
-        );
-        expect(endPageHighlightIndex).toBeLessThan(lastIndex - 1);
-        await expect(resultItems.nth(endPageHighlightIndex)).toBeInViewport();
+    // --- Page Up ---
 
-        // Repeated Page Up to top
-        for (let i = 0; i < 5; i++) await page.keyboard.press('PageUp');
+    // Page Up once
+    await page.keyboard.press('PageUp');
+    const endPageHighlightIndex = await resultItems.evaluateAll(items =>
+        items.findIndex(item => item.getAttribute('data-highlighted') === 'true')
+    );
+    expect(endPageHighlightIndex).toBeLessThan(lastIndex - 1);
+    await expect(resultItems.nth(endPageHighlightIndex)).toBeInViewport();
 
-        // Should clear highlight
-        const topHighlightIndex = await resultItems.evaluateAll(items =>
-            items.findIndex(item => item.getAttribute('data-highlighted') === 'true')
-        );
-        expect(topHighlightIndex).toBe(-1);
+    // Repeated Page Up to top
+    for (let i = 0; i < 5; i++) await page.keyboard.press('PageUp');
 
-        // Check scroll position is 0 (top)
-        /* const scrollTop = await page.evaluate(() => {
-            return document.querySelector('[class*="Sidebar_sidebar"]')?.scrollTop;
-        }); */
-        // Or specific container if strictly defined. 
-        // Sidebar usually is the scroll container.
-        // Actually, sidebar has overflow-y: auto.
-        // But let's check input visibility which implies top.
-        await expect(page.locator('[data-testid="search-input"]')).toBeInViewport();
-    });
+    // Should clear highlight
+    const topHighlightIndex = await resultItems.evaluateAll(items =>
+        items.findIndex(item => item.getAttribute('data-highlighted') === 'true')
+    );
+    expect(topHighlightIndex).toBe(-1);
 
-    test('Interaction & Selection', async ({ page }) => {
-        await page.click('[data-testid="search-toggle-button"]');
-        await page.fill('[data-testid="search-input"]', 'apple');
+    // Check scroll position is 0 (top)
+    /* const scrollTop = await page.evaluate(() => {
+        return document.querySelector('[class*="Sidebar_sidebar"]')?.scrollTop;
+    }); */
+    // Or specific container if strictly defined. 
+    // Sidebar usually is the scroll container.
+    // Actually, sidebar has overflow-y: auto.
+    // But let's check input visibility which implies top.
+    await expect(page.locator('[data-testid="search-input"]')).toBeInViewport();
+});
 
-        // Select via Enter
-        await page.keyboard.press('ArrowDown'); // Highlight apple.adoc
-        await page.keyboard.press('Enter');
+test('Interaction & Selection', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-        // Check file opened
-        await expect(page.locator('[data-testid="current-filename"]')).toHaveText('apple.adoc');
-        // Search should close
-        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+    await page.click('[data-testid="search-toggle-button"]');
+    await page.fill('[data-testid="search-input"]', 'apple');
 
-        // Select via Click
-        await page.click('[data-testid="search-toggle-button"]');
-        await page.fill('[data-testid="search-input"]', 'banana');
-        await page.click('[data-testid="search-result-item"][data-file-path="banana.adoc"]');
+    // Select via Enter
+    await page.keyboard.press('ArrowDown'); // Highlight apple.adoc
+    await page.keyboard.press('Enter');
 
-        await expect(page.locator('[data-testid="title-bar"]')).toContainText('banana.adoc');
-        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
-    });
+    // Check file opened
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('apple.adoc');
+    // Search should close
+    await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
 
-    test('Clear/Close Logic', async ({ page }) => {
-        await page.click('[data-testid="search-toggle-button"]');
-        const input = page.locator('[data-testid="search-input"]');
-        // We can use data-testid for clear button which serves both roles, but check visibility/function
-        const clearBtn = page.locator('[data-testid="clear-search-button"]');
+    // Select via Click
+    await page.click('[data-testid="search-toggle-button"]');
+    await page.fill('[data-testid="search-input"]', 'banana');
+    await page.click('[data-testid="search-result-item"][data-file-path="banana.adoc"]');
 
-        // 1. Close when empty via Esc
-        await expect(input).toBeVisible();
-        await page.keyboard.press('Escape');
-        await expect(input).not.toBeVisible();
+    await expect(page.locator('[data-testid="title-bar"]')).toContainText('banana.adoc');
+    await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+});
 
-        // 2. Clear when text via Esc
-        await page.click('[data-testid="search-toggle-button"]');
-        await page.fill('[data-testid="search-input"]', 'foo');
-        await page.keyboard.press('Escape');
-        await expect(input).toHaveValue('');
-        await expect(input).toBeVisible();
+test('Clear/Close Logic', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-        // 3. Clear when text via Button
-        await page.fill('[data-testid="search-input"]', 'bar');
-        // Button should be visible
-        await expect(clearBtn).toBeVisible();
-        await clearBtn.click();
-        await expect(input).toHaveValue('');
-        await expect(input).toBeVisible();
+    await page.click('[data-testid="search-toggle-button"]');
+    const input = page.locator('[data-testid="search-input"]');
+    // We can use data-testid for clear button which serves both roles, but check visibility/function
+    const clearBtn = page.locator('[data-testid="clear-search-button"]');
 
-        // 4. Close when empty via Button
-        await expect(clearBtn).toBeVisible();
-        await clearBtn.click();
-        await expect(input).not.toBeVisible();
-    });
-    test('Keyboard Shortcut (Ctrl + ~)', async ({ page }) => {
-        // Toggle on via shortcut
-        await page.keyboard.press('Control+Backquote');
-        await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
-        await expect(page.locator('[data-testid="search-input"]')).toBeFocused();
+    // 1. Close when empty via Esc
+    await expect(input).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(input).not.toBeVisible();
 
-        // Type something
-        await page.fill('[data-testid="search-input"]', 'apple');
-        await expect(page.locator('[data-testid="search-result-item"][data-file-path="apple.adoc"]')).toBeVisible();
+    // 2. Clear when text via Esc
+    await page.click('[data-testid="search-toggle-button"]');
+    await page.fill('[data-testid="search-input"]', 'foo');
+    await page.keyboard.press('Escape');
+    await expect(input).toHaveValue('');
+    await expect(input).toBeVisible();
 
-        // Toggle off via shortcut - should clear and close
-        await page.keyboard.press('Control+Backquote');
-        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+    // 3. Clear when text via Button
+    await page.fill('[data-testid="search-input"]', 'bar');
+    // Button should be visible
+    await expect(clearBtn).toBeVisible();
+    await clearBtn.click();
+    await expect(input).toHaveValue('');
+    await expect(input).toBeVisible();
 
-        // Toggle on again - should be empty
-        await page.keyboard.press('Control+Backquote');
-        await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
-        await expect(page.locator('[data-testid="search-input"]')).toHaveValue('');
+    // 4. Close when empty via Button
+    await expect(clearBtn).toBeVisible();
+    await clearBtn.click();
+    await expect(input).not.toBeVisible();
+});
+test('Keyboard Shortcut (Ctrl + ~)', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-        // Close for next test
-        await page.keyboard.press('Control+Backquote');
-    });
+    // Toggle on via shortcut
+    await page.keyboard.press('Control+Backquote');
+    await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
+    await expect(page.locator('[data-testid="search-input"]')).toBeFocused();
 
-    test('Keyboard Shortcut (Meta + ~ for Mac)', async ({ page }) => {
-        // Toggle on via shortcut with Meta
-        await page.keyboard.press('Meta+Backquote');
-        await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
-        await expect(page.locator('[data-testid="search-input"]')).toBeFocused();
+    // Type something
+    await page.fill('[data-testid="search-input"]', 'apple');
+    await expect(page.locator('[data-testid="search-result-item"][data-file-path="apple.adoc"]')).toBeVisible();
 
-        // Toggle off via shortcut - should clear and close
-        await page.keyboard.press('Meta+Backquote');
-        await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
-    });
+    // Toggle off via shortcut - should clear and close
+    await page.keyboard.press('Control+Backquote');
+    await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+
+    // Toggle on again - should be empty
+    await page.keyboard.press('Control+Backquote');
+    await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
+    await expect(page.locator('[data-testid="search-input"]')).toHaveValue('');
+
+    // Close for next test
+    await page.keyboard.press('Control+Backquote');
+});
+
+test('Keyboard Shortcut (Meta + ~ for Mac)', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
+
+    // Toggle on via shortcut with Meta
+    await page.keyboard.press('Meta+Backquote');
+    await expect(page.locator('[data-testid="search-input"]')).toBeVisible();
+    await expect(page.locator('[data-testid="search-input"]')).toBeFocused();
+
+    // Toggle off via shortcut - should clear and close
+    await page.keyboard.press('Meta+Backquote');
+    await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
 });

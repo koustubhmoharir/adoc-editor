@@ -131,9 +131,26 @@ export async function enableTestGlobals(page: Page) {
                 }
             }, 50);
         };
+
+        (window as any).__TEST_checkDialogState = () => {
+            const dialog = (window as any).__TEST_dialog;
+            const isDialogOpen = dialog ? dialog.isOpen : false;
+            return dialogActionsQueue.length === 0 && !isDialogOpen;
+        };
     });
 }
 
 export async function waitForTestGlobals(page: Page) {
     await page.waitForFunction(() => window.__ENABLE_TEST_GLOBALS__ === true);
+}
+
+export async function checkDialogState(page: Page): Promise<boolean> {
+    const queue = resolversQueue.get(page);
+    const nodeQueueEmpty = !queue || queue.length === 0;
+
+    const browserStateClean = await page.evaluate(() => {
+        return (window as any).__TEST_checkDialogState ? (window as any).__TEST_checkDialogState() : true;
+    });
+
+    return nodeQueueEmpty && browserStateClean;
 }

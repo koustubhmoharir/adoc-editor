@@ -1,7 +1,7 @@
 import { test as base, Page, expect, BrowserContext } from '@playwright/test';
 import { FsTestSetup } from './helpers/fs_test_setup.ts'; // Explicit .ts to match project style
 import { enableTestLogging } from './helpers/test_logging.ts';
-import { enableTestGlobals, waitForTestGlobals } from './helpers/test_globals.ts';
+import { enableTestGlobals, waitForTestGlobals, checkDialogState } from './helpers/test_globals.ts';
 import { waitForMonaco } from './helpers/monaco_helpers.ts';
 
 type WorkerFixture = {
@@ -63,7 +63,12 @@ export const test = base.extend<TestFixture, WorkerFixture>({
             // Re-enable AutoSave
             window.__TEST_DISABLE_AUTO_SAVE__ = false;
         });
-        if (workerState.isDirty) {
+
+        // Check if dialog state is clean
+        const isDialogClean = await checkDialogState(page);
+
+        if (workerState.isDirty || !isDialogClean) {
+            console.log(`Reloading page. Dirty: ${workerState.isDirty}, DialogClean: ${isDialogClean}`);
             await page.reload();
             await waitForTestGlobals(page);
             await waitForMonaco(page);
