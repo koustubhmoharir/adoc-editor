@@ -100,7 +100,7 @@ test('Renaming allows changing extension from .adoc', async ({ page, fsSetup }) 
     await page.keyboard.press('Enter');
 
     await expect(page.locator('[data-testid="file-item"][data-file-path="script.ts"]')).toBeVisible();
-    expect(fsSetup.exists('dir1', 'script.ts'), 'script.ts exists');
+    expect(fsSetup.exists('dir1', 'script.ts'), 'script.ts exists').toBe(true);
 
     // Rename .gitignore -> .config
     const gitignore = page.locator('[data-testid="file-item"][data-file-path=".gitignore"]');
