@@ -114,3 +114,25 @@ test('Directory validation - Conflict', async ({ page }) => {
     await page.keyboard.press('Escape');
     await expect(input).not.toBeVisible();
 });
+
+test('Delete non-empty directory', async ({ page, fsSetup }) => {
+    await loadInitialDirectory(page, 'dir1');
+
+    const dirItem = getDirectoryItem(page, 'subdir1');
+    // const childItem = getFileItem(page, 'child.adoc'); // Removing unused and undefined
+    // getFileItem implementation usually looks for text.
+    // If it's collapsed, it won't be visible.
+    // subdir1 is created in beforeEach.
+    // We should expand it to verify child deletion visually if possible, or just rely on dir deletion.
+
+    await dirItem.click(); // Select it.
+
+    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+    await page.keyboard.press('Delete');
+
+    expect(await dialogHandle.getMessage()).toContain('Are you sure you want to delete');
+
+    await expect(dirItem).not.toBeVisible();
+    expect(fsSetup.exists('dir1', 'subdir1')).toBe(false);
+    expect(fsSetup.exists('dir1', 'subdir1/child.adoc')).toBe(false);
+});

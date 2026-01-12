@@ -110,7 +110,7 @@ export class FileNodeModel extends EffectAwareModel {
     @action
     async delete() {
         if (await dialog.confirm(`Are you sure you want to delete '${this.name}'?`)) {
-            await fileSystemStore.deleteFile(this);
+            await fileSystemStore.deleteNode(this);
         }
     }
 
@@ -979,9 +979,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    async deleteFile(node: FileNodeModel) {
-        if (node.kind !== 'file') return;
-
+    async deleteNode(node: FileNodeModel) {
         // 1. Confirm deletion (UI should handle confirmation before calling this, but we can verify)
         // For store action, we assume confirmation is done or we provide a callback? 
         // The plan says "UI side handles alert, this method just executes".
@@ -993,17 +991,27 @@ class FileSystemStore extends EffectAwareModel {
         }
 
         try {
-            await parentDir.removeEntry(node.name);
+            await parentDir.removeEntry(node.name, { recursive: node.kind === 'directory' });
 
-            // Clear selection if deleted file was active
-            if (this.currentFileHandle && await node.handle.isSameEntry(this.currentFileHandle)) {
-                await this.clearSelection();
+            // Clear selection if deleted file was active (or if active file was inside deleted directory)
+            // If we delete a directory, we need to check if currentFileHandle is inside it.
+            if (this.currentFileHandle) {
+                // If deleted node is file and matches
+                if (node.kind === 'file' && await node.handle.isSameEntry(this.currentFileHandle)) {
+                    await this.clearSelection();
+                } else if (node.kind === 'directory') {
+                    // Check if current file is child of deleted directory
+                    // We can check path prefix?
+                    if (this.highlightedPath && this.highlightedPath.startsWith(node.path + '/')) {
+                        await this.clearSelection();
+                    }
+                }
             }
 
             await this.refreshTree();
         } catch (error) {
-            console.error('Error deleting file:', error);
-            await dialog.alert(`Failed to delete file: ${error}`);
+            console.error('Error deleting node:', error);
+            await dialog.alert(`Failed to delete ${node.kind}: ${error}`);
         }
     }
 

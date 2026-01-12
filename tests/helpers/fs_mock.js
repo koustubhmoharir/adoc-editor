@@ -20,6 +20,26 @@ class MockFileSystemHandle {
     async requestPermission(descriptor) {
         return 'granted';
     }
+
+    async move(destination, newName) {
+        // destination is a DirectoryHandle (mock)
+        // newName is string (optional if destination is file handle? spec is varying, but usage is handle.move(parentDir, newName))
+        let newPath;
+        if (destination.kind === 'directory') {
+            newPath = destination._path + '/' + (newName || this.name);
+        } else {
+            // If destination is a handle to overwrite? 
+            // The API signature used in app is: handle.move(parentDir, finalName)
+            // So destination is parentDir
+            throw new Error('Destination must be a directory');
+        }
+
+        await window.__fs_rename(this._path, newPath);
+
+        // Update this handle? 
+        this.name = newName || this.name;
+        this._path = newPath;
+    }
 }
 
 class MockFileSystemFileHandle extends MockFileSystemHandle {
@@ -68,26 +88,6 @@ class MockFileSystemFileHandle extends MockFileSystemHandle {
             seek: async () => { },
             truncate: async () => { },
         };
-    }
-
-    async move(destination, newName) {
-        // destination is a DirectoryHandle (mock)
-        // newName is string (optional if destination is file handle? spec is varying, but usage is handle.move(parentDir, newName))
-        let newPath;
-        if (destination.kind === 'directory') {
-            newPath = destination._path + '/' + (newName || this.name);
-        } else {
-            // If destination is a handle to overwrite? 
-            // The API signature used in app is: handle.move(parentDir, finalName)
-            // So destination is parentDir
-            throw new Error('Destination must be a directory');
-        }
-
-        await window.__fs_rename(this._path, newPath);
-
-        // Update this handle? 
-        this.name = newName || this.name;
-        this._path = newPath;
     }
 }
 
