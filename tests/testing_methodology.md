@@ -44,14 +44,10 @@ Detailed logging (browser console, errors, dialogs) is available via the `test-d
 **Using Environment Variable:**
 Alternatively, set `DEBUG_TESTS=1` manually:
 ```bash
-# Windows
-$env:DEBUG_TESTS=1; npx playwright test tests/filesystem_ops.spec.ts
-
-# Linux/macOS
-DEBUG_TESTS=1 npx playwright test tests/filesystem_ops.spec.ts
+cross-env DEBUG_TESTS=1 PORT=8001 npx playwright test tests/filesystem_ops.spec.ts
 ```
 > [!NOTE]
-> Avoid this approach as the variable will remain set and defeat the purpose of enabling logging only when needed.
+> Do not set the environment variable at session scope as it will remain set and defeat the purpose of enabling logging only when needed.
 
 ### File System Mocking
 Tests involving file operations use `FsTestSetup` (from `tests/helpers/fs_test_setup.ts`) to create isolated test environments.

@@ -9,7 +9,10 @@ import { SERVER_PORT, SERVER_HOST } from './devserver.config.ts';
 
 const isServe = process.argv.includes('--serve');
 const isWatch = process.argv.includes('--watch');
+const isWatchDirty = process.argv.includes('--watch-dirty');
 const isShowTokens = process.argv.includes('--show-tokens');
+
+let isDirty = false;
 
 const clients: http.ServerResponse[] = [];
 
@@ -42,7 +45,7 @@ async function build() {
         bundle: true,
         outdir: 'dist',
         sourcemap: true,
-        sourcesContent: isWatch,
+        sourcesContent: isWatch || isWatchDirty,
         minify: !isWatch, // Only minify in non-dev mode
         target: 'es2020',
         loader: {
@@ -104,6 +107,22 @@ async function build() {
                     const index = clients.indexOf(res);
                     if (index !== -1) clients.splice(index, 1);
                 });
+                return;
+            }
+
+            // Rebuild Endpoint
+            if (isWatchDirty && req.method === 'POST' && req.url === '/_rebuild') {
+                if (isDirty) {
+                    console.log('Rebuild requested via HTTP...');
+                    runRebuild().then(() => {
+                        isDirty = false;
+                        res.writeHead(200);
+                        res.end('Rebuilt');
+                    });
+                } else {
+                    res.writeHead(200);
+                    res.end('Already clean');
+                }
                 return;
             }
 
@@ -173,7 +192,7 @@ async function build() {
         });
     }
 
-    if (isWatch) {
+    if (isWatch || isWatchDirty) {
         let timer: NodeJS.Timeout;
         // Recursive watch on src
         console.log('Watching for changes in src...');
@@ -181,13 +200,20 @@ async function build() {
             // Debounce
             clearTimeout(timer);
             timer = setTimeout(() => {
-                console.log(`Change detected (${filename}), rebuilding...`);
-                runRebuild();
+                if (isWatchDirty) {
+                    if (!isDirty) {
+                        console.log(`Change detected (${filename}), marking dirty...`);
+                        isDirty = true;
+                    }
+                } else {
+                    console.log(`Change detected (${filename}), rebuilding...`);
+                    runRebuild();
+                }
             }, 100);
         });
     }
 
-    if (!isServe && !isWatch) {
+    if (!isServe && !isWatch && !isWatchDirty) {
         await context.dispose();
     }
 }

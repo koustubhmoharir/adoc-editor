@@ -8,6 +8,7 @@ export default defineConfig({
     retries: process.env.CI ? 2 : 0,
     workers: process.env.CI ? 1 : 2,
     reporter: 'line',
+    globalSetup: './tests/global_setup.ts',
     use: {
         baseURL: SERVER_URL,
         trace: 'on-first-retry',
@@ -22,7 +23,7 @@ export default defineConfig({
         },
     ],
     webServer: {
-        command: 'npm start',
+        command: 'npm run serve',
         url: SERVER_URL,
         reuseExistingServer: true,
     },
