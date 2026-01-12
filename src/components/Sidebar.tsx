@@ -93,11 +93,11 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 className={`${styles.directoryItem} ${isSelected ? styles.selected : ''}`}
                 onClick={(e) => {
                     e.stopPropagation();
-                    fileSystemStore.selectNode(node, 'show');
+                    if (!isRenaming) fileSystemStore.selectNode(node, 'show');
                 }}
                 onDoubleClick={(e) => {
                     e.stopPropagation();
-                    fileSystemStore.toggleDirectory(node.path);
+                    if (!isRenaming) fileSystemStore.toggleDirectory(node.path);
                 }}
                 onContextMenu={node.handleContextMenu}
                 onKeyDown={(e) => node.handleTreeItemKeyDown(e)}
@@ -107,22 +107,67 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 data-dir-path={node.path}
                 data-selected={isSelected}
             >
-                <button
-                    className={styles.directoryToggleButton}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        // If not selected, select it as well? User request says: "Clicking it should toggle and select (if not already selected)."
-                        if (fileSystemStore.highlightedPath !== node.path) {
-                            fileSystemStore.selectNode(node, 'show');
-                        }
-                        fileSystemStore.toggleDirectory(node.path);
-                    }}
-                    title={isCollapsed ? "Expand" : "Collapse"}
-                    data-testid="toggle-directory-btn"
-                >
-                    <i className={`fas ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} ${styles.folderIcon}`} />
-                </button>
-                <span>{node.name}</span>
+                {isRenaming ? (
+                    <button key="cancel-rename-button"
+                        className={styles.cancelButton}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            node.cancelRenaming();
+                        }}
+                        onMouseDown={(e) => e.preventDefault()} // Prevent blur on input
+                        title="Cancel Rename (Esc)"
+                        data-testid="cancel-rename-button"
+                    >
+                        <i className="fas fa-times" />
+                    </button>
+                ) : (
+                    <button
+                        className={styles.directoryToggleButton}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            // If not selected, select it as well? User request says: "Clicking it should toggle and select (if not already selected)."
+                            if (fileSystemStore.highlightedPath !== node.path) {
+                                fileSystemStore.selectNode(node, 'show');
+                            }
+                            fileSystemStore.toggleDirectory(node.path);
+                        }}
+                        title={isCollapsed ? "Expand" : "Collapse"}
+                        data-testid="toggle-directory-btn"
+                    >
+                        <i className={`fas ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} ${styles.folderIcon}`} />
+                    </button>
+                )}
+
+                {isRenaming ? (
+                    <input
+                        ref={node.renameInputRef}
+                        className={styles.renameInput}
+                        data-testid="rename-input"
+                        value={node.renameValue}
+                        onChange={(e) => node.setRenameValue(e.target.value)}
+                        onKeyDown={(e) => node.handleRenameInputKeyDown(e)}
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={(e) => node.handleRenameInputBlur(e)}
+                    />
+                ) : (
+                    <span>{node.name}</span>
+                )}
+
+                {isRenaming ? (
+                    <button key="accept-rename-button"
+                        ref={node.acceptRenameBtnRef}
+                        className={styles.acceptButton}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            node.commitRenaming();
+                        }}
+                        onMouseDown={(e) => e.preventDefault()} // Prevent blur on input
+                        title="Accept Rename"
+                        data-testid="accept-rename-button"
+                    >
+                        <i className="fas fa-check" />
+                    </button>
+                ) : null}
 
             </div>
             {!isCollapsed && node.children && node.children.map((child, i) => (

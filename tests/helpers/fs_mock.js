@@ -73,7 +73,6 @@ class MockFileSystemFileHandle extends MockFileSystemHandle {
     async move(destination, newName) {
         // destination is a DirectoryHandle (mock)
         // newName is string (optional if destination is file handle? spec is varying, but usage is handle.move(parentDir, newName))
-        // If destination is DirectoryHandle:
         let newPath;
         if (destination.kind === 'directory') {
             newPath = destination._path + '/' + (newName || this.name);

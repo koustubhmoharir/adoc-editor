@@ -96,7 +96,7 @@ export class FileNodeModel extends EffectAwareModel {
                 this.cancelRenaming();
                 return;
             }
-            const success = await fileSystemStore.renameFile(this, this.renameValue, true);
+            const success = await fileSystemStore.renameNode(this, this.renameValue, true);
             // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
             if (!success) {
                 this.renameInputRef.current?.focus();
@@ -217,7 +217,7 @@ class FileSystemStore extends EffectAwareModel {
     loadTimeout: number | null = null;
 
     private dbOperations: Promise<void>[] = [];
-    
+
     private async pushDbOperation(op: Promise<void>, message: string) {
         op = op.catch(reason => console.warn(message, reason));
         this.dbOperations.push(op);
@@ -1007,37 +1007,30 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    async renameFile(node: FileNodeModel, newName: string, focusAfterRename: boolean): Promise<boolean> {
-        //console.log('FileSystemStore.renameFile', { nodeName: node.name, newName, focusAfterRename });
-        if (node.kind !== 'file') return false;
+    async renameNode(node: FileNodeModel, newName: string, focusAfterRename: boolean): Promise<boolean> {
+        //console.log('FileSystemStore.renameNode', { nodeName: node.name, newName, focusAfterRename });
 
-        // 1. Trim the name first
+        // 1. Prepare final name based on kind
+        let finalName = '';
         const trimmedInput = newName.trim();
 
-        // 2. See if it begins with a dot
         const startsWithDot = trimmedInput.startsWith('.');
-
-        // 3. Split by dot, trim all parts, filter out empty parts
+        // split by dot, trim parts, rejoin
         const parts = trimmedInput.split('.').map(p => p.trim()).filter(p => p.length > 0);
-
-        // 4. Join with a dot
-        let finalName = parts.join('.');
-        //console.log('renameFile: trimmedInput', trimmedInput, 'finalName (initial)', finalName);
-
-        // 5. If the result of step 1 was true, prepend a dot again
+        finalName = parts.join('.');
         if (startsWithDot) {
-            //console.log('renameFile: re-adding leading dot');
             finalName = '.' + finalName;
         }
 
-        // 6. Check for empty or just dot (disallowed)
-        if (!finalName || finalName === '.') {
-            //console.log('renameFile: invalid finalName', finalName);
+        // 2. Check for empty or just dot(s) (disallowed)
+        // RegEx: Only dots
+        if (!finalName || /^[\.]+$/.test(finalName)) {
+            //console.log('renameNode: invalid finalName', finalName);
             node.cancelRenaming();
             return true;
         }
 
-        // 1. Validation
+        // 3. Validation
         // Allowed: 
         // - Printable ASCII (0x20-0x7E) EXCEPT < > : " / \ | ? *
         // - Unicode letters (\p{L}) and numbers (\p{N})
@@ -1052,7 +1045,7 @@ class FileSystemStore extends EffectAwareModel {
             if (printableAsciiRegex.test(char)) {
                 // It is printable ASCII. Check if it is unsafe.
                 if (unsafeAsciiRegex.test(char)) {
-                    //console.log('renameFile: unsafe char', char);
+                    //console.log('renameNode: unsafe char', char);
                     await dialog.alert(`Invalid character: ${char}`);
                     return false;
                 }
@@ -1060,7 +1053,7 @@ class FileSystemStore extends EffectAwareModel {
                 // It is NOT printable ASCII (e.g. Unicode or Control)
                 // Check if it is a Unicode Letter or Number
                 if (!unicodeWordRegex.test(char)) {
-                    //console.log('renameFile: invalid unicode char', char);
+                    //console.log('renameNode: invalid unicode char', char);
                     await dialog.alert(`Invalid character: ${char}`);
                     return false;
                 }
@@ -1073,7 +1066,7 @@ class FileSystemStore extends EffectAwareModel {
             return false;
         }
 
-        // 2. Uniqueness Check
+        // 4. Uniqueness Check
         let conflict = false;
         try {
             for await (const entry of parentDir.values()) {
@@ -1085,31 +1078,29 @@ class FileSystemStore extends EffectAwareModel {
             }
         } catch (e) {
             console.warn('Error checking siblings', e);
-            //console.log('renameFile: error checking siblings', e);
+            //console.log('renameNode: error checking siblings', e);
         }
 
         if (conflict) {
-            //console.log('renameFile: conflict detected', finalName);
-            const proceed = await dialog.confirm(`A file with the name "${finalName}" already exists (case-insensitive). Do you want to try replacing it or proceed?`);
-            if (!proceed) return false;
+            //console.log('renameNode: conflict detected', finalName);
+            await dialog.alert(`A ${node.kind} with the name "${finalName}" already exists (case-insensitive). Please use a different name.`);
+            return false;
         }
 
-        // 3. Execute Rename
+        // 5. Execute Rename
         const handle = node.handle as any;
         if (handle.move) {
             try {
-                //console.log('renameFile: calling move()', parentDir, finalName);
+                //console.log('renameNode: calling move()', parentDir, finalName);
                 await handle.move(parentDir, finalName);
-                //console.log('renameFile: move() returned');
+                //console.log('renameNode: move() returned');
 
                 // Determine new path to set pending focus
-                // If it was renamed, the path changes.
-                // We basically need parent path + finalName
                 const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
                 const newPath = parentPath ? `${parentPath}/${finalName}` : finalName;
 
                 await this.refreshTree(focusAfterRename ? newPath : undefined);
-                //console.log('renameFile: success', finalName);
+                //console.log('renameNode: success', finalName);
                 return true;
             } catch (error) {
                 console.error('Rename failed:', error);
@@ -1117,7 +1108,7 @@ class FileSystemStore extends EffectAwareModel {
                 return false;
             }
         } else {
-            await dialog.alert('Your browser does not support renaming files directly (File System Access API "move" method is missing). Please use a supported browser (e.g. Chrome 111+).');
+            await dialog.alert('Your browser does not support renaming items directly (File System Access API "move" method is missing).');
             return false;
         }
     }

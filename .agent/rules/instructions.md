@@ -13,4 +13,4 @@ trigger: always_on
 * Run all tests only when I ask you to or if you have made a change that is so large that it affects everything. Otherwise, just run the specific tests that are relevant to the change.
 * Create new automated tests only when you have been specifically asked to do so.
 * If a test fails, run just that one test again for debugging. Running all tests everytime wastes a lot of time. Use `npm run test-debug` command with the specific test name to turn on logging for debugging.
-* Before you wrap up, perform a thorough code review of all the changes.
+* Every implementation plan / task list **MUST** include an item for a thorough code review of all changes.

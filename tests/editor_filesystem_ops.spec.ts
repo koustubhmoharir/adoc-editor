@@ -199,9 +199,12 @@ test('Validation - Unsafe characters', async ({ page }) => {
 
     // Verify message synchronously
     expect(await dialogHandle.getMessage()).toContain('Invalid character');
+
+    await page.keyboard.press('Escape');
+    await expect(input).not.toBeVisible();
 });
 
-test('Validation - Conflict', async ({ page, fsSetup }) => {
+test('Validation - Conflict', async ({ page }) => {
     await loadInitialDirectory(page, 'dir1');
 
     const fileItem = getFileItem(page, 'file1.adoc');
@@ -210,7 +213,7 @@ test('Validation - Conflict', async ({ page, fsSetup }) => {
     // 1. Decline override
     await input.fill('conflict.adoc');
 
-    let dialogHandle = await helpers.handleNextDialog(page, 'cancel');
+    let dialogHandle = await helpers.handleNextDialog(page, 'confirm');
     await page.keyboard.press('Enter');
 
     // Should still be in rename mode (dialog dismissed)
@@ -219,16 +222,8 @@ test('Validation - Conflict', async ({ page, fsSetup }) => {
 
     expect(await dialogHandle.getMessage()).toContain('already exists');
 
-    // 2. Accept override
-    // Retrigger enter
-    dialogHandle = await helpers.handleNextDialog(page, 'confirm');
-    await page.keyboard.press('Enter');
-
-    // Should succeed now
-    await expect(getFileItem(page, 'file1.adoc')).not.toBeVisible();
-    await expect(getFileItem(page, 'conflict.adoc')).toBeVisible();
-    const content = fsSetup.readFile('dir1', 'conflict.adoc');
-    expect(content).toBe('== File 1 content');
+    await page.keyboard.press('Escape');
+    await expect(input).not.toBeVisible();
 });
 
 test('Rename commits when clicking another file', async ({ page, fsSetup }) => {

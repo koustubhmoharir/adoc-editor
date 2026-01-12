@@ -40,8 +40,8 @@ test('should show context menu for directory with correct options', async ({ pag
     // Verify options
     await expect(contextMenu).toContainText('New File');
     await expect(contextMenu).not.toContainText('Open');
-    await expect(contextMenu).not.toContainText('Rename');
-    await expect(contextMenu).not.toContainText('Delete');
+    await expect(contextMenu).toContainText('Rename');
+    await expect(contextMenu).toContainText('Delete');
 
     await dirItem.click();
     await expect(contextMenu).not.toBeVisible();
@@ -60,6 +60,24 @@ test('should trigger rename from context menu', async ({ page }) => {
     const renameInput = page.getByTestId('rename-input');
     await expect(renameInput).toBeVisible();
     await expect(renameInput).toHaveValue('file1.txt');
+
+    await page.keyboard.press('Escape');
+    await expect(renameInput).not.toBeVisible();
+});
+
+test('should trigger rename from context menu for directory', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
+
+    const dirItem = page.locator('[data-dir-path="folder1"]');
+    await dirItem.click({ button: 'right' });
+
+    const renameBtn = page.getByTestId('ctx-rename');
+    await renameBtn.click();
+
+    // Verify rename input appears
+    const renameInput = page.getByTestId('rename-input');
+    await expect(renameInput).toBeVisible();
+    await expect(renameInput).toHaveValue('folder1');
 
     await page.keyboard.press('Escape');
     await expect(renameInput).not.toBeVisible();

@@ -43,6 +43,16 @@ export class FsTestSetup {
         }
     }
 
+    createDirectory(dirName: string, relativePath: string) {
+        let baseDir = this.tempDirs.get(dirName);
+        if (baseDir === undefined) {
+            baseDir = createTempDir();
+            this.tempDirs.set(dirName, baseDir);
+        }
+        const fullPath = path.join(baseDir, relativePath);
+        if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
+    }
+
     readFile(dirName: string, relativePath: string): string {
         const baseDir = this.tempDirs.get(dirName);
         if (baseDir === undefined) throw new Error(`Directory not created for ${dirName}`);
@@ -107,6 +117,10 @@ export class FsTestSetup {
         await page.exposeFunction('__fs_rename', async (oldPath: string, newPath: string) => {
             const fullOldPath = resolvePath(oldPath);
             const fullNewPath = resolvePath(newPath);
+            // Overwrite destination if exists
+            if (fs.existsSync(fullNewPath)) {
+                fs.rmSync(fullNewPath, { recursive: true, force: true });
+            }
             fs.renameSync(fullOldPath, fullNewPath);
         });
 
