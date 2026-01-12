@@ -41,8 +41,16 @@ Detailed logging (browser console, errors, dialogs) is available via the `test-d
 -   **Debug Syntax Tests**: `npm run test-debug:syntax`
 -   **Debug Editor Tests**: `npm run test-debug:editor`
 
-**Using Environment Variable:**
-Alternatively, set `DEBUG_TESTS=1` manually:
+### Manual Test Execution
+**IMPORTANT:** The test environment runs on **Port 8001**.
+If you run `npx playwright test` manually (bypassing `npm test`), you **MUST** set the port:
+
+```bash
+cross-env PORT=8001 npx playwright test ...
+```
+
+**Debug Logging:**
+To enable debug logging, set `DEBUG_TESTS=1`:
 ```bash
 cross-env DEBUG_TESTS=1 PORT=8001 npx playwright test tests/filesystem_ops.spec.ts
 ```

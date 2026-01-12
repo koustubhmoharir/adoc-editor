@@ -63,6 +63,11 @@ See `tests/testing_methodology.md` for full details.
 | `npm run test:editor` | Runs editor functionality tests (`tests/editor_*.spec.ts`). |
 | `npm run test:components` | Runs tests for UI components or test helpers (`tests/components_*.spec.ts`). |
 
+> [!IMPORTANT]
+> The test environment runs on **Port 8001**. All `npm` scripts in `package.json` are pre-configured with `cross-env PORT=8001`.
+> **If you run `npx playwright test` directly, you MUST set the port manually:**
+> `cross-env PORT=8001 npx playwright test ...`
+
 Use test-debug instead of test in the commands above for increasing the level of logging.
 
 ## 6. Build System
@@ -70,7 +75,13 @@ Use test-debug instead of test in the commands above for increasing the level of
 - **Custom Watch & Serve**:
   - We do not use esbuild's built-in `watch` or `serve` modes.
   - Instead, we use `fs.watch` (recursive) on the `src` directory to detect changes.
-  - We run a custom Node.js `http` server to serve the `dist` directory.
+  - **Development (`npm start`)**:
+    - Runs on **Port 8000** by default.
+    - Automaticaly rebuilds and reloads the browser on changes.
+  - **Testing/Serve (`npm run serve`)**:
+    - Runs on **Port 8001** (configured via `PORT=8001` environment variable).
+    - Uses a "watch-dirty" mode (`--watch-dirty`): Changes mark the server as "dirty" but do not trigger an immediate rebuild.
+    - Rebuilds are triggered manually via a POST request to `/_rebuild`. This is used by Playwright to ensure a clean state before tests without constant reloading.
   - **Live Reload**: We check for changes and use Server-Sent Events (SSE) to notify the browser to reload when a build completes.
 - **Worker Handling**: Monaco Editor workers are explicitly bundled as separate entry points:
   ```typescript
