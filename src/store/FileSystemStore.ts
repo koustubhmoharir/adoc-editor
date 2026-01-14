@@ -26,18 +26,19 @@ export interface DirectoryNodeData extends FileSystemNodeDataBase {
 
 export abstract class FileSystemNodeModelBase extends EffectAwareModel {
 
-    constructor(data: FileSystemNodeDataBase, isRoot = false) {
+    constructor(data: FileSystemNodeDataBase, parent: DirectoryNodeModel | null) {
         super();
         this.kind = data.kind;
         this._name = data.name;
         this.path = data.path;
         this.handle = data.handle;
-        this.isRoot = isRoot;
+        this.parent = parent;
     }
     readonly kind: 'file' | 'directory';
     readonly path: string;
     readonly handle: FileSystemFileHandle | FileSystemDirectoryHandle;
-    readonly isRoot: boolean = false;
+    readonly parent: DirectoryNodeModel | null;
+    get isRoot() { return this.parent == null; }
 
     @observable protected accessor _name: string;
     get name() { return this._name; }
@@ -98,7 +99,7 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
                 this.cancelRenaming();
                 return;
             }
-            const success = await fileSystemStore.renameNode(this, this.renameValue, true);
+            const success = await this.rename(this.renameValue);
             // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
             if (!success) {
                 this.renameInputRef.current?.focus();
@@ -194,11 +195,102 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
     }
 
     abstract handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent): void;
+
+    @action
+    private async rename(newName: string): Promise<boolean> {
+        if (this.isRoot) return false;
+
+        // 1. Prepare final name based on kind
+        let finalName = '';
+        const trimmedInput = newName.trim();
+
+        const startsWithDot = trimmedInput.startsWith('.');
+        // split by dot, trim parts, rejoin
+        const parts = trimmedInput.split('.').map(p => p.trim()).filter(p => p.length > 0);
+        finalName = parts.join('.');
+        if (startsWithDot) {
+            finalName = '.' + finalName;
+        }
+
+        // 2. Check for empty or just dot(s) (disallowed)
+        if (!finalName || /^[\.]+$/.test(finalName)) {
+            this.cancelRenaming();
+            return true;
+        }
+
+        // 3. Validation
+        const unsafeAsciiRegex = /[<>:"/\\|?*]/;
+        const printableAsciiRegex = /^[\x20-\x7E]$/;
+        const unicodeWordRegex = /^[\p{L}\p{N}]$/u;
+
+        for (const char of finalName) {
+            if (this.name.includes(char)) continue;
+
+            if (printableAsciiRegex.test(char)) {
+                if (unsafeAsciiRegex.test(char)) {
+                    await dialog.alert(`Invalid character: ${char}`);
+                    return false;
+                }
+            } else {
+                if (!unicodeWordRegex.test(char)) {
+                    await dialog.alert(`Invalid character: ${char}`);
+                    return false;
+                }
+            }
+        }
+
+        const parentDir = this.parent?.handle;
+        if (!parentDir) {
+            await dialog.alert('Cannot find parent directory.');
+            return false;
+        }
+
+        // 4. Uniqueness Check
+        let conflict = false;
+        try {
+            for await (const entry of parentDir.values()) {
+                if (entry.name === this.name) continue; // self
+                if (entry.name.toLowerCase() === finalName.toLowerCase()) {
+                    conflict = true;
+                    break;
+                }
+            }
+        } catch (e) {
+            console.warn('Error checking siblings', e);
+        }
+
+        if (conflict) {
+            await dialog.alert(`A ${this.kind} with the name "${finalName}" already exists (case-insensitive). Please use a different name.`);
+            return false;
+        }
+
+        // 5. Execute Rename
+        const handle = this.handle;
+        if ('move' in handle) {
+            try {
+                await (handle.move as any)(parentDir, finalName);
+
+                // Determine new path to set pending focus
+                const parentPath = this.path.substring(0, this.path.lastIndexOf('/'));
+                const newPath = parentPath ? `${parentPath}/${finalName}` : finalName;
+
+                await fileSystemStore.refreshTree(newPath); // This is too heavy. We shouldn't do this.
+                return true;
+            } catch (error) {
+                console.error('Rename failed:', error);
+                await dialog.alert(`Rename failed: ${error}`);
+                return false;
+            }
+        } else {
+            await dialog.alert('Your browser does not support renaming items directly (File System Access API "move" method is missing).');
+            return false;
+        }
+    }
 }
 
 export class FileNodeModel extends FileSystemNodeModelBase {
-    constructor(data: FileNodeData) {
-        super(data);
+    constructor(data: FileNodeData, parent: DirectoryNodeModel) {
+        super(data, parent);
     }
 
     declare readonly kind: 'file';
@@ -216,8 +308,8 @@ export class FileNodeModel extends FileSystemNodeModelBase {
 
 export class DirectoryNodeModel extends FileSystemNodeModelBase {
 
-    constructor(data: DirectoryNodeData, isRoot = false) {
-        super(data, isRoot);
+    constructor(data: DirectoryNodeData, parent: DirectoryNodeModel | null) {
+        super(data, parent);
         this.children = data.children;
     }
 
@@ -269,7 +361,7 @@ class FileSystemStore extends EffectAwareModel {
             () => editorStore.content,
             () => {
                 if (!this.isLoading && this.currentFileHandle) {
-                    this.setDirty(true);
+                    this._dirty = true;
                 }
             }
         );
@@ -413,7 +505,7 @@ class FileSystemStore extends EffectAwareModel {
                     kind: 'directory',
                     handle: handle,
                     children: []
-                }, true);
+                }, null);
             });
             await this.pushDbOperation(setDbValue('directoryHandle', handle), 'Failed to persist directory handle:');
             await this.refreshTree();
@@ -443,7 +535,7 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     selectNode(node: FileSystemNodeModelBase, loadContent: 'focus' | 'show' | 'delay') {
-        this.setHighlightedPath(node.path);
+        this._highlightedPath = node.path;
 
         if (loadContent !== 'focus') {
             node.scheduleEffect(() => {
@@ -460,10 +552,10 @@ class FileSystemStore extends EffectAwareModel {
             if (loadContent === 'delay') {
                 // Debounce load
                 this.loadTimeout = window.setTimeout(() => {
-                    this.loadFileContentInEditor(node);
+                    this.openFileInEditor(node);
                 }, 750);
             } else {
-                this.loadFileContentInEditor(node).then(() => {
+                this.openFileInEditor(node).then(() => {
                     if (loadContent === 'focus') {
                         editorStore.focusEditor();
                     }
@@ -532,20 +624,16 @@ class FileSystemStore extends EffectAwareModel {
 
     @action.bound
     async focusCurrentFileInSidebar() {
-        if (!this.currentFileHandle) return;
-
-        const node = this.findNodeByHandle(this.currentFileHandle);
+        const node = await this.findNodeByHandle(this.currentFileHandle);
         if (!node) return;
 
-        // 1. Highlight
-        this.setHighlightedPath(node.path);
-
-        // 2. Expand all parents
+        // Expand all parents
         const parts = node.path.split('/');
         parts.pop(); // Remove file itself
-
+        
         let currentPath = '';
         runInAction(() => {
+            this._highlightedPath = node.path;
             for (const part of parts) {
                 currentPath = currentPath ? `${currentPath}/${part}` : part;
                 this._collapsedPaths.delete(currentPath);
@@ -651,10 +739,11 @@ class FileSystemStore extends EffectAwareModel {
         // 1. Determine target directory
         let targetDir: FileSystemDirectoryHandle | null | undefined = parentDirectory;
         if (!targetDir) {
-            if (this.currentFileHandle) {
-                targetDir = this.findParentDirectory(this.currentFileHandle);
+            const node = await this.findNodeByHandle(this.currentFileHandle);
+            if (node && node.parent) {
+                targetDir = node.parent.handle;
             }
-            if (!targetDir) {
+            if (!targetDir && this.rootNode) {
                 targetDir = this.rootNode.handle;
             }
         }
@@ -705,7 +794,7 @@ class FileSystemStore extends EffectAwareModel {
 
             const newNode = await findNodeAsync(this.rootNode.children ?? []);
             if (newNode) {
-                await this.loadFileContentInEditor(newNode);
+                await this.openFileInEditor(newNode);
                 newNode.startRenaming(); // Ensure we enter rename mode
             }
 
@@ -725,7 +814,10 @@ class FileSystemStore extends EffectAwareModel {
         let targetDir: FileSystemDirectoryHandle | null | undefined = parentDirectory;
         if (!targetDir) {
             if (this.currentFileHandle) {
-                targetDir = this.findParentDirectory(this.currentFileHandle);
+                const node = await this.findNodeByHandle(this.currentFileHandle);
+                if (node && node.parent) {
+                    targetDir = node.parent.handle;
+                }
             }
             if (!targetDir) {
                 targetDir = this.rootNode.handle;
@@ -807,24 +899,20 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     async findSiblingFile(handle: FileSystemFileHandle, siblingName: string): Promise<FileSystemFileHandle | null> {
-        const parentHandle = this.findParentDirectory(handle);
-        if (!parentHandle) return null;
-
-        try {
-            return await parentHandle.getFileHandle(siblingName);
-        } catch (e) {
-            return null;
+        const node = await this.findNodeByHandle(handle);
+        if (node && node.parent) {
+            try {
+                return await node.parent.handle.getFileHandle(siblingName);
+            } catch (e) {
+                return null;
+            }
         }
+        return null;
     }
 
     async deleteNode(node: FileSystemNodeModelBase) {
-        // 1. Confirm deletion (UI should handle confirmation before calling this, but we can verify)
-        // For store action, we assume confirmation is done or we provide a callback? 
-        // The plan says "UI side handles alert, this method just executes".
-
-        const parentDir = this.findParentDirectory(node.handle);
+        const parentDir = node.parent?.handle;
         if (!parentDir) {
-            // Check if it is root?
             if (node.isRoot) {
                 await dialog.alert('Cannot delete root directory.');
                 return;
@@ -834,8 +922,6 @@ class FileSystemStore extends EffectAwareModel {
         }
 
         try {
-            await parentDir.removeEntry(node.name, { recursive: node.kind === 'directory' });
-
             // Clear selection if deleted file was active (or if active file was inside deleted directory)
             // If we delete a directory, we need to check if currentFileHandle is inside it.
             if (this.currentFileHandle) {
@@ -850,6 +936,7 @@ class FileSystemStore extends EffectAwareModel {
                     }
                 }
             }
+            await parentDir.removeEntry(node.name, { recursive: node.kind === 'directory' });
 
             await this.refreshTree();
         } catch (error) {
@@ -858,110 +945,48 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    async renameNode(node: FileSystemNodeModelBase, newName: string, focusAfterRename: boolean): Promise<boolean> {
-        //console.log('FileSystemStore.renameNode', { nodeName: node.name, newName, focusAfterRename });
-        if (node.isRoot) return false;
+    @action
+    async refreshTree(focusPath?: string) {
+        if (!this.rootNode) return;
 
-        // 1. Prepare final name based on kind
-        let finalName = '';
-        const trimmedInput = newName.trim();
+        // This might trigger a prompt if not granted, so it should ideally be called from a user action 
+        // if permission is not 'granted'.
+        const hasPerm = await this.verifyPermission(this.rootNode.handle);
+        if (!hasPerm) return;
 
-        const startsWithDot = trimmedInput.startsWith('.');
-        // split by dot, trim parts, rejoin
-        const parts = trimmedInput.split('.').map(p => p.trim()).filter(p => p.length > 0);
-        finalName = parts.join('.');
-        if (startsWithDot) {
-            finalName = '.' + finalName;
-        }
+        const tree = await this.readDirectory(this.rootNode.handle, this.rootNode);
+        runInAction(() => {
+            if (this._rootNode) {
+                this._rootNode.children = tree;
+            }
 
-        // 2. Check for empty or just dot(s) (disallowed)
-        // RegEx: Only dots
-        if (!finalName || /^[\.]+$/.test(finalName)) {
-            //console.log('renameNode: invalid finalName', finalName);
-            node.cancelRenaming();
-            return true;
-        }
-
-        // 3. Validation
-        // Allowed: 
-        // - Printable ASCII (0x20-0x7E) EXCEPT < > : " / \ | ? *
-        // - Unicode letters (\p{L}) and numbers (\p{N})
-        // - Characters already in the original filename
-        const unsafeAsciiRegex = /[<>:"/\\|?*]/;
-        const printableAsciiRegex = /^[\x20-\x7E]$/;
-        const unicodeWordRegex = /^[\p{L}\p{N}]$/u;
-
-        for (const char of finalName) {
-            if (node.name.includes(char)) continue; // Allowed if in original
-
-            if (printableAsciiRegex.test(char)) {
-                // It is printable ASCII. Check if it is unsafe.
-                if (unsafeAsciiRegex.test(char)) {
-                    //console.log('renameNode: unsafe char', char);
-                    await dialog.alert(`Invalid character: ${char}`);
-                    return false;
+            // Handle pending focus
+            if (focusPath) {
+                const findNode = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
+                    for (const node of nodes) {
+                        if (node.path === focusPath) return node;
+                        if (node.kind === 'directory' && node.children) {
+                            const found = findNode(node.children);
+                            if (found) return found;
+                        }
+                    }
                 }
-            } else {
-                // It is NOT printable ASCII (e.g. Unicode or Control)
-                // Check if it is a Unicode Letter or Number
-                if (!unicodeWordRegex.test(char)) {
-                    //console.log('renameNode: invalid unicode char', char);
-                    await dialog.alert(`Invalid character: ${char}`);
-                    return false;
+                const nodeToFocus = findNode(this.rootNode?.children ?? []);
+                if (nodeToFocus) {
+                    nodeToFocus.scheduleEffect(() => {
+                        nodeToFocus.treeItemRef.current?.focus();
+                    });
                 }
             }
-        }
-
-        const parentDir = this.findParentDirectory(node.handle);
-        if (!parentDir) {
-            await dialog.alert('Cannot find parent directory.');
-            return false;
-        }
-
-        // 4. Uniqueness Check
-        let conflict = false;
-        try {
-            for await (const entry of parentDir.values()) {
-                if (entry.name === node.name) continue; // self
-                if (entry.name.toLowerCase() === finalName.toLowerCase()) {
-                    conflict = true;
-                    break;
-                }
+        });
+        if (!focusPath) {
+            const node = await this.findNodeByHandle(this._currentFileHandle);
+            if (node?.kind === 'file') {
+                runInAction(() => {
+                    this._currentFileHandle = node.handle;
+                    this._highlightedPath = node.path;
+                });
             }
-        } catch (e) {
-            console.warn('Error checking siblings', e);
-            //console.log('renameNode: error checking siblings', e);
-        }
-
-        if (conflict) {
-            //console.log('renameNode: conflict detected', finalName);
-            await dialog.alert(`A ${node.kind} with the name "${finalName}" already exists (case-insensitive). Please use a different name.`);
-            return false;
-        }
-
-        // 5. Execute Rename
-        const handle = node.handle;
-        if ('move' in handle) {
-            try {
-                //console.log('renameNode: calling move()', parentDir, finalName);
-                await (handle.move as any)(parentDir, finalName);
-                //console.log('renameNode: move() returned');
-
-                // Determine new path to set pending focus
-                const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
-                const newPath = parentPath ? `${parentPath}/${finalName}` : finalName;
-
-                await this.refreshTree(focusAfterRename ? newPath : undefined);
-                //console.log('renameNode: success', finalName);
-                return true;
-            } catch (error) {
-                console.error('Rename failed:', error);
-                await dialog.alert(`Rename failed: ${error}`);
-                return false;
-            }
-        } else {
-            await dialog.alert('Your browser does not support renaming items directly (File System Access API "move" method is missing).');
-            return false;
         }
     }
 
@@ -1010,7 +1035,7 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     handleSearchResultClick(item: FileSystemNodeModel) {
-        this.loadFileContentInEditor(item);
+        this.openFileInEditor(item);
         this.closeSearch();
     }
 
@@ -1053,11 +1078,6 @@ class FileSystemStore extends EffectAwareModel {
         await op.finally(() => this.dbOperations.splice(this.dbOperations.indexOf(op), 1));
     }
 
-    @action
-    private setDirty(val: boolean) {
-        this._dirty = val;
-    }
-
     private async restoreDirectory() {
         try {
             // Check for skip_restore parameter
@@ -1080,7 +1100,7 @@ class FileSystemStore extends EffectAwareModel {
                         kind: 'directory',
                         handle: hydratedHandle,
                         children: []
-                    }, true);
+                    }, null);
                 });
 
                 // We cannot query permission immediately often without user gesture if 'prompt' is needed.
@@ -1114,22 +1134,12 @@ class FileSystemStore extends EffectAwareModel {
                     const file = await hydratedHandle.getFile();
                     const content = await file.text();
 
-                    runInAction(() => {
-                        this._currentFileHandle = hydratedHandle;
-                        this._isLoading = true;
-                    });
-
-                    editorStore.setContent(content);
-
-                    runInAction(() => {
-                        this._dirty = false;
-                        this._isLoading = false;
-                    });
-
+                    const node = await this.findNodeByHandle(hydratedHandle);
+                    
                     // Sync with tree if it's already loaded
                     // rootNode check
-                    if (this.rootNode?.children?.length) {
-                        await this.syncSelectedFileWithTree();
+                    if (node?.kind === 'file') {
+                        this.loadFileInEditor(node, content);
                     }
                     this.startAutoSave();
                 }
@@ -1139,29 +1149,26 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    private async syncSelectedFileWithTree() {
-        if (!this.currentFileHandle) return;
+    private async findNodeByHandle(handle: FileSystemHandle | null) {
+        if (!handle) return null;
 
-        const findAndReplaceHandle = async (nodes: FileSystemNodeModel[]) => {
+        const findRecursive = async (nodes: FileSystemNodeModel[]): Promise<FileSystemNodeModel | null> => {
             for (const node of nodes) {
-                if (node.kind === 'file') {
-                    if (await node.handle.isSameEntry(this.currentFileHandle!)) {
-                        runInAction(() => {
-                            this._currentFileHandle = node.handle as FileSystemFileHandle;
-                            this._highlightedPath = node.path;
-                        });
-                        return true;
-                    }
-                } else if (node.kind === 'directory' && node.children) {
-                    if (await findAndReplaceHandle(node.children)) return true;
+                if (await node.handle.isSameEntry(handle)) {
+                    return node;
+                }
+                if (node.kind === 'directory' && node.children) {
+                    const foundNode = await findRecursive(node.children);
+                    if (foundNode) return foundNode;
                 }
             }
-            return false;
+            return null;
         };
 
         if (this.rootNode?.children) {
-            await findAndReplaceHandle(this.rootNode.children);
+            return await findRecursive(this.rootNode.children);
         }
+        return null;
     }
 
     private async verifyPermission(handle: FileSystemDirectoryHandle, readWrite: boolean = false) {
@@ -1177,45 +1184,7 @@ class FileSystemStore extends EffectAwareModel {
         return false;
     }
 
-    @action
-    private async refreshTree(focusPath?: string) {
-        if (!this.rootNode) return;
-
-        // This might trigger a prompt if not granted, so it should ideally be called from a user action 
-        // if permission is not 'granted'.
-        const hasPerm = await this.verifyPermission(this.rootNode.handle);
-        if (!hasPerm) return;
-
-        const tree = await this.readDirectory(this.rootNode.handle);
-        runInAction(() => {
-            // this._fileTree = tree; // No longer used
-            if (this._rootNode) {
-                this._rootNode.children = tree;
-            }
-            this.syncSelectedFileWithTree();
-
-            // Handle pending focus
-            if (focusPath) {
-                const findNode = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
-                    for (const node of nodes) {
-                        if (node.path === focusPath) return node;
-                        if (node.kind === 'directory' && node.children) {
-                            const found = findNode(node.children);
-                            if (found) return found;
-                        }
-                    }
-                }
-                const nodeToFocus = findNode(this.rootNode?.children ?? []);
-                if (nodeToFocus) {
-                    nodeToFocus.scheduleEffect(() => {
-                        nodeToFocus.treeItemRef.current?.focus();
-                    });
-                }
-            }
-        });
-    }
-
-    private async readDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string = ''): Promise<FileSystemNodeModel[]> {
+    private async readDirectory(dirHandle: FileSystemDirectoryHandle, parent: DirectoryNodeModel, parentPath: string = ''): Promise<FileSystemNodeModel[]> {
         const models: FileSystemNodeModel[] = [];
 
         for await (const entry of dirHandle.values()) {
@@ -1227,17 +1196,22 @@ class FileSystemStore extends EffectAwareModel {
                     path: currentPath,
                     kind: 'file',
                     handle: entry
-                }));
+                }, parent));
             } else if (entry.kind === 'directory') {
                 if (entry.name.startsWith('.')) continue;
-                const children = await this.readDirectory(entry, currentPath);
+
+                // Create directory model first
                 const dirModel = new DirectoryNodeModel({
                     name: entry.name,
                     path: currentPath,
                     kind: 'directory',
                     handle: entry,
-                    children: children
-                });
+                    children: [] // Will set children after
+                }, parent);
+
+                const children = await this.readDirectory(entry, dirModel, currentPath);
+                dirModel.children = children;
+
                 models.push(dirModel);
             }
         }
@@ -1248,21 +1222,14 @@ class FileSystemStore extends EffectAwareModel {
         });
     }
 
-    @action
-    private setHighlightedPath(path: string | null) {
-        this._highlightedPath = path;
-    }
-
-    private async loadFileContentInEditor(node: FileSystemNodeModel) {
+    private async openFileInEditor(node: FileSystemNodeModel) {
         if (node.kind !== 'file') return;
-
-
         // Auto-save previous file if dirty
         if (this.currentFileHandle && this.dirty) {
             await this.saveFile();
         }
 
-        const fileHandle = node.handle as FileSystemFileHandle;
+        const fileHandle = node.handle;
 
         // Persist file handle
         await this.pushDbOperation(setDbValue('lastOpenFile', fileHandle), 'Failed to persist file handle:');
@@ -1272,13 +1239,10 @@ class FileSystemStore extends EffectAwareModel {
             const file = await fileHandle.getFile();
 
             // Check for binary content
-            // Read first 1024 bytes
             const slice = file.slice(0, Math.min(file.size, 1024));
             const buffer = await slice.arrayBuffer();
             const view = new Uint8Array(buffer);
 
-            // Heuristic: check for null bytes or other control characters (except common whitespace)
-            // Common text control chars: 9 (TAB), 10 (LF), 13 (CR)
             let isBinary = false;
             for (let i = 0; i < view.length; i++) {
                 const byte = view[i];
@@ -1286,7 +1250,6 @@ class FileSystemStore extends EffectAwareModel {
                     isBinary = true;
                     break;
                 }
-                // We could be stricter, but 0x00 is a very strong indicator of binary.
             }
 
             if (isBinary) {
@@ -1309,69 +1272,20 @@ class FileSystemStore extends EffectAwareModel {
             return;
         }
 
-        runInAction(() => {
-            this._isLoading = true;
-            this._currentFileHandle = fileHandle;
-            this._highlightedPath = node.path;
-        });
-
-        editorStore.setContent(content);
-
-        runInAction(() => {
-            this._dirty = false;
-            this._isLoading = false;
-        });
+        // Update Store State
+        this.loadFileInEditor(node, content);
 
         this.startAutoSave();
     }
 
-    private findNodeByHandle(handle: FileSystemHandle): FileSystemNodeModel | undefined {
-        const find = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
-            for (const node of nodes) {
-                if (node.kind === 'file' && node.handle === handle) return node; // Reference check
-                // Fallback to isSameEntry not easy sync. 
-                if (node.kind === 'directory' && node.children) {
-                    const found = find(node.children);
-                    if (found) return found;
-                }
-            }
-        }
-        // Try async check if reference fails? No, syncSelectedFileWithTree fixes references.
-        return find(this.rootNode?.children ?? []);
-    }
-
-    private findParentDirectory(targetHandle: FileSystemHandle): FileSystemDirectoryHandle | null {
-        if (!this.rootNode) return null;
-
-        const traverse = (nodes: FileSystemNodeModel[]): FileSystemDirectoryHandle | undefined => {
-            // Check if target is a child of any node in this list? 
-            // Logic in original was: is `nodes` children of `node`? 
-            // Original was iterating nodes to check if THEIR children contain target.
-
-            // Wait, original: `findParentRecursive(this.fileTree, targetHandle)`
-            // `for (const node of nodes)`
-            // `if (node.kind === 'directory' && node.children)`
-            // `if (node.children.some(child => child.handle === target))` -> return node.handle
-
-            for (const node of nodes) {
-                if (node.kind === 'directory') {
-                    if (node.children) {
-                        if (node.children.some(child => child.handle === targetHandle)) { // Equality check on handle reference
-                            return node.handle;
-                        }
-                        const found = traverse(node.children);
-                        if (found) return found;
-                    }
-                }
-            }
-        };
-
-        // Root check
-        if (this.rootNode.children?.some(n => n.handle === targetHandle)) {
-            return this.rootNode.handle;
-        }
-
-        return traverse(this.rootNode.children ?? []) || null;
+    @action
+    private loadFileInEditor(node: FileNodeModel, content: string) {
+        this._currentFileHandle = node.handle;
+        this._highlightedPath = node.path;
+        this._isLoading = true;
+        editorStore.setContent(content);
+        this._dirty = false;
+        this._isLoading = false;
     }
 
     private async restoreCollapsedPaths() {

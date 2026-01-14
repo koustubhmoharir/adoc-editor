@@ -291,27 +291,6 @@ test('Rename stays active on invalid name when clicking another file', async ({ 
     await expect(input).toHaveValue(newName);
 });
 
-test('Delete file via Context Menu (Corrected)', async ({ page, fsSetup }) => {
-    await loadInitialDirectory(page, 'dir1');
-    const fileItem = getFileItem(page, 'file1.adoc');
-
-    // 1. Right click -> Delete
-    await fileItem.click({ button: 'right' });
-    const deleteBtn = page.getByTestId('ctx-delete');
-    await deleteBtn.click();
-
-    // 2. Dialog appears using custom dialog
-    const dialogCtx = page.locator('dialog[open]');
-    await expect(dialogCtx).toBeVisible();
-    await expect(dialogCtx).toContainText('Are you sure you want to delete');
-
-    // 3. Confirm
-    await dialogCtx.getByRole('button', { name: 'OK', exact: false }).click();
-
-    // 4. Verify gone
-    await expect(fileItem).not.toBeVisible();
-    expect(fsSetup.exists('dir1', 'file1.adoc')).toBe(false);
-});
 test('Delete file via Context Menu', async ({ page, fsSetup }) => {
     await loadInitialDirectory(page, 'dir1');
     const fileItem = getFileItem(page, 'file1.adoc');
