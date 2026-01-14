@@ -195,7 +195,7 @@ export class FileNodeModel extends FileSystemNodeModelBase {
 }
 
 export class DirectoryNodeModel extends FileSystemNodeModelBase {
-    
+
     constructor(data: DirectoryNodeData, isRoot = false) {
         super(data, isRoot);
         this.children = data.children;
@@ -229,129 +229,6 @@ export class SearchResultItemModel {
 }
 
 class FileSystemStore extends EffectAwareModel {
-    @observable accessor directoryHandle: FileSystemDirectoryHandle | null = null;
-    @observable accessor fileTree: FileSystemNodeModel[] = [];
-    @observable accessor currentFileHandle: FileSystemFileHandle | null = null;
-    @observable accessor dirty: boolean = false;
-    @observable accessor isLoading: boolean = false;
-    @observable accessor collapsedPaths: Set<string> = new Set();
-    @observable accessor searchQuery: string = '';
-    @observable accessor isSearchVisible: boolean = false;
-
-    @observable accessor highlightedPath: string | null = null;
-    @observable accessor contextMenuTarget: FileSystemNodeModelBase | null = null;
-    readonly contextMenuRef = createRef<HTMLDivElement>();
-
-    // Persistent root node
-    @observable accessor rootNode: FileSystemNodeModel | null = null;
-
-    @action
-    updateRootNode() {
-        if (!this.directoryHandle) {
-            this.rootNode = null;
-            return;
-        }
-        // If we already have one and handle is same, just update children?
-        if (this.rootNode && this.rootNode.handle === this.directoryHandle && this.rootNode.kind === 'directory') {
-            this.rootNode.children = this.fileTree;
-            return;
-        }
-
-        const root = new DirectoryNodeModel({
-            name: this.directoryHandle.name,
-            path: this.directoryHandle.name,
-            kind: 'directory',
-            handle: this.directoryHandle,
-            children: this.fileTree
-        }, true);
-        this.rootNode = root;
-    }
-
-    loadTimeout: number | null = null;
-
-    private dbOperations: Promise<void>[] = [];
-
-    private async pushDbOperation(op: Promise<void>, message: string) {
-        op = op.catch(reason => console.warn(message, reason));
-        this.dbOperations.push(op);
-        await op.finally(() => this.dbOperations.splice(this.dbOperations.indexOf(op), 1));
-    }
-    async flushPendingDbOperations() {
-        await Promise.all(this.dbOperations.slice());
-    }
-
-    @action
-    openContextMenu(node: FileSystemNodeModelBase) {
-        // Clear previous anchor if any
-        if (this.contextMenuTarget && this.contextMenuTarget !== node) {
-            this.contextMenuTarget.treeItemRef.current?.style.removeProperty('anchor-name');
-        }
-
-        this.contextMenuTarget = node;
-
-        // Set new anchor
-        // We do this immediately as it's a DOM side-effect needed for popover positioning
-        node.treeItemRef.current?.style.setProperty('anchor-name', '--context-menu-trigger');
-
-        this.scheduleEffect(() => {
-            if (this.contextMenuRef.current) {
-                this.contextMenuRef.current.showPopover();
-            }
-        });
-    }
-
-    @action.bound
-    onContextMenuClosed() {
-        if (this.contextMenuTarget) {
-            this.contextMenuTarget.treeItemRef.current?.style.removeProperty('anchor-name');
-            this.contextMenuTarget = null;
-        }
-    }
-
-
-    @computed
-    get visibleNodes(): FileSystemNodeModel[] {
-        const result: FileSystemNodeModel[] = [];
-        const traverse = (nodes: FileSystemNodeModel[]) => {
-            for (const node of nodes) {
-                result.push(node);
-                if (node.kind === 'directory' && !this.isCollapsed(node.path) && node.children) {
-                    traverse(node.children);
-                }
-            }
-        };
-        traverse(this.fileTree);
-        return result;
-    }
-
-
-
-
-    get allFiles(): FileSystemNodeModel[] {
-        const result: FileSystemNodeModel[] = [];
-        const traverse = (nodes: FileSystemNodeModel[]) => {
-            for (const node of nodes) {
-                if (node.kind === 'file') {
-                    result.push(node);
-                } else if (node.kind === 'directory' && node.children) {
-                    traverse(node.children);
-                }
-            }
-        };
-        traverse(this.fileTree);
-        return result;
-    }
-
-    @computed
-    get searchResults() {
-        if (!this.searchQuery) return [];
-        const files = this.allFiles;
-        const fzf = new Fzf(files, { selector: (item: FileSystemNodeModel) => item.path });
-        const matches = fzf.find(this.searchQuery);
-        return matches.map(match => new SearchResultItemModel(match.item));
-    }
-
-    saveInterval: number | null = null;
 
     constructor() {
         super();
@@ -386,17 +263,125 @@ class FileSystemStore extends EffectAwareModel {
         });
     }
 
+    @observable private accessor _directoryHandle: FileSystemDirectoryHandle | null = null;
+    get directoryHandle() { return this._directoryHandle; }
+
+    @observable private accessor _fileTree: FileSystemNodeModel[] = [];
+    get fileTree() { return this._fileTree; }
+
+    @observable private accessor _currentFileHandle: FileSystemFileHandle | null = null;
+    get currentFileHandle() { return this._currentFileHandle; }
+
+    @observable private accessor _dirty: boolean = false;
+    get dirty() { return this._dirty; }
+
+    @observable private accessor _isLoading: boolean = false;
+    get isLoading() { return this._isLoading; }
+
+    @observable private accessor _collapsedPaths: Set<string> = new Set();
+    // No getter for collapsedPaths, use isCollapsed(path)
+
+    @observable private accessor _searchQuery: string = '';
+    get searchQuery() { return this._searchQuery; }
+
+    @observable private accessor _isSearchVisible: boolean = false;
+    get isSearchVisible() { return this._isSearchVisible; }
+
+    @observable private accessor _highlightedPath: string | null = null;
+    get highlightedPath() { return this._highlightedPath; }
+
+    @observable private accessor _contextMenuTarget: FileSystemNodeModelBase | null = null;
+    get contextMenuTarget() { return this._contextMenuTarget; }
+
+    // Persistent root node
+    @observable private accessor _rootNode: FileSystemNodeModel | null = null;
+    get rootNode() { return this._rootNode; }
+
+    private saveInterval: number | null = null;
+
+    private loadTimeout: number | null = null;
+    private dbOperations: Promise<void>[] = [];
+
+    readonly contextMenuRef = createRef<HTMLDivElement>();
+
+    readonly searchInputRef = createRef<HTMLInputElement>();
+
+    @computed
+    get visibleNodes(): FileSystemNodeModel[] {
+        const result: FileSystemNodeModel[] = [];
+        const traverse = (nodes: FileSystemNodeModel[]) => {
+            for (const node of nodes) {
+                result.push(node);
+                if (node.kind === 'directory' && !this.isCollapsed(node.path) && node.children) {
+                    traverse(node.children);
+                }
+            }
+        };
+        traverse(this._fileTree);
+        return result;
+    }
+
+    get allFiles(): FileSystemNodeModel[] {
+        const result: FileSystemNodeModel[] = [];
+        const traverse = (nodes: FileSystemNodeModel[]) => {
+            for (const node of nodes) {
+                if (node.kind === 'file') {
+                    result.push(node);
+                } else if (node.kind === 'directory' && node.children) {
+                    traverse(node.children);
+                }
+            }
+        };
+        traverse(this._fileTree);
+        return result;
+    }
+
+    @computed
+    get searchResults() {
+        if (!this.searchQuery) return [];
+        const files = this.allFiles;
+        const fzf = new Fzf(files, { selector: (item: FileSystemNodeModel) => item.path });
+        const matches = fzf.find(this.searchQuery);
+        return matches.map(match => new SearchResultItemModel(match.item));
+    }
+
+    async flushPendingDbOperations() {
+        await Promise.all(this.dbOperations.slice());
+    }
 
     @action
-    setDirty(val: boolean) {
-        this.dirty = val;
+    openContextMenu(node: FileSystemNodeModelBase) {
+        // Clear previous anchor if any
+        if (this.contextMenuTarget && this.contextMenuTarget !== node) {
+            this.contextMenuTarget.treeItemRef.current?.style.removeProperty('anchor-name');
+        }
+
+        this._contextMenuTarget = node;
+
+        // Set new anchor
+        // We do this immediately as it's a DOM side-effect needed for popover positioning
+        node.treeItemRef.current?.style.setProperty('anchor-name', '--context-menu-trigger');
+
+        this.scheduleEffect(() => {
+            if (this.contextMenuRef.current) {
+                this.contextMenuRef.current.showPopover();
+            }
+        });
+    }
+
+    @action.bound
+    onContextMenuClosed() {
+        if (this.contextMenuTarget) {
+            this.contextMenuTarget.treeItemRef.current?.style.removeProperty('anchor-name');
+            this._contextMenuTarget = null;
+        }
     }
 
     async openDirectory() {
         try {
             const handle = await window.showDirectoryPicker();
             runInAction(() => {
-                this.directoryHandle = handle;
+                this._directoryHandle = handle;
             });
             await this.pushDbOperation(setDbValue('directoryHandle', handle), 'Failed to persist directory handle:');
             await this.refreshTree();
@@ -407,16 +392,16 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     async clearDirectory() {
-        this.directoryHandle = null;
-        this.fileTree = [];
-        this.currentFileHandle = null;
-        this.dirty = false;
-        this.isLoading = false;
-        this.collapsedPaths = new Set();
-        this.searchQuery = '';
-        this.isSearchVisible = false;
-        this.highlightedPath = null;
-        this.contextMenuTarget = null;
+        this._directoryHandle = null;
+        this._fileTree = [];
+        this._currentFileHandle = null;
+        this._dirty = false;
+        this._isLoading = false;
+        this._collapsedPaths = new Set();
+        this._searchQuery = '';
+        this._isSearchVisible = false;
+        this._highlightedPath = null;
+        this._contextMenuTarget = null;
         if (this.loadTimeout) {
             window.clearTimeout(this.loadTimeout);
             this.loadTimeout = null;
@@ -424,189 +409,6 @@ class FileSystemStore extends EffectAwareModel {
         this.updateRootNode();
         editorStore.showHelp();
         await clearAllDbValues();
-    }
-
-    async restoreDirectory() {
-        try {
-            // Check for skip_restore parameter
-            const params = new URLSearchParams(window.location.search);
-            if (params.get('skip_restore') === 'true') {
-                // console.log('Skipping directory restoration due to skip_restore flag');
-                return;
-            }
-
-            const handle = await getDbValue('directoryHandle') as FileSystemDirectoryHandle | undefined;
-            if (handle) {
-                runInAction(() => {
-                    // Test support: Hydrate handle if it's a plain object (mock)
-                    const hydrator = (window as any).__TEST_hydrateHandle;
-                    this.directoryHandle = hydrator ? hydrator(handle) : handle;
-                });
-
-                // We cannot query permission immediately often without user gesture if 'prompt' is needed.
-                // But we can try querying.
-                const perm = await this.directoryHandle!.queryPermission({ mode: 'read' });
-                if (perm === 'granted') {
-                    await this.refreshTree();
-                    await this.restoreCollapsedPaths();
-                    await this.restoreLastFile();
-                } else {
-                    // We maintain the handle but can't list files yet.
-                }
-            }
-        } catch (error) {
-            console.error('Error restoring directory:', error);
-        }
-    }
-
-    async restoreLastFile() {
-        try {
-            const handle = await getDbValue('lastOpenFile') as FileSystemFileHandle | undefined;
-            if (handle) {
-                // Verify permission for the file (should be inherited from directory usually, or re-verified)
-                const hydrator = (window as any).__TEST_hydrateHandle;
-                const hydratedHandle = hydrator ? hydrator(handle) : handle;
-
-                const perm = await hydratedHandle.queryPermission({ mode: 'read' });
-
-                if (perm === 'granted') {
-                    const file = await hydratedHandle.getFile();
-                    const content = await file.text();
-
-                    runInAction(() => {
-                        this.currentFileHandle = hydratedHandle;
-                        this.isLoading = true;
-                    });
-
-                    editorStore.setContent(content);
-
-                    runInAction(() => {
-                        this.dirty = false;
-                        this.isLoading = false;
-                    });
-
-                    // Sync with tree if it's already loaded
-                    if (this.fileTree.length > 0) {
-                        await this.syncSelectedFileWithTree();
-                    }
-                    this.startAutoSave();
-                }
-            }
-        } catch (error) {
-            console.error('Error restoring last file:', error);
-        }
-    }
-
-    async syncSelectedFileWithTree() {
-        if (!this.currentFileHandle) return;
-
-        const findAndReplaceHandle = async (nodes: FileSystemNodeModel[]) => {
-            for (const node of nodes) {
-                if (node.kind === 'file') {
-                    if (await node.handle.isSameEntry(this.currentFileHandle!)) {
-                        runInAction(() => {
-                            this.currentFileHandle = node.handle as FileSystemFileHandle;
-                            this.highlightedPath = node.path;
-                        });
-                        return true;
-                    }
-                } else if (node.kind === 'directory' && node.children) {
-                    if (await findAndReplaceHandle(node.children)) return true;
-                }
-            }
-            return false;
-        };
-
-        await findAndReplaceHandle(this.fileTree);
-    }
-
-    async verifyPermission(handle: FileSystemDirectoryHandle, readWrite: boolean = false) {
-        const options: FileSystemHandlePermissionDescriptor = {
-            mode: readWrite ? 'readwrite' : 'read',
-        };
-        if ((await handle.queryPermission(options)) === 'granted') {
-            return true;
-        }
-        if ((await handle.requestPermission(options)) === 'granted') {
-            return true;
-        }
-        return false;
-    }
-
-    @action
-    async refreshTree(focusPath?: string) {
-        if (!this.directoryHandle) return;
-
-        // This might trigger a prompt if not granted, so it should ideally be called from a user action 
-        // if permission is not 'granted'.
-        const hasPerm = await this.verifyPermission(this.directoryHandle);
-        if (!hasPerm) return;
-
-        const tree = await this.readDirectory(this.directoryHandle);
-        runInAction(() => {
-            this.fileTree = tree;
-            this.syncSelectedFileWithTree();
-
-            // Handle pending focus
-            if (focusPath) {
-                const findNode = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
-                    for (const node of nodes) {
-                        if (node.path === focusPath) return node;
-                        if (node.kind === 'directory' && node.children) {
-                            const found = findNode(node.children);
-                            if (found) return found;
-                        }
-                    }
-                }
-                const nodeToFocus = findNode(this.fileTree);
-                if (nodeToFocus) {
-                    nodeToFocus.scheduleEffect(() => {
-                        nodeToFocus.treeItemRef.current?.focus();
-                    });
-                }
-            }
-        });
-        this.updateRootNode();
-    }
-
-    async readDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string = ''): Promise<FileSystemNodeModel[]> {
-        const models: FileSystemNodeModel[] = [];
-
-        for await (const entry of dirHandle.values()) {
-            const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
-
-            if (entry.kind === 'file') {
-                models.push(new FileNodeModel({
-                    name: entry.name,
-                    path: currentPath,
-                    kind: 'file',
-                    handle: entry
-                }));
-            } else if (entry.kind === 'directory') {
-                if (entry.name.startsWith('.')) continue;
-                const children = await this.readDirectory(entry, currentPath);
-                const dirModel = new DirectoryNodeModel({
-                    name: entry.name,
-                    path: currentPath,
-                    kind: 'directory',
-                    handle: entry,
-                    children: children
-                });
-                models.push(dirModel);
-            }
-        }
-
-        return models.sort((a, b) => {
-            if (a.kind === b.kind) return a.name.localeCompare(b.name);
-            return a.kind === 'directory' ? -1 : 1;
-        });
-    }
-
-
-
-    @action
-    setHighlightedPath(path: string | null) {
-        this.highlightedPath = path;
     }
 
     @action
@@ -669,15 +471,7 @@ class FileSystemStore extends EffectAwareModel {
                 this.toggleDirectory(currentNode.path);
             } else {
                 // Move to parent
-                // Move to parent
-                // const parent = this.findParentNode(this.fileTree, currentNode.handle); 
-                // Using path is better for parent logic if we had it, but findParentNode uses handle.
-                // Let's assume handle equality works or use path logic.
-                // Alternative: find parent in visible nodes?
-                // Parent is always "above" in visible nodes list if we traverse recursively.
-                // We can find the closest directory above that is a prefix of current path?
-
-                // Simpler: Use existing parent logic or just find strictly via path string manipulation
+                // find strictly via path string manipulation
                 const lastSlash = currentNode.path.lastIndexOf('/');
                 if (lastSlash !== -1) {
                     const parentPath = currentNode.path.substring(0, lastSlash);
@@ -703,80 +497,6 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-
-
-    async loadFileContentInEditor(node: FileSystemNodeModel) {
-        if (node.kind !== 'file') return;
-
-
-        // Auto-save previous file if dirty
-        if (this.currentFileHandle && this.dirty) {
-            await this.saveFile();
-        }
-
-        const fileHandle = node.handle as FileSystemFileHandle;
-
-        // Persist file handle
-        await this.pushDbOperation(setDbValue('lastOpenFile', fileHandle), 'Failed to persist file handle:');
-
-        let content = '';
-        try {
-            const file = await fileHandle.getFile();
-
-            // Check for binary content
-            // Read first 1024 bytes
-            const slice = file.slice(0, Math.min(file.size, 1024));
-            const buffer = await slice.arrayBuffer();
-            const view = new Uint8Array(buffer);
-
-            // Heuristic: check for null bytes or other control characters (except common whitespace)
-            // Common text control chars: 9 (TAB), 10 (LF), 13 (CR)
-            let isBinary = false;
-            for (let i = 0; i < view.length; i++) {
-                const byte = view[i];
-                if (byte === 0) {
-                    isBinary = true;
-                    break;
-                }
-                // We could be stricter, but 0x00 is a very strong indicator of binary.
-            }
-
-            if (isBinary) {
-                const confirm = await dialog.confirm(
-                    `The file '${file.name}' appears to be a binary file. Opening it in the editor might display garbage characters or cause the editor to become unresponsive. Do you want to proceed?`,
-                    { title: 'Open Binary File?', yesText: 'Open Anyway', noText: 'Cancel' }
-                );
-                if (!confirm) return;
-            }
-
-            content = await file.text();
-
-            // Detect language
-            const ext = file.name.split('.').pop()?.toLowerCase() || '';
-            editorStore.setLanguage(ext);
-
-        } catch (e) {
-            console.error('Failed to read file:', e);
-            await dialog.alert('Failed to read file. It might have been moved or deleted.');
-            return;
-        }
-
-        runInAction(() => {
-            this.isLoading = true;
-            this.currentFileHandle = fileHandle;
-            this.highlightedPath = node.path;
-        });
-
-        editorStore.setContent(content);
-
-        runInAction(() => {
-            this.dirty = false;
-            this.isLoading = false;
-        });
-
-        this.startAutoSave();
-    }
-
     @action.bound
     async focusCurrentFileInSidebar() {
         if (!this.currentFileHandle) return;
@@ -795,7 +515,7 @@ class FileSystemStore extends EffectAwareModel {
         runInAction(() => {
             for (const part of parts) {
                 currentPath = currentPath ? `${currentPath}/${part}` : part;
-                this.collapsedPaths.delete(currentPath);
+                this._collapsedPaths.delete(currentPath);
             }
         });
 
@@ -806,22 +526,7 @@ class FileSystemStore extends EffectAwareModel {
 
         // Trigger generic reaction/persist collapsed paths if needed?
         // toggleDirectory does persist. Here we batch.
-        await this.pushDbOperation(setDbValue('collapsedPaths', Array.from(this.collapsedPaths)), 'Failed to persist collapsed paths:');
-    }
-
-    findNodeByHandle(handle: FileSystemHandle): FileSystemNodeModel | undefined {
-        const find = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
-            for (const node of nodes) {
-                if (node.kind === 'file' && node.handle === handle) return node; // Reference check
-                // Fallback to isSameEntry not easy sync. 
-                if (node.kind === 'directory' && node.children) {
-                    const found = find(node.children);
-                    if (found) return found;
-                }
-            }
-        }
-        // Try async check if reference fails? No, syncSelectedFileWithTree fixes references.
-        return find(this.fileTree);
+        await this.pushDbOperation(setDbValue('collapsedPaths', Array.from(this._collapsedPaths)), 'Failed to persist collapsed paths:');
     }
 
     async clearSelection() {
@@ -833,8 +538,8 @@ class FileSystemStore extends EffectAwareModel {
         await this.pushDbOperation(setDbValue('lastOpenFile', null), 'failed to clear lastOpenFile');
 
         runInAction(() => {
-            this.currentFileHandle = null;
-            this.dirty = false;
+            this._currentFileHandle = null;
+            this._dirty = false;
         });
 
         if (this.saveInterval) {
@@ -851,7 +556,7 @@ class FileSystemStore extends EffectAwareModel {
             await writable.write(editorStore.content);
             await writable.close();
             runInAction(() => {
-                this.dirty = false;
+                this._dirty = false;
             });
             // console.log('Saved file:', this.currentFileHandle.name);
         } catch (err) {
@@ -871,52 +576,6 @@ class FileSystemStore extends EffectAwareModel {
             }
         }, 5000); // 5 seconds
     }
-
-    findParentDirectory(targetHandle: FileSystemHandle): FileSystemDirectoryHandle | null {
-        if (!this.directoryHandle) return null;
-
-        const traverse = (nodes: FileSystemNodeModel[]): FileSystemDirectoryHandle | undefined => {
-            // Check if target is a child of any node in this list? 
-            // Logic in original was: is `nodes` children of `node`? 
-            // Original was iterating nodes to check if THEIR children contain target.
-
-            // Wait, original: `findParentRecursive(this.fileTree, targetHandle)`
-            // `for (const node of nodes)`
-            // `if (node.kind === 'directory' && node.children)`
-            // `if (node.children.some(child => child.handle === target))` -> return node.handle
-
-            for (const node of nodes) {
-                if (node.kind === 'directory' && node.children) {
-                    if (node.children.some(child => child.handle === targetHandle)) { // Equality check on handle reference
-                        return node.handle as FileSystemDirectoryHandle;
-                    }
-                    const found = traverse(node.children);
-                    if (found) return found;
-                }
-            }
-        };
-
-        // Root check
-        if (this.fileTree.some(n => n.handle === targetHandle)) {
-            return this.directoryHandle;
-        }
-
-        return traverse(this.fileTree) || null;
-    }
-
-    // Helper to find actual parent node Model
-    findParentNode(nodes: FileSystemNodeModel[], target: FileSystemHandle): FileSystemNodeModel | null {
-        for (const n of nodes) {
-            if (n.kind === 'directory' && n.children) {
-                if (n.children.some(c => c.handle === target)) return n;
-                const found = this.findParentNode(n.children, target);
-                if (found) return found;
-            }
-        }
-        // If root, we don't have a parent "node" unless we consider root a node which isn't in fileTree.
-        return null;
-    }
-
 
     get currentDirectoryPath(): string {
         if (!this.directoryHandle) return '';
@@ -1095,7 +754,7 @@ class FileSystemStore extends EffectAwareModel {
                 runInAction(() => {
                     for (const part of parts) {
                         currentPath = currentPath ? `${currentPath}/${part}` : part;
-                        this.collapsedPaths.delete(currentPath);
+                        this._collapsedPaths.delete(currentPath);
                     }
                 });
 
@@ -1275,42 +934,57 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     async toggleDirectory(path: string) {
-        if (this.collapsedPaths.has(path)) {
-            this.collapsedPaths.delete(path);
+        if (this._collapsedPaths.has(path)) {
+            this._collapsedPaths.delete(path);
         } else {
-            this.collapsedPaths.add(path);
+            this._collapsedPaths.add(path);
         }
         // Trigger generic reaction/persist
-        await this.pushDbOperation(setDbValue('collapsedPaths', Array.from(this.collapsedPaths)), 'Failed to persist collapsed paths:');
+        await this.pushDbOperation(setDbValue('collapsedPaths', Array.from(this._collapsedPaths)), 'Failed to persist collapsed paths:');
     }
 
     isCollapsed(path: string) {
-        return this.collapsedPaths.has(path);
+        return this._collapsedPaths.has(path);
     }
 
-    async restoreCollapsedPaths() {
-        try {
-            const stored = await getDbValue('collapsedPaths') as Set<string> | string[] | undefined;
-            if (stored) {
-                runInAction(() => {
-                    if (Array.isArray(stored)) {
-                        this.collapsedPaths = new Set(stored);
-                    } else if (stored instanceof Set) {
-                        this.collapsedPaths = stored;
-                    }
-                });
-            }
-        } catch (e) {
-            console.error('Error restoring collapsed paths:', e);
+    @action
+    toggleSearch(e?: React.MouseEvent | KeyboardEvent) {
+        if (e) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
+        if (this.isSearchVisible) {
+            this.closeSearch();
+        } else {
+            this._isSearchVisible = true;
+            // Schedule focus
+            this.scheduleEffect(() => {
+                this.searchInputRef.current?.focus();
+            });
         }
     }
 
     @action
-    setSearchQuery(query: string) {
-        this.searchQuery = query;
+    handleClearButtonClick(e: React.MouseEvent) {
+        e.stopPropagation();
+        if (this.searchQuery) {
+            this.setSearchQuery('');
+            this.searchInputRef.current?.focus();
+        } else {
+            this.closeSearch();
+        }
     }
 
-    readonly searchInputRef = createRef<HTMLInputElement>();
+    @action
+    handleSearchResultClick(item: FileSystemNodeModel) {
+        this.loadFileContentInEditor(item);
+        this.closeSearch();
+    }
+
+    @action
+    handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
+        this.setSearchQuery(e.target.value);
+    }
 
     @action
     handleSearchKeyDown(e: React.KeyboardEvent) {
@@ -1339,41 +1013,361 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    @action
-    closeSearch() {
-        this.isSearchVisible = false;
-        this.setSearchQuery('');
+    private updateRootNode() {
+        if (!this.directoryHandle) {
+            this._rootNode = null;
+            return;
+        }
+        // If we already have one and handle is same, just update children?
+        if (this.rootNode && this.rootNode.handle === this.directoryHandle && this.rootNode.kind === 'directory') {
+            this.rootNode.children = this.fileTree;
+            return;
+        }
+
+        const root = new DirectoryNodeModel({
+            name: this.directoryHandle.name,
+            path: this.directoryHandle.name,
+            kind: 'directory',
+            handle: this.directoryHandle,
+            children: this.fileTree
+        }, true);
+        this._rootNode = root;
+    }
+
+    private async pushDbOperation(op: Promise<void>, message: string) {
+        op = op.catch(reason => console.warn(message, reason));
+        this.dbOperations.push(op);
+        await op.finally(() => this.dbOperations.splice(this.dbOperations.indexOf(op), 1));
     }
 
     @action
-    toggleSearch(e?: React.MouseEvent | KeyboardEvent) {
-        if (e) {
-            e.stopPropagation();
-            e.preventDefault();
+    private setDirty(val: boolean) {
+        this._dirty = val;
+    }
+
+    private async restoreDirectory() {
+        try {
+            // Check for skip_restore parameter
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('skip_restore') === 'true') {
+                // console.log('Skipping directory restoration due to skip_restore flag');
+                return;
+            }
+
+            const handle = await getDbValue('directoryHandle') as FileSystemDirectoryHandle | undefined;
+            if (handle) {
+                runInAction(() => {
+                    // Test support: Hydrate handle if it's a plain object (mock)
+                    const hydrator = (window as any).__TEST_hydrateHandle;
+                    this._directoryHandle = hydrator ? hydrator(handle) : handle;
+                });
+
+                // We cannot query permission immediately often without user gesture if 'prompt' is needed.
+                // But we can try querying.
+                const perm = await this.directoryHandle!.queryPermission({ mode: 'read' });
+                if (perm === 'granted') {
+                    await this.refreshTree();
+                    await this.restoreCollapsedPaths();
+                    await this.restoreLastFile();
+                } else {
+                    // We maintain the handle but can't list files yet.
+                }
+            }
+        } catch (error) {
+            console.error('Error restoring directory:', error);
         }
-        if (this.isSearchVisible) {
-            this.closeSearch();
-        } else {
-            this.isSearchVisible = true;
-            // Schedule focus
-            this.scheduleEffect(() => {
-                this.searchInputRef.current?.focus();
-            });
+    }
+
+    private async restoreLastFile() {
+        try {
+            const handle = await getDbValue('lastOpenFile') as FileSystemFileHandle | undefined;
+            if (handle) {
+                // Verify permission for the file (should be inherited from directory usually, or re-verified)
+                const hydrator = (window as any).__TEST_hydrateHandle;
+                const hydratedHandle = hydrator ? hydrator(handle) : handle;
+
+                const perm = await hydratedHandle.queryPermission({ mode: 'read' });
+
+                if (perm === 'granted') {
+                    const file = await hydratedHandle.getFile();
+                    const content = await file.text();
+
+                    runInAction(() => {
+                        this._currentFileHandle = hydratedHandle;
+                        this._isLoading = true;
+                    });
+
+                    editorStore.setContent(content);
+
+                    runInAction(() => {
+                        this._dirty = false;
+                        this._isLoading = false;
+                    });
+
+                    // Sync with tree if it's already loaded
+                    if (this.fileTree.length > 0) {
+                        await this.syncSelectedFileWithTree();
+                    }
+                    this.startAutoSave();
+                }
+            }
+        } catch (error) {
+            console.error('Error restoring last file:', error);
+        }
+    }
+
+    private async syncSelectedFileWithTree() {
+        if (!this.currentFileHandle) return;
+
+        const findAndReplaceHandle = async (nodes: FileSystemNodeModel[]) => {
+            for (const node of nodes) {
+                if (node.kind === 'file') {
+                    if (await node.handle.isSameEntry(this.currentFileHandle!)) {
+                        runInAction(() => {
+                            this._currentFileHandle = node.handle as FileSystemFileHandle;
+                            this._highlightedPath = node.path;
+                        });
+                        return true;
+                    }
+                } else if (node.kind === 'directory' && node.children) {
+                    if (await findAndReplaceHandle(node.children)) return true;
+                }
+            }
+            return false;
+        };
+
+        await findAndReplaceHandle(this.fileTree);
+    }
+
+    private async verifyPermission(handle: FileSystemDirectoryHandle, readWrite: boolean = false) {
+        const options: FileSystemHandlePermissionDescriptor = {
+            mode: readWrite ? 'readwrite' : 'read',
+        };
+        if ((await handle.queryPermission(options)) === 'granted') {
+            return true;
+        }
+        if ((await handle.requestPermission(options)) === 'granted') {
+            return true;
+        }
+        return false;
+    }
+
+    @action
+    private async refreshTree(focusPath?: string) {
+        if (!this.directoryHandle) return;
+
+        // This might trigger a prompt if not granted, so it should ideally be called from a user action 
+        // if permission is not 'granted'.
+        const hasPerm = await this.verifyPermission(this.directoryHandle);
+        if (!hasPerm) return;
+
+        const tree = await this.readDirectory(this.directoryHandle);
+        runInAction(() => {
+            this._fileTree = tree;
+            this.syncSelectedFileWithTree();
+
+            // Handle pending focus
+            if (focusPath) {
+                const findNode = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
+                    for (const node of nodes) {
+                        if (node.path === focusPath) return node;
+                        if (node.kind === 'directory' && node.children) {
+                            const found = findNode(node.children);
+                            if (found) return found;
+                        }
+                    }
+                }
+                const nodeToFocus = findNode(this.fileTree);
+                if (nodeToFocus) {
+                    nodeToFocus.scheduleEffect(() => {
+                        nodeToFocus.treeItemRef.current?.focus();
+                    });
+                }
+            }
+        });
+        this.updateRootNode();
+    }
+
+    private async readDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string = ''): Promise<FileSystemNodeModel[]> {
+        const models: FileSystemNodeModel[] = [];
+
+        for await (const entry of dirHandle.values()) {
+            const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+
+            if (entry.kind === 'file') {
+                models.push(new FileNodeModel({
+                    name: entry.name,
+                    path: currentPath,
+                    kind: 'file',
+                    handle: entry
+                }));
+            } else if (entry.kind === 'directory') {
+                if (entry.name.startsWith('.')) continue;
+                const children = await this.readDirectory(entry, currentPath);
+                const dirModel = new DirectoryNodeModel({
+                    name: entry.name,
+                    path: currentPath,
+                    kind: 'directory',
+                    handle: entry,
+                    children: children
+                });
+                models.push(dirModel);
+            }
+        }
+
+        return models.sort((a, b) => {
+            if (a.kind === b.kind) return a.name.localeCompare(b.name);
+            return a.kind === 'directory' ? -1 : 1;
+        });
+    }
+
+    @action
+    private setHighlightedPath(path: string | null) {
+        this._highlightedPath = path;
+    }
+
+    private async loadFileContentInEditor(node: FileSystemNodeModel) {
+        if (node.kind !== 'file') return;
+
+
+        // Auto-save previous file if dirty
+        if (this.currentFileHandle && this.dirty) {
+            await this.saveFile();
+        }
+
+        const fileHandle = node.handle as FileSystemFileHandle;
+
+        // Persist file handle
+        await this.pushDbOperation(setDbValue('lastOpenFile', fileHandle), 'Failed to persist file handle:');
+
+        let content = '';
+        try {
+            const file = await fileHandle.getFile();
+
+            // Check for binary content
+            // Read first 1024 bytes
+            const slice = file.slice(0, Math.min(file.size, 1024));
+            const buffer = await slice.arrayBuffer();
+            const view = new Uint8Array(buffer);
+
+            // Heuristic: check for null bytes or other control characters (except common whitespace)
+            // Common text control chars: 9 (TAB), 10 (LF), 13 (CR)
+            let isBinary = false;
+            for (let i = 0; i < view.length; i++) {
+                const byte = view[i];
+                if (byte === 0) {
+                    isBinary = true;
+                    break;
+                }
+                // We could be stricter, but 0x00 is a very strong indicator of binary.
+            }
+
+            if (isBinary) {
+                const confirm = await dialog.confirm(
+                    `The file '${file.name}' appears to be a binary file. Opening it in the editor might display garbage characters or cause the editor to become unresponsive. Do you want to proceed?`,
+                    { title: 'Open Binary File?', yesText: 'Open Anyway', noText: 'Cancel' }
+                );
+                if (!confirm) return;
+            }
+
+            content = await file.text();
+
+            // Detect language
+            const ext = file.name.split('.').pop()?.toLowerCase() || '';
+            editorStore.setLanguage(ext);
+
+        } catch (e) {
+            console.error('Failed to read file:', e);
+            await dialog.alert('Failed to read file. It might have been moved or deleted.');
+            return;
+        }
+
+        runInAction(() => {
+            this._isLoading = true;
+            this._currentFileHandle = fileHandle;
+            this._highlightedPath = node.path;
+        });
+
+        editorStore.setContent(content);
+
+        runInAction(() => {
+            this._dirty = false;
+            this._isLoading = false;
+        });
+
+        this.startAutoSave();
+    }
+
+    private findNodeByHandle(handle: FileSystemHandle): FileSystemNodeModel | undefined {
+        const find = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
+            for (const node of nodes) {
+                if (node.kind === 'file' && node.handle === handle) return node; // Reference check
+                // Fallback to isSameEntry not easy sync. 
+                if (node.kind === 'directory' && node.children) {
+                    const found = find(node.children);
+                    if (found) return found;
+                }
+            }
+        }
+        // Try async check if reference fails? No, syncSelectedFileWithTree fixes references.
+        return find(this.fileTree);
+    }
+
+    private findParentDirectory(targetHandle: FileSystemHandle): FileSystemDirectoryHandle | null {
+        if (!this.directoryHandle) return null;
+
+        const traverse = (nodes: FileSystemNodeModel[]): FileSystemDirectoryHandle | undefined => {
+            // Check if target is a child of any node in this list? 
+            // Logic in original was: is `nodes` children of `node`? 
+            // Original was iterating nodes to check if THEIR children contain target.
+
+            // Wait, original: `findParentRecursive(this.fileTree, targetHandle)`
+            // `for (const node of nodes)`
+            // `if (node.kind === 'directory' && node.children)`
+            // `if (node.children.some(child => child.handle === target))` -> return node.handle
+
+            for (const node of nodes) {
+                if (node.kind === 'directory' && node.children) {
+                    if (node.children.some(child => child.handle === targetHandle)) { // Equality check on handle reference
+                        return node.handle as FileSystemDirectoryHandle;
+                    }
+                    const found = traverse(node.children);
+                    if (found) return found;
+                }
+            }
+        };
+
+        // Root check
+        if (this.fileTree.some(n => n.handle === targetHandle)) {
+            return this.directoryHandle;
+        }
+
+        return traverse(this.fileTree) || null;
+    }
+
+    private async restoreCollapsedPaths() {
+        try {
+            const stored = await getDbValue('collapsedPaths') as Set<string> | string[] | undefined;
+            if (stored) {
+                runInAction(() => {
+                    if (Array.isArray(stored)) {
+                        this._collapsedPaths = new Set(stored);
+                    } else if (stored instanceof Set) {
+                        this._collapsedPaths = stored;
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('Error restoring collapsed paths:', e);
         }
     }
 
     @action
-    handleClearButtonClick(e: React.MouseEvent) {
-        e.stopPropagation();
-        if (this.searchQuery) {
-            this.setSearchQuery('');
-            this.searchInputRef.current?.focus();
-        } else {
-            this.closeSearch();
-        }
+    private setSearchQuery(query: string) {
+        this._searchQuery = query;
     }
 
-    getPageSize(): number {
+    private getPageSize(): number {
         const first = this.searchResults[0];
         if (!first || !first.ref.current) return 10;
         const itemHeight = first.ref.current.offsetHeight;
@@ -1385,7 +1379,7 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    moveHighlight(delta: number) {
+    private moveHighlight(delta: number) {
         const results = this.searchResults;
         if (results.length === 0) return;
 
@@ -1408,14 +1402,14 @@ class FileSystemStore extends EffectAwareModel {
         this.scrollToResult(results[newIndex]);
     }
 
-    scrollToResult(result: SearchResultItemModel) {
+    private scrollToResult(result: SearchResultItemModel) {
         this.scheduleEffect(() => {
             result.ref.current?.scrollIntoView({ block: 'nearest' });
         });
     }
 
     @action
-    openHighlighted() {
+    private openHighlighted() {
         const result = this.searchResults.find(r => r.isHighlighted);
         if (result) {
             this.handleSearchResultClick(result.item);
@@ -1423,14 +1417,9 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    handleSearchResultClick(item: FileSystemNodeModel) {
-        this.loadFileContentInEditor(item);
-        this.closeSearch();
-    }
-
-    @action
-    handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
-        this.setSearchQuery(e.target.value);
+    private closeSearch() {
+        this._isSearchVisible = false;
+        this.setSearchQuery('');
     }
 }
 
