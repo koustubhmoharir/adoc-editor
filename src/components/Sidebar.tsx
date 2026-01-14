@@ -189,8 +189,10 @@ export const Sidebar: React.FC = observer(() => {
             {hasDirectory && (
                 <div
                     className={styles.header}
+                    ref={fileSystemStore.rootNode?.treeItemRef}
                     title={fileSystemStore.directoryHandle?.name}
                     onClick={() => fileSystemStore.openDirectory()}
+                    onContextMenu={fileSystemStore.rootNode?.handleContextMenu}
                     data-testid="sidebar-header"
                 >
                     <i className={`fas fa-folder-open ${styles.rootFolderIcon}`} />

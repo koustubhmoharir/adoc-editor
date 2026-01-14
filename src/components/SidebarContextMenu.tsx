@@ -59,17 +59,27 @@ export const SidebarContextMenu = observer(() => {
                         New File
                     </button>
                     <button className={styles.contextMenuItem} onClick={() => {
-                        targetNode.startRenaming();
-                    }} data-testid="ctx-rename">
-                        <i className={`fas fa-pencil-alt ${styles.contextMenuIcon}`} />
-                        Rename
+                        fileSystemStore.createNewDirectory(targetNode.handle as FileSystemDirectoryHandle);
+                    }} data-testid="ctx-new-directory">
+                        <i className={`fas fa-folder-plus ${styles.contextMenuIcon}`} />
+                        New Directory
                     </button>
-                    <button className={styles.contextMenuItem} onClick={() => {
-                        targetNode.delete();
-                    }} data-testid="ctx-delete">
-                        <i className={`fas fa-trash-alt ${styles.contextMenuIcon}`} />
-                        Delete
-                    </button>
+                    {!targetNode.isRoot && (
+                        <>
+                            <button className={styles.contextMenuItem} onClick={() => {
+                                targetNode.startRenaming();
+                            }} data-testid="ctx-rename">
+                                <i className={`fas fa-pencil-alt ${styles.contextMenuIcon}`} />
+                                Rename
+                            </button>
+                            <button className={styles.contextMenuItem} onClick={() => {
+                                targetNode.delete();
+                            }} data-testid="ctx-delete">
+                                <i className={`fas fa-trash-alt ${styles.contextMenuIcon}`} />
+                                Delete
+                            </button>
+                        </>
+                    )}
                 </>
             )}
         </div>

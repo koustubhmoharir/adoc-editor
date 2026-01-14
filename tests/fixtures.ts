@@ -284,7 +284,6 @@ export const helpers = {
     async replaceEditorContentByTyping(page: Page, content: string): Promise<void> {
         // Click the editor to focus it
         await page.click('.monaco-editor');
-        // Select all content
         await page.keyboard.press('Control+A');
         // Type the new content
         await page.keyboard.type(content);

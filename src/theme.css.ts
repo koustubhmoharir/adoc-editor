@@ -49,7 +49,7 @@ export const lightTheme = createTheme(vars, {
         checkForeground: '#e6f4ea',
         codeBackground: '#f5f5f5',
         folderIcon: '#dcb67a',
-        fileIcon: '#dfe4eaff',
+        fileIcon: '#c3ccd7ff',
 
         newFileIcon: '#1e8e3e',
         rename: '#e6f4ea',
@@ -78,7 +78,7 @@ export const darkTheme = createTheme(vars, {
         checkForeground: '#0e3a1f',
         codeBackground: '#2d2d2d',
         folderIcon: '#e8c32e',
-        fileIcon: '#828a8eff',
+        fileIcon: '#9ca3a7ff',
         newFileIcon: '#a3cda5',
         rename: '#0e3a1f',
         delete: '#c60c02ff',

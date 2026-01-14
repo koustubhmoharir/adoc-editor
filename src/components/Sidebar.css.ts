@@ -45,7 +45,6 @@ export const directoryContainer = style({
 });
 
 export const directoryItem = style([itemBase, {
-    fontWeight: 'bold',
     paddingRight: '4px'
 }]);
 

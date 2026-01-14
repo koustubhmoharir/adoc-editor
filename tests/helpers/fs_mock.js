@@ -128,7 +128,16 @@ class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
     // Minimal impl for getDirectoryHandle
     async getDirectoryHandle(name, options) {
         const childPath = this._path + '/' + name;
-        return new MockFileSystemDirectoryHandle(name, childPath);
+        try {
+            await window.__fs_stat(childPath);
+            return new MockFileSystemDirectoryHandle(name, childPath);
+        } catch (e) {
+            if (options?.create) {
+                await window.__fs_mkdir(childPath);
+                return new MockFileSystemDirectoryHandle(name, childPath);
+            }
+            throw new Error(`Directory not found: ${name}`);
+        }
     }
 
     async removeEntry(name, options) {

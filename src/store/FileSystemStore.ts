@@ -20,6 +20,7 @@ export class FileNodeModel extends EffectAwareModel {
     readonly kind: 'file' | 'directory';
     readonly handle: FileSystemFileHandle | FileSystemDirectoryHandle;
     @observable accessor children: FileNodeModel[] | undefined;
+    readonly isRoot: boolean = false;
 
     // UI State
     @observable accessor isRenaming: boolean = false;
@@ -33,7 +34,7 @@ export class FileNodeModel extends EffectAwareModel {
 
 
 
-    constructor(data: FileNodeData) {
+    constructor(data: FileNodeData, isRoot = false) {
         super();
         this.name = data.name;
         this.path = data.path;
@@ -42,11 +43,13 @@ export class FileNodeModel extends EffectAwareModel {
         if (data.children) {
             this.children = data.children.map(child => new FileNodeModel(child));
         }
+        this.isRoot = isRoot;
     }
 
     @action
     startRenaming() {
         //console.log('startRenaming', this.name);
+        if (this.isRoot) return;
         this.isRenaming = true;
         this.renameValue = this.name;
 
@@ -109,6 +112,7 @@ export class FileNodeModel extends EffectAwareModel {
 
     @action
     async delete() {
+        if (this.isRoot) return;
         if (await dialog.confirm(`Are you sure you want to delete '${this.name}'?`)) {
             await fileSystemStore.deleteNode(this);
         }
@@ -181,7 +185,7 @@ export class FileNodeModel extends EffectAwareModel {
         e.preventDefault();
         e.stopPropagation();
 
-        if (fileSystemStore.highlightedPath !== this.path) {
+        if (!this.isRoot && fileSystemStore.highlightedPath !== this.path) {
             fileSystemStore.selectNode(this, 'show');
         }
 
@@ -213,6 +217,31 @@ class FileSystemStore extends EffectAwareModel {
     @observable accessor highlightedPath: string | null = null;
     @observable accessor contextMenuTarget: FileNodeModel | null = null;
     readonly contextMenuRef = createRef<HTMLDivElement>();
+
+    // Persistent root node
+    @observable accessor rootNode: FileNodeModel | null = null;
+
+    @action
+    updateRootNode() {
+        if (!this.directoryHandle) {
+            this.rootNode = null;
+            return;
+        }
+        // If we already have one and handle is same, just update children?
+        if (this.rootNode && this.rootNode.handle === this.directoryHandle) {
+            this.rootNode.children = this.fileTree;
+            return;
+        }
+
+        const root = new FileNodeModel({
+            name: this.directoryHandle.name,
+            path: this.directoryHandle.name,
+            kind: 'directory',
+            handle: this.directoryHandle,
+            children: this.fileTree
+        }, true);
+        this.rootNode = root;
+    }
 
     loadTimeout: number | null = null;
 
@@ -368,6 +397,7 @@ class FileSystemStore extends EffectAwareModel {
             window.clearTimeout(this.loadTimeout);
             this.loadTimeout = null;
         }
+        this.updateRootNode();
         editorStore.showHelp();
         await clearAllDbValues();
     }
@@ -512,6 +542,7 @@ class FileSystemStore extends EffectAwareModel {
                 }
             }
         });
+        this.updateRootNode();
     }
 
     async readDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string = ''): Promise<FileNodeModel[]> {
@@ -968,6 +999,97 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
+    async createNewDirectory(parentDirectory?: FileSystemDirectoryHandle) {
+        if (!this.directoryHandle) {
+            await dialog.alert('Please open a directory first.');
+            return;
+        }
+
+        // 1. Determine target directory
+        let targetDir: FileSystemDirectoryHandle | null | undefined = parentDirectory;
+        if (!targetDir) {
+            if (this.currentFileHandle) {
+                targetDir = this.findParentDirectory(this.currentFileHandle);
+            }
+            if (!targetDir) {
+                targetDir = this.directoryHandle;
+            }
+        }
+
+        if (!targetDir) return;
+
+        try {
+            // 2. Find unique name
+            let index = 1;
+            let dirname = `new-dir-${index}`;
+            while (index < 1000) {
+                try {
+                    await targetDir.getDirectoryHandle(dirname);
+                    // If successful, exists
+                    index++;
+                    dirname = `new-dir-${index}`;
+                } catch (e) {
+                    break;
+                }
+            }
+
+            if (index >= 1000) {
+                await dialog.alert('Could not find a unique name for new directory.');
+                return;
+            }
+
+            // 3. Create directory
+            const newDirHandle = await targetDir.getDirectoryHandle(dirname, { create: true });
+
+            // 4. Refresh tree
+            await this.refreshTree();
+
+            // 5. Find and Select/Rename
+            const findNodeAsync = async (nodes: FileNodeModel[]): Promise<FileNodeModel | undefined> => {
+                for (const node of nodes) {
+                    if (node.kind === 'directory') {
+                        if (await node.handle.isSameEntry(newDirHandle)) {
+                            return node;
+                        }
+                        if (node.children) {
+                            const found = await findNodeAsync(node.children);
+                            if (found) return found;
+                        }
+                    }
+                }
+            };
+
+            const newNode = await findNodeAsync(this.fileTree);
+            if (newNode) {
+                // Expand parent if needed? refreshTree should handle if we are just adding child. 
+                // But we want to ensure it is visible.
+
+                // Expand path to this new node
+                const parts = newNode.path.split('/');
+                parts.pop();
+                let currentPath = '';
+                runInAction(() => {
+                    for (const part of parts) {
+                        currentPath = currentPath ? `${currentPath}/${part}` : part;
+                        this.collapsedPaths.delete(currentPath);
+                    }
+                });
+
+                newNode.startRenaming();
+
+                // Scroll to view
+                newNode.scheduleEffect(() => {
+                    newNode.treeItemRef.current?.scrollIntoView({ block: 'nearest' });
+                    newNode.treeItemRef.current?.focus();
+                });
+            }
+
+        } catch (error) {
+            console.error('Error creating new directory:', error);
+            await dialog.alert('Failed to create new directory.');
+        }
+    }
+
     async findSiblingFile(handle: FileSystemFileHandle, siblingName: string): Promise<FileSystemFileHandle | null> {
         const parentHandle = this.findParentDirectory(handle);
         if (!parentHandle) return null;
@@ -986,6 +1108,11 @@ class FileSystemStore extends EffectAwareModel {
 
         const parentDir = this.findParentDirectory(node.handle);
         if (!parentDir) {
+            // Check if it is root?
+            if (node.isRoot) {
+                await dialog.alert('Cannot delete root directory.');
+                return;
+            }
             await dialog.alert('Cannot search parent directory needed for deletion.');
             return;
         }
@@ -1017,6 +1144,7 @@ class FileSystemStore extends EffectAwareModel {
 
     async renameNode(node: FileNodeModel, newName: string, focusAfterRename: boolean): Promise<boolean> {
         //console.log('FileSystemStore.renameNode', { nodeName: node.name, newName, focusAfterRename });
+        if (node.isRoot) return false;
 
         // 1. Prepare final name based on kind
         let finalName = '';

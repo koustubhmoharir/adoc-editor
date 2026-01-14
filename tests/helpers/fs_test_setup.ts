@@ -103,6 +103,11 @@ export class FsTestSetup {
             fs.writeFileSync(fullPath, content);
         });
 
+        await page.exposeFunction('__fs_mkdir', async (dirPath: string) => {
+            const fullPath = resolvePath(dirPath);
+            if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
+        });
+
         await page.exposeFunction('__fs_stat', async (filePath: string) => {
             const fullPath = resolvePath(filePath);
             try {
