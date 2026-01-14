@@ -116,7 +116,7 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
         }
     }
 
-    @action
+    @action.bound
     handleRenameInputKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
         if (e.key === 'Enter') {
             e.stopPropagation();
@@ -129,7 +129,7 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
         }
     }
 
-    @action
+    @action.bound
     handleRenameInputBlur(_e: React.FocusEvent) {
         // If the window loses focus (e.g. alt-tab), we want to KEEP renaming state.
         // If the click is inside the app but outside input, we want to COMMIT.
@@ -139,7 +139,7 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
         }
     }
 
-    @action
+    @action.bound
     handleTreeItemKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
         if (this.isRenaming) return;
 
@@ -171,6 +171,26 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
         }
 
         fileSystemStore.openContextMenu(this);
+    }
+
+    @action.bound
+    handleClick(e: React.MouseEvent) {
+        e.stopPropagation();
+        if (!this.isRenaming) {
+            fileSystemStore.selectNode(this, 'show');
+        }
+    }
+
+    @action.bound
+    handleDoubleClick(e: React.MouseEvent) {
+        e.stopPropagation();
+        if (!this.isRenaming) {
+            if (this.kind === 'directory') {
+                fileSystemStore.toggleDirectory(this.path);
+            } else {
+                fileSystemStore.selectNode(this, 'focus');
+            }
+        }
     }
 
     abstract handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent): void;
@@ -212,6 +232,16 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase {
             e.stopPropagation();
             fileSystemStore.toggleDirectory(this.path);
         }
+    }
+
+    @action.bound
+    handleToggleClick(e: React.MouseEvent) {
+        e.stopPropagation();
+        // If not selected, select it as well? User request says: "Clicking it should toggle and select (if not already selected)."
+        if (fileSystemStore.highlightedPath !== this.path) {
+            fileSystemStore.selectNode(this, 'show');
+        }
+        fileSystemStore.toggleDirectory(this.path);
     }
 }
 
@@ -372,6 +402,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
+    @action.bound
     async openDirectory() {
         try {
             const handle = await window.showDirectoryPicker();
@@ -440,6 +471,9 @@ class FileSystemStore extends EffectAwareModel {
             }
         }
     }
+
+    // Handlers moved to Node models
+
 
     @action
     navigate(direction: 'up' | 'down' | 'left' | 'right') {
@@ -963,7 +997,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    @action
+    @action.bound
     handleClearButtonClick(e: React.MouseEvent) {
         e.stopPropagation();
         if (this.searchQuery) {
@@ -980,12 +1014,12 @@ class FileSystemStore extends EffectAwareModel {
         this.closeSearch();
     }
 
-    @action
+    @action.bound
     handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
         this.setSearchQuery(e.target.value);
     }
 
-    @action
+    @action.bound
     handleSearchKeyDown(e: React.KeyboardEvent) {
         if (e.key === 'Escape') {
             e.stopPropagation();

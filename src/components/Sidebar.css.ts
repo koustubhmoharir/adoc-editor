@@ -69,6 +69,7 @@ export const icon = style({
 
 export const folderIcon = style([icon, {
     color: themeVars.color.folderIcon,
+    width: '19px',
     margin: '0',
 }]);
 

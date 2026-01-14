@@ -22,6 +22,12 @@ Use these standard commands for CI-like verification.
 
 **Important**: Do not run `npx playwright` directly. Use the `npm run test` commands instead with appropriate arguments and options. Arguments pass through to playwright and options can be passed through with `--`.
 
+Run multiple spec files with a single command as in the example below:
+```bash
+npm run test -- tests/editor_filesystem_ops.spec.ts tests/editor_filesystem_ops.spec.ts
+```
+This runs faster than running them separately by reusing the browser context and page.
+
 ## 2. Debug Execution
 
 Use `test-debug` commands to enable detailed browser and dialog logging.
