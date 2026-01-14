@@ -63,7 +63,7 @@ These helpers are available via the `helpers` object:
 
 - **Existing Files**: Add new tests to existing `tests/editor_*.spec.ts` files if they fit the category (e.g. `editor_filesystem_ops.spec.ts` for file operations).
 - **New Files**: If creating a new file is necessary, it **MUST** start with the prefix `editor_` (e.g. `tests/editor_my_new_feature.spec.ts`).
-    - **Reason**: The `npm run test:editor` and `npm run test-debug:editor` commands are configured to run only files matching `tests/editor_*.spec.ts`.
+    - **Reason**: The `npm run test:editor` command is configured to run only files matching `tests/editor_*.spec.ts`.
 
 ## 3. Test Structure Patterns
 

@@ -36,10 +36,9 @@ These tests cover the core verification of the editor's features.
 ## General Testing Utilities
 
 ### Debugging Tests
-Detailed logging (browser console, errors, dialogs) is available via the `test-debug:*` commands.
+Detailed logging (browser console, errors, dialogs) is available via the `test-debug` command.
 
--   **Debug Syntax Tests**: `npm run test-debug:syntax`
--   **Debug Editor Tests**: `npm run test-debug:editor`
+-   **Debug a specific test**: `npm run test-debug -- -g "full name of test"`
 
 ### Manual Test Execution
 **IMPORTANT:** The test environment runs on **Port 8001**.
@@ -52,7 +51,7 @@ cross-env PORT=8001 npx playwright test ...
 **Debug Logging:**
 To enable debug logging, set `DEBUG_TESTS=1`:
 ```bash
-cross-env DEBUG_TESTS=1 PORT=8001 npx playwright test tests/filesystem_ops.spec.ts
+cross-env DEBUG_TESTS=1 PORT=8001 npx playwright test -g "name of test"
 ```
 > [!NOTE]
 > Do not set the environment variable at session scope as it will remain set and defeat the purpose of enabling logging only when needed.

@@ -11,11 +11,8 @@
         "test": "cross-env PORT=8001 npx playwright test",
         "test-debug": "cross-env PORT=8001 DEBUG_TESTS=1 npx playwright test --reporter=list --workers=1",
         "test:syntax": "cross-env PORT=8001 npx playwright test tests/syntax_verification.spec.ts",
-        "test-debug:syntax": "cross-env PORT=8001 DEBUG_TESTS=1 npx playwright test tests/syntax_verification.spec.ts --reporter=list --workers=1",
         "test:editor": "cross-env PORT=8001 npx playwright test \"tests/editor_.*.spec.ts\"",
-        "test-debug:editor": "cross-env PORT=8001 DEBUG_TESTS=1 npx playwright test \"tests/editor_*.spec.ts\" --reporter=list --workers=1",
         "test:components": "cross-env PORT=8001 npx playwright test \"tests/components_.*.spec.ts\"",
-        "test-debug:components": "cross-env PORT=8001 DEBUG_TESTS=1 npx playwright test \"tests/components_.*.spec.ts\" --reporter=list --workers=1",
         "lint": "tsc --noEmit"
     },
     "keywords": [],

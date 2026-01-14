@@ -7,9 +7,11 @@ description: Guide for running and debugging tests, including filtering and inte
 
 This skill outlines how to run the project's Playwright test suite, ranging from full suite execution to targeted debugging of individual tests.
 
-## 1. Standard Execution
+Note the very important difference between running tests for verification and running specific tests for debugging failures. The `npm test` commands are for verification and `npm run test-debug` are for debugging. The `npm test` commands produce minimal outputs and should only be used to identify which tests are failing. The `npm run test-debug` commands produce detailed outputs and should be used to debug failing tests one test at a time. **DO NOT** repeat `npm test` commands when debugging as they will not produce sufficiently useful logging information.
 
-Use these standard commands for CI-like verification.
+## 1. Running Tests for Verification
+
+Use these standard commands to run one or more suite of tests together.
 
 | Scope | Command | Description |
 | :--- | :--- | :--- |
@@ -28,31 +30,20 @@ npm run test -- tests/editor_filesystem_ops.spec.ts tests/editor_filesystem_ops.
 ```
 This runs faster than running them separately by reusing the browser context and page.
 
-## 2. Debug Execution
+## 2. Debugging Failing Tests
 
-Use `test-debug` commands to enable detailed browser and dialog logging.
+Use the `test-debug` commands to enable detailed browser and dialog logging.
 
 > [!CAUTION]
 > **Avoid massive log output.**
-> Debug commands generate significant output. **ALWAYS** filter to a specific test file or test case using the `-g` (grep) argument.
-
-| Scope | Command |
-| :--- | :--- |
-| **Detailed Log** | `npm run test-debug -- <args>` |
-| **Editor Debug** | `npm run test-debug:editor -- <args>` |
+> Debug commands generate significant output. **ALWAYS** filter to a specific test case using the `-g` (grep) argument.
 
 ### Usage Examples
 
 **Target a specific test case (Recommended):**
 ```bash
-# Debug only the test named "rename directory" in editor tests
-npm run test-debug:editor -- -g "rename directory"
-```
-
-**Target a specific file:**
-```bash
-# Debug all tests in tests/editor_filesystem_ops.spec.ts
-npm run test-debug -- tests/editor_filesystem_ops.spec.ts
+# Debug only the test named "rename directory"
+npm run test-debug -- -g "rename directory"
 ```
 
 ### Log Output Format
