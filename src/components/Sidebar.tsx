@@ -250,9 +250,9 @@ export const Sidebar: React.FC = observer(() => {
                     <button
                         className={styles.actionButton}
                         onClick={async () => await fileSystemStore.openDirectory()}
-                        data-testid="open-folder-button"
+                        data-testid="open-directory-button"
                     >
-                        Open Folder
+                        Open Directory
                     </button>
                 </div>
             ) : (

@@ -113,7 +113,7 @@ Most tests should start by loading a directory to get the app into a state where
 import { loadInitialDirectory } from './helpers/sidebar_helpers';
 
 test('My Test', async ({ page }) => {
-    // This helper sets the mock picker choice and clicks "Open Folder"
+    // This helper sets the mock picker choice and clicks "Open Directory"
     await loadInitialDirectory(page, 'dir1');
     // ... test logic
 });

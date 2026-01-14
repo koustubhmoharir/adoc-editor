@@ -149,7 +149,9 @@ function enableTestLogging(page: Page) {
     });
     if (process.env.DEBUG_TESTS) {
         page.on('dialog', async dialog => {
-            console.log(`DIALOG: ${dialog.type()} "${dialog.message()}"`);
+            console.warn(`DIALOG: ${dialog.type()} "${dialog.message()}"`);
+            console.warn(`Modify the application code to use dialog.alert and dialog.confirm instead of native dialogs.`);
+            dialog.dismiss();
         });
     }
 }

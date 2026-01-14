@@ -27,7 +27,7 @@ The editor interacts directly with the user's local file system using the [File 
 - **Persistence**: Directory handles are persisted in IndexedDB using `idb-keyval`.
 - **Permissions**: Browsers require a user gesture to grant read/write permissions.
   - When reloading the app with a persisted handle, we cannot verify permission immediately without a prompt.
-  - We "restore" the handle in `FileSystemStore` but might wait for a user interaction (like clicking "Open Folder" or selecting a file) to re-prompt if permission has expired.
+  - We "restore" the handle in `FileSystemStore` but might wait for a user interaction (like clicking "Open Directory" or selecting a file) to re-prompt if permission has expired.
   - **Bypassing Persistence**: To load the application without restoring the previously selected directory (e.g., for automated testing or clean debugging), append `?skip_restore=true` to the URL.
 
 

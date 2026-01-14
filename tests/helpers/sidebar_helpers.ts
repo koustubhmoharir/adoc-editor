@@ -69,7 +69,7 @@ export async function verifyRenameOnFocusChange(
 export async function loadInitialDirectory(page: Page, dir: string) {
     await helpers.setDirectoryPickerChoice(page, dir);
     // Open the test directory
-    const openDirBtn = page.locator('data-testid=open-folder-button');
+    const openDirBtn = page.locator('data-testid=open-directory-button');
     await openDirBtn.click();
 
     // Wait for tree to populate
