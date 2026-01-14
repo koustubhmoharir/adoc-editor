@@ -70,3 +70,4 @@ When running in debug mode (`DEBUG_TESTS=1`), the following prefixes appear in t
 3. **Clean State Check**: If a test fails mysteriously, ensure:
     - It uses `test.beforeEach` to set up `fsSetup`.
     - It cleans up dialogs/menus before finishing.
+4. **Input Stability**: To avoid flakiness due to timing issues when sending keyboard events, make sure that the element that is expected to handle it is visible and / or focused before sending the key presses. For example, verify a context menu is visible *before* sending ArrowDown key presses to navigate it.

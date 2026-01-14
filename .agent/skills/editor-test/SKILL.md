@@ -159,3 +159,10 @@ test.describe('Feature Name', () => {
     });
 });
 ```
+
+## 6. Avoiding Flakiness
+
+To avoid flakiness due to timing issues when sending keyboard events, make sure that the element that is expected to handle it is visible and / or focused before sending the key presses.
+
+**Example**: When testing ArrowDown on a context menu, sending a right click followed by an ArrowDown is not good. After sending the right click we need to verify that the context menu is visible. Else, it is possible that the ArrowDown occurs before the context menu shows up and the test fails randomly.
+
