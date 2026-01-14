@@ -181,22 +181,22 @@ export const Sidebar: React.FC = observer(() => {
     // Consume store effects
     useScheduledEffects(fileSystemStore);
 
-    const hasDirectory = !!fileSystemStore.directoryHandle;
+    const rootNode = fileSystemStore.rootNode;
 
     return (
         <div className={styles.sidebar}>
             <SidebarContextMenu />
-            {hasDirectory && (
+            {rootNode && (
                 <div
                     className={styles.header}
-                    ref={fileSystemStore.rootNode?.treeItemRef}
-                    title={fileSystemStore.directoryHandle?.name}
+                    ref={rootNode.treeItemRef}
+                    title={rootNode.name}
                     onClick={() => fileSystemStore.openDirectory()}
-                    onContextMenu={fileSystemStore.rootNode?.handleContextMenu}
+                    onContextMenu={rootNode.handleContextMenu}
                     data-testid="sidebar-header"
                 >
                     <i className={`fas fa-folder-open ${styles.rootFolderIcon}`} />
-                    <span className={styles.headerText}>{fileSystemStore.directoryHandle?.name}</span>
+                    <span className={styles.headerText}>{rootNode.name}</span>
 
                     <button
                         className={styles.searchToggleButton}
@@ -211,9 +211,9 @@ export const Sidebar: React.FC = observer(() => {
                         className={styles.newFileButton}
                         onClick={(e) => {
                             e.stopPropagation();
-                            fileSystemStore.createNewFile(fileSystemStore.directoryHandle!);
+                            fileSystemStore.createNewFile();
                         }}
-                        title={`New File in ${fileSystemStore.directoryHandle?.name}`}
+                        title={`New File in ${rootNode.name}`}
                         data-testid="new-file-button-sidebar"
                     >
                         <i className="fas fa-file-circle-plus" />
@@ -244,7 +244,7 @@ export const Sidebar: React.FC = observer(() => {
                 </div>
             )}
 
-            {!hasDirectory ? (
+            {!rootNode ? (
                 <div className={styles.emptyState}>
                     <div>No folder opened</div>
                     <button
@@ -283,10 +283,10 @@ export const Sidebar: React.FC = observer(() => {
                         )
                     ) : (
                         // Tree View
-                        fileSystemStore.fileTree.length === 0 ? (
+                        rootNode.children?.length === 0 ? (
                             <div className={styles.emptyState}>Empty folder</div>
                         ) : (
-                            fileSystemStore.fileTree.map((node, i) => (
+                            rootNode.children?.map((node: FileSystemNodeModel, i: number) => (
                                 <FileTreeItem key={i} node={node} />
                             ))
                         )

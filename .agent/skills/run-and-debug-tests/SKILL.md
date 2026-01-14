@@ -20,6 +20,8 @@ Use these standard commands for CI-like verification.
 
 **Note**: All commands automatically set `PORT=8001`.
 
+**Important**: Do not run `npx playwright` directly. Use the `npm run test` commands instead with appropriate arguments and options. Arguments pass through to playwright and options can be passed through with `--`.
+
 ## 2. Debug Execution
 
 Use `test-debug` commands to enable detailed browser and dialog logging.
