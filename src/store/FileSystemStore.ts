@@ -6,56 +6,62 @@ import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
 
-export interface FileNodeData {
+export interface FileSystemNodeDataBase {
+    kind: 'file' | 'directory';
     name: string;
     path: string;
-    kind: 'file' | 'directory';
     handle: FileSystemFileHandle | FileSystemDirectoryHandle;
-    children?: FileNodeData[];
 }
 
-export class FileNodeModel extends EffectAwareModel {
-    @observable accessor name: string;
-    readonly path: string;
+export interface FileNodeData extends FileSystemNodeDataBase {
+    kind: 'file';
+    handle: FileSystemFileHandle;
+}
+
+export interface DirectoryNodeData extends FileSystemNodeDataBase {
+    kind: 'directory';
+    handle: FileSystemDirectoryHandle;
+    children?: FileSystemNodeModel[];
+}
+
+export abstract class FileSystemNodeModelBase extends EffectAwareModel {
+
+    constructor(data: FileSystemNodeDataBase, isRoot = false) {
+        super();
+        this.kind = data.kind;
+        this._name = data.name;
+        this.path = data.path;
+        this.handle = data.handle;
+        this.isRoot = isRoot;
+    }
     readonly kind: 'file' | 'directory';
+    readonly path: string;
     readonly handle: FileSystemFileHandle | FileSystemDirectoryHandle;
-    @observable accessor children: FileNodeModel[] | undefined;
     readonly isRoot: boolean = false;
 
+    @observable protected accessor _name: string;
+    get name() { return this._name; }
+
     // UI State
-    @observable accessor isRenaming: boolean = false;
-    @observable accessor renameValue: string = '';
-    @observable accessor isCommitting: boolean = false;
+    @observable protected accessor _isRenaming: boolean = false;
+    get isRenaming() { return this._isRenaming; }
+    @observable protected accessor _renameValue: string = '';
+    get renameValue() { return this._renameValue; }
+    @observable protected accessor _isCommitting: boolean = false;
 
     // Refs
     readonly renameInputRef = createRef<HTMLInputElement>();
     readonly acceptRenameBtnRef = createRef<HTMLButtonElement>();
     readonly treeItemRef = createRef<HTMLDivElement>();
 
-
-
-    constructor(data: FileNodeData, isRoot = false) {
-        super();
-        this.name = data.name;
-        this.path = data.path;
-        this.kind = data.kind;
-        this.handle = data.handle;
-        if (data.children) {
-            this.children = data.children.map(child => new FileNodeModel(child));
-        }
-        this.isRoot = isRoot;
-    }
-
     @action
     startRenaming() {
-        //console.log('startRenaming', this.name);
         if (this.isRoot) return;
-        this.isRenaming = true;
-        this.renameValue = this.name;
+        this._isRenaming = true;
+        this._renameValue = this.name;
 
         // Schedule focus effect
         this.scheduleEffect(() => {
-            //console.log('startRenaming: inside scheduleEffect');
             if (this.renameInputRef.current) {
                 this.renameInputRef.current.focus();
                 // Select name part excluding extension
@@ -69,33 +75,26 @@ export class FileNodeModel extends EffectAwareModel {
         });
     }
 
-
     @action
     cancelRenaming() {
-        //console.log('cancelRenaming', { restoreFocus, currentName: this.name, renameValue: this.renameValue });
-        this.isRenaming = false;
-        this.renameValue = '';
+        this._isRenaming = false;
+        this._renameValue = '';
         this.scheduleEffect(() => {
-            //console.log('cancelRenaming: inside scheduleEffect (restoreFocus)');
             this.treeItemRef.current?.focus();
         });
     }
 
     @action
     setRenameValue(val: string) {
-        //console.log('setRenameValue', val);
-        this.renameValue = val;
+        this._renameValue = val;
     }
 
     @action
     async commitRenaming() {
-        //console.log('commitRenaming', { revertOnFailure, restoreFocus, renameValue: this.renameValue });
-        if (this.isCommitting) return;
-        this.isCommitting = true;
-        //console.log('commitRenaming: setting isCommitting to true');
+        if (this._isCommitting) return;
+        this._isCommitting = true;
         try {
             if (!this.renameValue || this.renameValue === this.name) {
-                //console.log('commitRenaming: no change');
                 this.cancelRenaming();
                 return;
             }
@@ -105,8 +104,7 @@ export class FileNodeModel extends EffectAwareModel {
                 this.renameInputRef.current?.focus();
             }
         } finally {
-            //console.log('commitRenaming: finally block: setting isCommitting to false');
-            this.isCommitting = false;
+            this._isCommitting = false;
         }
     }
 
@@ -120,14 +118,11 @@ export class FileNodeModel extends EffectAwareModel {
 
     @action
     handleRenameInputKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
-        //console.log('handleRenameInputKeyDown', e.key);
         if (e.key === 'Enter') {
-            //console.log('handleRenameInputKeyDown: Enter detected');
             e.stopPropagation();
             e.preventDefault();
             this.commitRenaming();
         } else if (e.key === 'Escape') {
-            //console.log('handleRenameInputKeyDown: Escape detected');
             e.stopPropagation();
             e.preventDefault();
             this.cancelRenaming();
@@ -136,20 +131,16 @@ export class FileNodeModel extends EffectAwareModel {
 
     @action
     handleRenameInputBlur(_e: React.FocusEvent) {
-        //console.log('handleRenameInputBlur', { hasFocus: document.hasFocus(), dialogOpen: dialog.isOpen, relatedTarget: e.relatedTarget });
         // If the window loses focus (e.g. alt-tab), we want to KEEP renaming state.
         // If the click is inside the app but outside input, we want to COMMIT.
         // We do NOT want to restore focus to the tree item, because the user likely clicked something else.
         if (document.hasFocus() && !dialog.isOpen) {
-            //console.log('handleRenameInputBlur: committing rename');
             this.commitRenaming();
         }
     }
 
-
     @action
     handleTreeItemKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
-        //console.log('handleTreeItemKeyDown', e.key);
         if (this.isRenaming) return;
 
         if (e.key === 'F2') {
@@ -160,23 +151,13 @@ export class FileNodeModel extends EffectAwareModel {
             e.preventDefault();
             e.stopPropagation();
             this.delete();
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            e.stopPropagation();
-            if (this.kind === 'file') {
-                fileSystemStore.selectNode(this, 'focus');
-            } else {
-                fileSystemStore.toggleDirectory(this.path);
-            }
-        } else if (e.key === ' ' && this.kind === 'directory') {
-            e.preventDefault();
-            e.stopPropagation();
-            fileSystemStore.toggleDirectory(this.path);
         } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
             e.preventDefault();
             e.stopPropagation();
             const direction = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right';
             fileSystemStore.navigate(direction);
+        } else {
+            this.handleSpecificKey(e);
         }
     }
 
@@ -191,12 +172,55 @@ export class FileNodeModel extends EffectAwareModel {
 
         fileSystemStore.openContextMenu(this);
     }
+
+    abstract handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent): void;
 }
+
+export class FileNodeModel extends FileSystemNodeModelBase {
+    constructor(data: FileNodeData) {
+        super(data);
+    }
+
+    declare readonly kind: 'file';
+    declare readonly handle: FileSystemFileHandle;
+
+    @action
+    handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            fileSystemStore.selectNode(this, 'focus');
+        }
+    }
+}
+
+export class DirectoryNodeModel extends FileSystemNodeModelBase {
+    
+    constructor(data: DirectoryNodeData, isRoot = false) {
+        super(data, isRoot);
+        this.children = data.children;
+    }
+
+    declare readonly kind: 'directory';
+    declare readonly handle: FileSystemDirectoryHandle;
+    @observable accessor children: FileSystemNodeModel[] | undefined;
+
+    @action
+    handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            fileSystemStore.toggleDirectory(this.path);
+        }
+    }
+}
+
+export type FileSystemNodeModel = FileNodeModel | DirectoryNodeModel;
 
 export class SearchResultItemModel {
     @observable accessor isHighlighted: boolean = false;
     readonly ref = createRef<HTMLDivElement>();
-    constructor(public readonly item: FileNodeModel) { }
+    constructor(public readonly item: FileSystemNodeModel) { }
 
     @action
     setHighlight(val: boolean) {
@@ -206,7 +230,7 @@ export class SearchResultItemModel {
 
 class FileSystemStore extends EffectAwareModel {
     @observable accessor directoryHandle: FileSystemDirectoryHandle | null = null;
-    @observable accessor fileTree: FileNodeModel[] = [];
+    @observable accessor fileTree: FileSystemNodeModel[] = [];
     @observable accessor currentFileHandle: FileSystemFileHandle | null = null;
     @observable accessor dirty: boolean = false;
     @observable accessor isLoading: boolean = false;
@@ -215,11 +239,11 @@ class FileSystemStore extends EffectAwareModel {
     @observable accessor isSearchVisible: boolean = false;
 
     @observable accessor highlightedPath: string | null = null;
-    @observable accessor contextMenuTarget: FileNodeModel | null = null;
+    @observable accessor contextMenuTarget: FileSystemNodeModelBase | null = null;
     readonly contextMenuRef = createRef<HTMLDivElement>();
 
     // Persistent root node
-    @observable accessor rootNode: FileNodeModel | null = null;
+    @observable accessor rootNode: FileSystemNodeModel | null = null;
 
     @action
     updateRootNode() {
@@ -228,12 +252,12 @@ class FileSystemStore extends EffectAwareModel {
             return;
         }
         // If we already have one and handle is same, just update children?
-        if (this.rootNode && this.rootNode.handle === this.directoryHandle) {
+        if (this.rootNode && this.rootNode.handle === this.directoryHandle && this.rootNode.kind === 'directory') {
             this.rootNode.children = this.fileTree;
             return;
         }
 
-        const root = new FileNodeModel({
+        const root = new DirectoryNodeModel({
             name: this.directoryHandle.name,
             path: this.directoryHandle.name,
             kind: 'directory',
@@ -257,7 +281,7 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    openContextMenu(node: FileNodeModel) {
+    openContextMenu(node: FileSystemNodeModelBase) {
         // Clear previous anchor if any
         if (this.contextMenuTarget && this.contextMenuTarget !== node) {
             this.contextMenuTarget.treeItemRef.current?.style.removeProperty('anchor-name');
@@ -286,9 +310,9 @@ class FileSystemStore extends EffectAwareModel {
 
 
     @computed
-    get visibleNodes(): FileNodeModel[] {
-        const result: FileNodeModel[] = [];
-        const traverse = (nodes: FileNodeModel[]) => {
+    get visibleNodes(): FileSystemNodeModel[] {
+        const result: FileSystemNodeModel[] = [];
+        const traverse = (nodes: FileSystemNodeModel[]) => {
             for (const node of nodes) {
                 result.push(node);
                 if (node.kind === 'directory' && !this.isCollapsed(node.path) && node.children) {
@@ -303,13 +327,13 @@ class FileSystemStore extends EffectAwareModel {
 
 
 
-    get allFiles(): FileNodeModel[] {
-        const result: FileNodeModel[] = [];
-        const traverse = (nodes: FileNodeModel[]) => {
+    get allFiles(): FileSystemNodeModel[] {
+        const result: FileSystemNodeModel[] = [];
+        const traverse = (nodes: FileSystemNodeModel[]) => {
             for (const node of nodes) {
                 if (node.kind === 'file') {
                     result.push(node);
-                } else if (node.children) {
+                } else if (node.kind === 'directory' && node.children) {
                     traverse(node.children);
                 }
             }
@@ -322,7 +346,7 @@ class FileSystemStore extends EffectAwareModel {
     get searchResults() {
         if (!this.searchQuery) return [];
         const files = this.allFiles;
-        const fzf = new Fzf(files, { selector: (item) => item.path });
+        const fzf = new Fzf(files, { selector: (item: FileSystemNodeModel) => item.path });
         const matches = fzf.find(this.searchQuery);
         return matches.map(match => new SearchResultItemModel(match.item));
     }
@@ -476,7 +500,7 @@ class FileSystemStore extends EffectAwareModel {
     async syncSelectedFileWithTree() {
         if (!this.currentFileHandle) return;
 
-        const findAndReplaceHandle = async (nodes: FileNodeModel[]) => {
+        const findAndReplaceHandle = async (nodes: FileSystemNodeModel[]) => {
             for (const node of nodes) {
                 if (node.kind === 'file') {
                     if (await node.handle.isSameEntry(this.currentFileHandle!)) {
@@ -486,7 +510,7 @@ class FileSystemStore extends EffectAwareModel {
                         });
                         return true;
                     }
-                } else if (node.children) {
+                } else if (node.kind === 'directory' && node.children) {
                     if (await findAndReplaceHandle(node.children)) return true;
                 }
             }
@@ -525,10 +549,10 @@ class FileSystemStore extends EffectAwareModel {
 
             // Handle pending focus
             if (focusPath) {
-                const findNode = (nodes: FileNodeModel[]): FileNodeModel | undefined => {
+                const findNode = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
                     for (const node of nodes) {
                         if (node.path === focusPath) return node;
-                        if (node.children) {
+                        if (node.kind === 'directory' && node.children) {
                             const found = findNode(node.children);
                             if (found) return found;
                         }
@@ -545,8 +569,8 @@ class FileSystemStore extends EffectAwareModel {
         this.updateRootNode();
     }
 
-    async readDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string = ''): Promise<FileNodeModel[]> {
-        const models: FileNodeModel[] = [];
+    async readDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string = ''): Promise<FileSystemNodeModel[]> {
+        const models: FileSystemNodeModel[] = [];
 
         for await (const entry of dirHandle.values()) {
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
@@ -561,13 +585,13 @@ class FileSystemStore extends EffectAwareModel {
             } else if (entry.kind === 'directory') {
                 if (entry.name.startsWith('.')) continue;
                 const children = await this.readDirectory(entry, currentPath);
-                const dirModel = new FileNodeModel({
+                const dirModel = new DirectoryNodeModel({
                     name: entry.name,
                     path: currentPath,
                     kind: 'directory',
-                    handle: entry
+                    handle: entry,
+                    children: children
                 });
-                dirModel.children = children; // Assign children explicitly
                 models.push(dirModel);
             }
         }
@@ -586,7 +610,7 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    selectNode(node: FileNodeModel, loadContent: 'focus' | 'show' | 'delay') {
+    selectNode(node: FileSystemNodeModelBase, loadContent: 'focus' | 'show' | 'delay') {
         this.setHighlightedPath(node.path);
 
         if (loadContent !== 'focus') {
@@ -600,7 +624,7 @@ class FileSystemStore extends EffectAwareModel {
             this.loadTimeout = null;
         }
 
-        if (node.kind === 'file') {
+        if (node instanceof FileNodeModel) {
             if (loadContent === 'delay') {
                 // Debounce load
                 this.loadTimeout = window.setTimeout(() => {
@@ -681,7 +705,7 @@ class FileSystemStore extends EffectAwareModel {
 
 
 
-    async loadFileContentInEditor(node: FileNodeModel) {
+    async loadFileContentInEditor(node: FileSystemNodeModel) {
         if (node.kind !== 'file') return;
 
 
@@ -785,12 +809,12 @@ class FileSystemStore extends EffectAwareModel {
         await this.pushDbOperation(setDbValue('collapsedPaths', Array.from(this.collapsedPaths)), 'Failed to persist collapsed paths:');
     }
 
-    findNodeByHandle(handle: FileSystemHandle): FileNodeModel | undefined {
-        const find = (nodes: FileNodeModel[]): FileNodeModel | undefined => {
+    findNodeByHandle(handle: FileSystemHandle): FileSystemNodeModel | undefined {
+        const find = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
             for (const node of nodes) {
                 if (node.kind === 'file' && node.handle === handle) return node; // Reference check
                 // Fallback to isSameEntry not easy sync. 
-                if (node.children) {
+                if (node.kind === 'directory' && node.children) {
                     const found = find(node.children);
                     if (found) return found;
                 }
@@ -851,7 +875,7 @@ class FileSystemStore extends EffectAwareModel {
     findParentDirectory(targetHandle: FileSystemHandle): FileSystemDirectoryHandle | null {
         if (!this.directoryHandle) return null;
 
-        const traverse = (nodes: FileNodeModel[]): FileSystemDirectoryHandle | undefined => {
+        const traverse = (nodes: FileSystemNodeModel[]): FileSystemDirectoryHandle | undefined => {
             // Check if target is a child of any node in this list? 
             // Logic in original was: is `nodes` children of `node`? 
             // Original was iterating nodes to check if THEIR children contain target.
@@ -881,7 +905,7 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     // Helper to find actual parent node Model
-    findParentNode(nodes: FileNodeModel[], target: FileSystemHandle): FileNodeModel | null {
+    findParentNode(nodes: FileSystemNodeModel[], target: FileSystemHandle): FileSystemNodeModel | null {
         for (const n of nodes) {
             if (n.kind === 'directory' && n.children) {
                 if (n.children.some(c => c.handle === target)) return n;
@@ -901,7 +925,7 @@ class FileSystemStore extends EffectAwareModel {
         if (!this.currentFileHandle) return rootName;
 
         // Find path of current file in tree
-        const findPath = (nodes: FileNodeModel[]): string | null => {
+        const findPath = (nodes: FileSystemNodeModel[]): string | null => {
             for (const node of nodes) {
                 if (node.kind === 'file') {
                     // Optimized check? node.handle is same as currentFileHandle?
@@ -909,7 +933,7 @@ class FileSystemStore extends EffectAwareModel {
                     if (node.handle === this.currentFileHandle) return node.path;
                     // Fallback to isSameEntry async? computed properties shouldn't be async.
                     // relying on reference equality assuming syncSelectedFileWithTree updated it.
-                } else if (node.children) {
+                } else if (node.kind === 'directory' && node.children) {
                     const found = findPath(node.children);
                     if (found) return found;
                 }
@@ -974,13 +998,13 @@ class FileSystemStore extends EffectAwareModel {
 
             // 6. Select the new file
             // We need to find the node in the tree to select it properly with path info
-            const findNodeAsync = async (nodes: FileNodeModel[]): Promise<FileNodeModel | undefined> => {
+            const findNodeAsync = async (nodes: FileSystemNodeModel[]): Promise<FileSystemNodeModel | undefined> => {
                 for (const node of nodes) {
                     if (node.kind === 'file') {
                         if (await node.handle.isSameEntry(newFileHandle)) {
                             return node;
                         }
-                    } else if (node.children) {
+                    } else if (node.kind === 'directory' && node.children) {
                         const found = await findNodeAsync(node.children);
                         if (found) return found;
                     }
@@ -1045,7 +1069,7 @@ class FileSystemStore extends EffectAwareModel {
             await this.refreshTree();
 
             // 5. Find and Select/Rename
-            const findNodeAsync = async (nodes: FileNodeModel[]): Promise<FileNodeModel | undefined> => {
+            const findNodeAsync = async (nodes: FileSystemNodeModel[]): Promise<FileSystemNodeModel | undefined> => {
                 for (const node of nodes) {
                     if (node.kind === 'directory') {
                         if (await node.handle.isSameEntry(newDirHandle)) {
@@ -1101,7 +1125,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    async deleteNode(node: FileNodeModel) {
+    async deleteNode(node: FileSystemNodeModelBase) {
         // 1. Confirm deletion (UI should handle confirmation before calling this, but we can verify)
         // For store action, we assume confirmation is done or we provide a callback? 
         // The plan says "UI side handles alert, this method just executes".
@@ -1142,7 +1166,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    async renameNode(node: FileNodeModel, newName: string, focusAfterRename: boolean): Promise<boolean> {
+    async renameNode(node: FileSystemNodeModelBase, newName: string, focusAfterRename: boolean): Promise<boolean> {
         //console.log('FileSystemStore.renameNode', { nodeName: node.name, newName, focusAfterRename });
         if (node.isRoot) return false;
 
@@ -1224,11 +1248,11 @@ class FileSystemStore extends EffectAwareModel {
         }
 
         // 5. Execute Rename
-        const handle = node.handle as any;
-        if (handle.move) {
+        const handle = node.handle;
+        if ('move' in handle) {
             try {
                 //console.log('renameNode: calling move()', parentDir, finalName);
-                await handle.move(parentDir, finalName);
+                await (handle.move as any)(parentDir, finalName);
                 //console.log('renameNode: move() returned');
 
                 // Determine new path to set pending focus
@@ -1399,7 +1423,7 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    handleSearchResultClick(item: FileNodeModel) {
+    handleSearchResultClick(item: FileSystemNodeModel) {
         this.loadFileContentInEditor(item);
         this.closeSearch();
     }

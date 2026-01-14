@@ -1,12 +1,12 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
-import { fileSystemStore, FileNodeModel } from '../store/FileSystemStore';
+import { fileSystemStore, FileSystemNodeModel } from '../store/FileSystemStore';
 import * as styles from './Sidebar.css';
 import { useScheduledEffects } from '../hooks/useScheduledEffects';
 
 import { SidebarContextMenu } from './SidebarContextMenu';
 
-const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
+const FileTreeItem: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }) => {
 
     const isSelected = fileSystemStore.highlightedPath === node.path;
     const isRenaming = node.isRenaming;
@@ -170,7 +170,7 @@ const FileTreeItem: React.FC<{ node: FileNodeModel }> = observer(({ node }) => {
                 ) : null}
 
             </div>
-            {!isCollapsed && node.children && node.children.map((child, i) => (
+            {!isCollapsed && node.kind === 'directory' && node.children && node.children.map((child, i) => (
                 <FileTreeItem key={i} node={child} />
             ))}
         </div>

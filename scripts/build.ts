@@ -113,15 +113,15 @@ async function build() {
             // Rebuild Endpoint
             if (isWatchDirty && req.method === 'POST' && req.url === '/_rebuild') {
                 if (isDirty) {
-                    console.log('Rebuild requested via HTTP...');
+                    console.log('[${new Date().toLocaleTimeString()}] Rebuild requested via HTTP...');
                     runRebuild().then(() => {
                         isDirty = false;
                         res.writeHead(200);
-                        res.end('Rebuilt');
+                        res.end('[${new Date().toLocaleTimeString()}] Rebuilt');
                     });
                 } else {
                     res.writeHead(200);
-                    res.end('Already clean');
+                    res.end('[${new Date().toLocaleTimeString()}] Already clean');
                 }
                 return;
             }
