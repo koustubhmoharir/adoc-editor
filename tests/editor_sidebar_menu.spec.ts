@@ -97,10 +97,14 @@ test('should create new file from context menu', async ({ page }) => {
 
     // Should focus and select input (implied by functionality, but we just check visibility)
     // We can check if it starts with "new-"
-    await expect(renameInput).toHaveValue(/^new-\d+$/);
+    await expect(renameInput).toHaveValue(/^new-\d+\.adoc$/);
 
-    await page.keyboard.press('Escape');
+    // Commit
+    await page.keyboard.press('Enter');
     await expect(renameInput).not.toBeVisible();
+    await expect(page.locator('[data-testid="file-item"][data-file-path^="folder1/new-"]')).toBeVisible();
+
+
 });
 
 test('should navigate context menu items with arrow keys', async ({ page }) => {
@@ -146,7 +150,7 @@ test('should execute action with Enter key', async ({ page }) => {
 
     const fileItem = page.locator('[data-file-path="file1.txt"]');
     await fileItem.click({ button: 'right' });
-    
+
     // Verify context menu appears
     await expectContextMenuOpen(page);
 
@@ -184,47 +188,79 @@ test('should show context menu for root directory', async ({ page }) => {
     await expect(contextMenu).not.toContainText('Rename');
     await expect(contextMenu).not.toContainText('Delete');
 });
-// Uncomment the tests below when we make improvements to directory creation
-// test('should create new directory from context menu', async ({ page }) => {
-//     await loadInitialDirectory(page, 'dir1');
+test('should create new directory from context menu', async ({ page, fsSetup }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-//     const header = page.getByTestId('sidebar-header');
-//     await header.click({ button: 'right' });
+    const header = page.getByTestId('sidebar-header');
+    await header.click({ button: 'right' });
 
-//     await page.getByTestId('ctx-new-directory').click();
+    await page.getByTestId('ctx-new-directory').click();
 
-//     // Expect rename input for new directory
-//     const renameInput = page.getByTestId('rename-input');
-//     await expect(renameInput).toBeVisible();
-//     await expect(renameInput).toHaveValue(/^new-folder-\d+$/);
+    // Expect rename input for new directory
+    const renameInput = page.getByTestId('rename-input');
+    await expect(renameInput).toBeVisible();
+    await expect(renameInput).toHaveValue(/^new-folder-\d+$/);
 
-//     // Commit rename
-//     await renameInput.fill('my_new_folder');
-//     await page.keyboard.press('Enter');
+    // Verify NOT created yet
+    const initialName = await renameInput.inputValue();
+    expect(fsSetup.exists('dir1', initialName)).toBe(false);
 
-//     // Verify existence
-//     await expect(page.locator('[data-dir-path="my_new_folder"]')).toBeVisible();
-// });
+    // Commit rename
+    await renameInput.fill('my_new_folder');
+    await page.keyboard.press('Enter');
 
-// test('should create new directory in subdirectory', async ({ page, fsSetup }) => {
-//     await loadInitialDirectory(page, 'dir1');
+    // Verify existence
+    await expect(page.locator('[data-dir-path="my_new_folder"]')).toBeVisible();
+    expect(fsSetup.exists('dir1', 'my_new_folder')).toBe(true);
+});
 
-//     // Select folder1
-//     const dirItem = page.locator('[data-dir-path="folder1"]');
-//     // Ensure expanded if needed? loadInitialDirectory usually expands? No, just loads root.
-//     // Double click to toggle expand if needed, but context menu works regardless.
+test('should cancel directory creation', async ({ page, fsSetup }) => {
+    await loadInitialDirectory(page, 'dir1');
 
-//     await dirItem.click({ button: 'right' });
-//     await page.getByTestId('ctx-new-directory').click();
+    const header = page.getByTestId('sidebar-header');
+    await header.click({ button: 'right' });
 
-//     const renameInput = page.getByTestId('rename-input');
-//     await expect(renameInput).toBeVisible();
+    await page.getByTestId('ctx-new-directory').click();
 
-//     await renameInput.fill('sub_folder');
-//     await page.keyboard.press('Enter');
+    const renameInput = page.getByTestId('rename-input');
+    await expect(renameInput).toBeVisible();
+    const initialName = await renameInput.inputValue();
 
-//     // We might need to expand folder1 to see it if it wasn't expanded.
-//     // The createNewDirectory implementation deletes from collapsedPaths (expands parent).
-//     await expect(page.locator('[data-dir-path="folder1/sub_folder"]')).toBeVisible();
-//     expect(fsSetup.exists('dir1', 'folder1/sub_folder')).toBe(true);
-// });
+    // Cancel
+    await page.keyboard.press('Escape');
+    await expect(renameInput).not.toBeVisible();
+
+    // Verify not exists
+    expect(fsSetup.exists('dir1', initialName)).toBe(false);
+    await expect(page.getByTestId('directory-item').filter({ hasText: initialName })).not.toBeVisible();
+});
+
+test('should create new directory in subdirectory', async ({ page, fsSetup }) => {
+    await loadInitialDirectory(page, 'dir1');
+
+    // Select folder1
+    const dirItem = page.locator('[data-dir-path="folder1"]');
+
+    await dirItem.click({ button: 'right' });
+    await page.getByTestId('ctx-new-directory').click();
+
+    const renameInput = page.getByTestId('rename-input');
+    await expect(renameInput).toBeVisible();
+
+    // Verify NOT created yet
+    // Assuming default name like new-folder-1
+    // We can just check that folder1 only has nested_file.txt initially.
+    // fsSetup.exists('dir1', 'folder1/new-folder-1') ... hard to guess index.
+
+    await renameInput.fill('sub_folder');
+
+    // Still not created
+    expect(fsSetup.exists('dir1', 'folder1/sub_folder')).toBe(false);
+
+    await page.keyboard.press('Enter');
+
+    // We might need to expand folder1 to see it if it wasn't expanded.
+    // The createNewDirectory implementation deletes from collapsedPaths (expands parent).
+    await expect(page.locator('[data-dir-path="folder1/sub_folder"]')).toBeVisible();
+    expect(fsSetup.exists('dir1', 'folder1/sub_folder')).toBe(true);
+});

@@ -10,17 +10,17 @@ export interface FileSystemNodeDataBase {
     kind: 'file' | 'directory';
     name: string;
     path: string;
-    handle: FileSystemFileHandle | FileSystemDirectoryHandle;
+    handle?: FileSystemFileHandle | FileSystemDirectoryHandle;
 }
 
 export interface FileNodeData extends FileSystemNodeDataBase {
     kind: 'file';
-    handle: FileSystemFileHandle;
+    handle?: FileSystemFileHandle;
 }
 
 export interface DirectoryNodeData extends FileSystemNodeDataBase {
     kind: 'directory';
-    handle: FileSystemDirectoryHandle;
+    handle?: FileSystemDirectoryHandle;
     children?: FileSystemNodeModel[];
 }
 
@@ -31,12 +31,20 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
         this.kind = data.kind;
         this._name = data.name;
         this.path = data.path;
-        this.handle = data.handle;
+        this._handle = data.handle;
         this.parent = parent;
     }
     readonly kind: 'file' | 'directory';
-    readonly path: string;
-    readonly handle: FileSystemFileHandle | FileSystemDirectoryHandle;
+    @observable accessor path: string;
+    @observable protected accessor _handle: FileSystemFileHandle | FileSystemDirectoryHandle | undefined;
+    get handle() {
+        if (!this._handle) throw new Error("Accessing handle of a ghost node");
+        return this._handle;
+    }
+
+    // Derived property to check if it's a ghost node
+    get isCreating() { return this._handle === undefined; }
+
     readonly parent: DirectoryNodeModel | null;
     get isRoot() { return this.parent == null; }
 
@@ -80,9 +88,22 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
     cancelRenaming() {
         this._isRenaming = false;
         this._renameValue = '';
-        this.scheduleEffect(() => {
-            this.treeItemRef.current?.focus();
-        });
+
+        if (this.isCreating) {
+            // Remove self from parent
+            if (this.parent) {
+                const children = this.parent.children || [];
+                const idx = children.indexOf(this as any);
+                if (idx !== -1) {
+                    children.splice(idx, 1);
+                    this.parent.children = [...children]; // Trigger observer update if needed
+                }
+            }
+        } else {
+            this.scheduleEffect(() => {
+                this.treeItemRef.current?.focus();
+            });
+        }
     }
 
     @action
@@ -95,14 +116,22 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
         if (this._isCommitting) return;
         this._isCommitting = true;
         try {
-            if (!this.renameValue || this.renameValue === this.name) {
+            if (!this.renameValue || (this.renameValue === this.name && !this.isCreating)) {
                 this.cancelRenaming();
                 return;
             }
-            const success = await this.rename(this.renameValue);
-            // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
-            if (!success) {
-                this.renameInputRef.current?.focus();
+
+            if (this.isCreating) {
+                const success = await this.createRealNode(this.renameValue);
+                if (!success) {
+                    this.renameInputRef.current?.focus();
+                }
+            } else {
+                const success = await this.rename(this.renameValue);
+                // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
+                if (!success) {
+                    this.renameInputRef.current?.focus();
+                }
             }
         } finally {
             this._isCommitting = false;
@@ -195,6 +224,69 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
     }
 
     abstract handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent): void;
+
+    @action
+    private async createRealNode(finalName: string): Promise<boolean> {
+        if (!this.parent) return false;
+
+        // Validation (reuse logic?)
+        // Simply check if name is valid and unique in parent
+
+        try {
+            // 1. Validation similar to rename
+            if (!finalName || /^[\.]+$/.test(finalName)) {
+                // Invalid name for creation -> keep editing? or cancel? 
+                // If creation, maybe we should alert and let user try again.
+                return false;
+            }
+
+            // Check existence
+            try {
+                await this.parent.handle.getFileHandle(finalName);
+                if (this.kind === 'file') {
+                    await dialog.alert(`File '${finalName}' already exists.`);
+                    return false;
+                }
+            } catch (e) {
+                // Good, logic continues
+            }
+            try {
+                await this.parent.handle.getDirectoryHandle(finalName);
+                if (this.kind === 'directory') {
+                    await dialog.alert(`Directory '${finalName}' already exists.`);
+                    return false;
+                }
+            } catch (e) { /* Good */ }
+
+
+            // 2. Create
+            if (this.kind === 'file') {
+                this._handle = await this.parent.handle.getFileHandle(finalName, { create: true });
+            } else {
+                this._handle = await this.parent.handle.getDirectoryHandle(finalName, { create: true });
+            }
+
+            this._name = finalName;
+            // Update path - although refreshTree will fix it, we want local consistency
+            if (this.parent && this.parent.isRoot) {
+                this.path = finalName;
+            } else if (this.parent) {
+                this.path = this.parent.path + '/' + finalName;
+            }
+
+            // 3. Finish
+            this._isRenaming = false;
+
+            // Refresh tree to ensure sync and proper sorting
+            await fileSystemStore.refreshTree(this.path, this.kind === 'file');
+
+            return true;
+        } catch (e) {
+            console.error("Creation failed", e);
+            await dialog.alert(`Creation failed: ${e}`);
+            return false;
+        }
+    }
 
     @action
     private async rename(newName: string): Promise<boolean> {
@@ -294,7 +386,9 @@ export class FileNodeModel extends FileSystemNodeModelBase {
     }
 
     declare readonly kind: 'file';
-    declare readonly handle: FileSystemFileHandle;
+    // declare readonly handle: FileSystemFileHandle; 
+    // Handle is handled by base accessor
+    get handle() { return super.handle as FileSystemFileHandle; }
 
     @action
     handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
@@ -314,7 +408,8 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase {
     }
 
     declare readonly kind: 'directory';
-    declare readonly handle: FileSystemDirectoryHandle;
+    // declare readonly handle: FileSystemDirectoryHandle;
+    get handle() { return super.handle as FileSystemDirectoryHandle; }
     @observable accessor children: FileSystemNodeModel[] | undefined;
 
     @action
@@ -630,7 +725,7 @@ class FileSystemStore extends EffectAwareModel {
         // Expand all parents
         const parts = node.path.split('/');
         parts.pop(); // Remove file itself
-        
+
         let currentPath = '';
         runInAction(() => {
             this._highlightedPath = node.path;
@@ -708,6 +803,9 @@ class FileSystemStore extends EffectAwareModel {
         const findPath = (nodes: FileSystemNodeModel[]): string | null => {
             for (const node of nodes) {
                 if (node.kind === 'file') {
+                    // Skip ghost nodes
+                    if (node.isCreating) continue;
+
                     // Optimized check? node.handle is same as currentFileHandle?
                     // We can check reference equality first
                     if (node.handle === this.currentFileHandle) return node.path;
@@ -738,17 +836,24 @@ class FileSystemStore extends EffectAwareModel {
 
         // 1. Determine target directory
         let targetDir: FileSystemDirectoryHandle | null | undefined = parentDirectory;
+        let parentNode: DirectoryNodeModel | null = null;
+
         if (!targetDir) {
             const node = await this.findNodeByHandle(this.currentFileHandle);
             if (node && node.parent) {
                 targetDir = node.parent.handle;
+                parentNode = node.parent;
             }
             if (!targetDir && this.rootNode) {
                 targetDir = this.rootNode.handle;
+                parentNode = this.rootNode;
             }
+        } else {
+            // Find model for this directory handle
+            parentNode = await this.findNodeByHandle(targetDir) as DirectoryNodeModel;
         }
 
-        if (!targetDir) return;
+        if (!targetDir || !parentNode) return;
 
         // 2. Auto-save current file
         if (this.dirty) {
@@ -758,45 +863,49 @@ class FileSystemStore extends EffectAwareModel {
         try {
             // 3. Find unique filename
             let index = 1;
-            let filename = `new-${index}`;
+            // Determine extension
+            let ext = '.adoc';
+            if (this.currentFileHandle) {
+                const parts = this.currentFileHandle.name.split('.');
+                if (parts.length > 1) ext = '.' + parts.pop();
+            }
+
+            let filename = `new-${index}${ext}`;
             while (true) {
                 try {
                     await targetDir.getFileHandle(filename);
                     // If successful, file exists
                     index++;
-                    filename = `new-${index}`;
+                    filename = `new-${index}${ext}`;
                 } catch (e) {
                     // File does not exist (or other error), so we can use this name
                     break;
                 }
             }
 
-            // 4. Create the file
-            const newFileHandle = await targetDir.getFileHandle(filename, { create: true });
+            // 4. Create Ghost Node
+            const path = parentNode.isRoot ? filename : parentNode.path + '/' + filename;
+            const ghostNode = new FileNodeModel({
+                kind: 'file',
+                name: filename,
+                path: path,
+                handle: undefined
+            }, parentNode);
 
-            // 5. Refresh tree to show new file
-            await this.refreshTree();
+            // 5. Add to parent children
+            runInAction(() => {
+                if (!parentNode!.children) parentNode!.children = [];
+                // Reassign to trigger observer
+                parentNode!.children = [ghostNode, ...parentNode!.children];
+            });
 
-            // 6. Select the new file
-            // We need to find the node in the tree to select it properly with path info
-            const findNodeAsync = async (nodes: FileSystemNodeModel[]): Promise<FileSystemNodeModel | undefined> => {
-                for (const node of nodes) {
-                    if (node.kind === 'file') {
-                        if (await node.handle.isSameEntry(newFileHandle)) {
-                            return node;
-                        }
-                    } else if (node.kind === 'directory' && node.children) {
-                        const found = await findNodeAsync(node.children);
-                        if (found) return found;
-                    }
-                }
-            };
+            // 6. Start renaming
+            ghostNode.startRenaming();
 
-            const newNode = await findNodeAsync(this.rootNode.children ?? []);
-            if (newNode) {
-                await this.openFileInEditor(newNode);
-                newNode.startRenaming(); // Ensure we enter rename mode
-            }
+            // Scroll to it
+            ghostNode.scheduleEffect(() => {
+                ghostNode.treeItemRef.current?.scrollIntoView({ block: 'nearest' });
+            });
 
         } catch (error) {
             console.error('Error creating new file:', error);
@@ -812,30 +921,57 @@ class FileSystemStore extends EffectAwareModel {
 
         // 1. Determine target directory
         let targetDir: FileSystemDirectoryHandle | null | undefined = parentDirectory;
+        let parentNode: DirectoryNodeModel | null = null;
+
         if (!targetDir) {
+            // If we are selecting a directory, create inside it (if permitted?)
+            // Logic for new directory usually: if directory selected, create inside? 
+            // If file selected, create in same folder.
+
+            // Current logic uses parent of current file, or root.
             if (this.currentFileHandle) {
                 const node = await this.findNodeByHandle(this.currentFileHandle);
                 if (node && node.parent) {
                     targetDir = node.parent.handle;
+                    parentNode = node.parent;
+                }
+            } else if (this.highlightedPath) {
+                // If directory is highlighted, create inside? 
+                // The requirements are not super specific on "where", but "New Directory" usually works in current context.
+                // Let's stick to existing logic for consistency or improve.
+                const nodes = this.visibleNodes;
+                const highlighted = nodes.find(n => n.path === this.highlightedPath);
+                if (highlighted) {
+                    if (highlighted.kind === 'directory') {
+                        targetDir = highlighted.handle; // Create INSIDE the highlighted directory
+                        parentNode = highlighted as DirectoryNodeModel;
+                    } else {
+                        targetDir = highlighted.parent?.handle;
+                        parentNode = highlighted.parent;
+                    }
                 }
             }
-            if (!targetDir) {
+
+            if (!targetDir && this.rootNode) {
                 targetDir = this.rootNode.handle;
+                parentNode = this.rootNode;
             }
+        } else {
+            parentNode = await this.findNodeByHandle(targetDir) as DirectoryNodeModel;
         }
 
-        if (!targetDir) return;
+        if (!targetDir || !parentNode) return;
 
         try {
             // 2. Find unique name
             let index = 1;
-            let dirname = `new-dir-${index}`;
+            let dirname = `new-folder-${index}`;
             while (index < 1000) {
                 try {
                     await targetDir.getDirectoryHandle(dirname);
                     // If successful, exists
                     index++;
-                    dirname = `new-dir-${index}`;
+                    dirname = `new-folder-${index}`;
                 } catch (e) {
                     break;
                 }
@@ -846,51 +982,32 @@ class FileSystemStore extends EffectAwareModel {
                 return;
             }
 
-            // 3. Create directory
-            const newDirHandle = await targetDir.getDirectoryHandle(dirname, { create: true });
+            // 3. Create Ghost Node
+            const path = parentNode.isRoot ? dirname : parentNode.path + '/' + dirname;
+            const ghostNode = new DirectoryNodeModel({
+                kind: 'directory',
+                name: dirname,
+                path: path,
+                handle: undefined,
+                children: []
+            }, parentNode);
 
-            // 4. Refresh tree
-            await this.refreshTree();
+            // 4. Add to parent
+            runInAction(() => {
+                // Expand parent if needed (delete from collapsed)
+                this._collapsedPaths.delete(parentNode!.path);
 
-            // 5. Find and Select/Rename
-            const findNodeAsync = async (nodes: FileSystemNodeModel[]): Promise<FileSystemNodeModel | undefined> => {
-                for (const node of nodes) {
-                    if (node.kind === 'directory') {
-                        if (await node.handle.isSameEntry(newDirHandle)) {
-                            return node;
-                        }
-                        if (node.children) {
-                            const found = await findNodeAsync(node.children);
-                            if (found) return found;
-                        }
-                    }
-                }
-            };
+                if (!parentNode!.children) parentNode!.children = [];
+                // Reassign to trigger observer
+                parentNode!.children = [ghostNode, ...parentNode!.children];
+            });
 
-            const newNode = await findNodeAsync(this.rootNode.children ?? []);
-            if (newNode) {
-                // Expand parent if needed? refreshTree should handle if we are just adding child. 
-                // But we want to ensure it is visible.
+            // 5. Start renaming
+            ghostNode.startRenaming();
 
-                // Expand path to this new node
-                const parts = newNode.path.split('/');
-                parts.pop();
-                let currentPath = '';
-                runInAction(() => {
-                    for (const part of parts) {
-                        currentPath = currentPath ? `${currentPath}/${part}` : part;
-                        this._collapsedPaths.delete(currentPath);
-                    }
-                });
-
-                newNode.startRenaming();
-
-                // Scroll to view
-                newNode.scheduleEffect(() => {
-                    newNode.treeItemRef.current?.scrollIntoView({ block: 'nearest' });
-                    newNode.treeItemRef.current?.focus();
-                });
-            }
+            ghostNode.scheduleEffect(() => {
+                ghostNode.treeItemRef.current?.scrollIntoView({ block: 'nearest' });
+            });
 
         } catch (error) {
             console.error('Error creating new directory:', error);
@@ -946,7 +1063,7 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    async refreshTree(focusPath?: string) {
+    async refreshTree(focusPath?: string, openFile: boolean = false) {
         if (!this.rootNode) return;
 
         // This might trigger a prompt if not granted, so it should ideally be called from a user action 
@@ -976,6 +1093,9 @@ class FileSystemStore extends EffectAwareModel {
                     nodeToFocus.scheduleEffect(() => {
                         nodeToFocus.treeItemRef.current?.focus();
                     });
+                    if (openFile && nodeToFocus.kind === 'file') {
+                        this.openFileInEditor(nodeToFocus);
+                    }
                 }
             }
         });
@@ -1135,7 +1255,7 @@ class FileSystemStore extends EffectAwareModel {
                     const content = await file.text();
 
                     const node = await this.findNodeByHandle(hydratedHandle);
-                    
+
                     // Sync with tree if it's already loaded
                     // rootNode check
                     if (node?.kind === 'file') {
@@ -1152,8 +1272,13 @@ class FileSystemStore extends EffectAwareModel {
     private async findNodeByHandle(handle: FileSystemHandle | null) {
         if (!handle) return null;
 
+        if (this.rootNode && await this.rootNode.handle.isSameEntry(handle)) {
+            return this.rootNode;
+        }
+
         const findRecursive = async (nodes: FileSystemNodeModel[]): Promise<FileSystemNodeModel | null> => {
             for (const node of nodes) {
+                if (node.isCreating) continue;
                 if (await node.handle.isSameEntry(handle)) {
                     return node;
                 }

@@ -246,19 +246,49 @@ test('Creating a new file from Title Bar', async ({ page, fsSetup }) => {
     // Initially in root, no file selected.
     // Click New File button in Title Bar.
     await page.click('[data-testid="new-file-button-titlebar"]');
-    await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
+
+    // Expect rename input
+    const renameInput = page.locator('[data-testid="rename-input"]');
+    await expect(renameInput).toBeVisible();
+
+    // Verify unique name prefill
+    await expect(renameInput).toHaveValue('new-1.adoc');
+
+    // Verify file DOES NOT EXIST yet
+    expect(fsSetup.exists('dir1', 'new-1.adoc')).toBe(false);
+
+    // Commit creation
     await page.keyboard.press('Enter');
-    await expect(page.locator('[data-testid="rename-input"]')).not.toBeVisible();
+    await expect(renameInput).not.toBeVisible();
 
     // Should create new-1.adoc
-    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
 
     // Check file exists on disk
-    const newFileContent = fsSetup.readFile('dir1', 'new-1');
+    const newFileContent = fsSetup.readFile('dir1', 'new-1.adoc');
     expect(newFileContent).toBe('');
 
     // Check sidebar has new file selected
-    await expect(page.locator('[data-testid="file-item"][data-file-path="new-1"]')).toBeVisible();
+    await expect(page.locator('[data-testid="file-item"][data-file-path="new-1.adoc"]')).toBeVisible();
+});
+
+test('Cancelling new file creation creates nothing', async ({ page, fsSetup }) => {
+    await loadInitialDirectory(page, 'dir1');
+
+    await page.click('[data-testid="new-file-button-titlebar"]');
+
+    const renameInput = page.locator('[data-testid="rename-input"]');
+    await expect(renameInput).toBeVisible();
+    await expect(renameInput).toHaveValue('new-1.adoc');
+
+    // Cancel
+    await page.keyboard.press('Escape');
+    await expect(renameInput).not.toBeVisible();
+
+    // Verify no file created
+    expect(fsSetup.exists('dir1', 'new-1.adoc')).toBe(false);
+    // Verify ghost node removed (no file item with that path/name)
+    await expect(page.locator('[data-testid="file-item"][data-file-path="new-1.adoc"]')).not.toBeVisible();
 });
 
 test('Creating multiple new files increments counter', async ({ page, fsSetup }) => {
@@ -266,19 +296,29 @@ test('Creating multiple new files increments counter', async ({ page, fsSetup })
     await expect(page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]')).toBeVisible();
 
     await page.click('[data-testid="new-file-button-titlebar"]');
-    await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
-    await page.keyboard.press('Enter');
-    await expect(page.locator('[data-testid="rename-input"]')).not.toBeVisible();
-    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
+    let renameInput = page.locator('[data-testid="rename-input"]');
+    await expect(renameInput).toBeVisible();
+    await expect(renameInput).toHaveValue('new-1.adoc');
 
+    // Commit new-1
+    await page.keyboard.press('Enter');
+    await expect(renameInput).not.toBeVisible();
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
+
+    // Create second file
     await page.click('[data-testid="new-file-button-titlebar"]');
-    await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
-    await page.keyboard.press('Enter');
-    await expect(page.locator('[data-testid="rename-input"]')).not.toBeVisible();
-    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-2');
+    renameInput = page.locator('[data-testid="rename-input"]');
+    await expect(renameInput).toBeVisible();
+    // Should be new-2 now
+    await expect(renameInput).toHaveValue('new-2.adoc');
 
-    expect(fsSetup.readFile('dir1', 'new-1')).toBe('');
-    expect(fsSetup.readFile('dir1', 'new-2')).toBe('');
+    // Commit new-2
+    await page.keyboard.press('Enter');
+    await expect(renameInput).not.toBeVisible();
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-2.adoc');
+
+    expect(fsSetup.readFile('dir1', 'new-1.adoc')).toBe('');
+    expect(fsSetup.readFile('dir1', 'new-2.adoc')).toBe('');
 });
 
 test('Creating new file auto-saves current dirty file', async ({ page, fsSetup }) => {
@@ -298,7 +338,7 @@ test('Creating new file auto-saves current dirty file', async ({ page, fsSetup }
     await expect(page.locator('[data-testid="rename-input"]')).toBeVisible();
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-testid="rename-input"]')).not.toBeVisible();
-    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
 
     // Check existing file content
     const content = fsSetup.readFile('dir1', 'file1.adoc');
@@ -332,10 +372,10 @@ test('Creating new file in subdirectory via Sidebar', async ({ page, fsSetup }) 
     // Should create new-1.adoc INSIDE subdir
 
     // Allow operation to complete
-    expect(fsSetup.readFile('dir1', 'subdir/new-1')).toBe('');
+    expect(fsSetup.readFile('dir1', 'subdir/new-1.adoc')).toBe('');
 
     // Check it is selected in title bar
-    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1');
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
 
     // Verify TitleBar tooltip updates to subdirectory
     // Since we refactored title bar to use data-testid, querying by title is fine for check, or use data-testid
