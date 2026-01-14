@@ -23,16 +23,24 @@ export interface Expectation {
 }
 
 class TokensStore {
-    @observable accessor tokens: TokenInfo[] = [];
-    @observable accessor activeTokenIndex: number | null = null;
-    @observable accessor expectations: Expectation | null = null;
-    listRef = createRef<HTMLDivElement>();
+
+    constructor() {
+    }
+
+    @observable private accessor _tokens: TokenInfo[] = [];
+    get tokens() { return this._tokens; }
+
+    @observable private accessor _activeTokenIndex: number | null = null;
+    get activeTokenIndex() { return this._activeTokenIndex; }
+
+    @observable private accessor _expectations: Expectation | null = null;
+    get expectations() { return this._expectations; }
 
     private disposables: monaco.IDisposable[] = [];
     private editorDisposables: monaco.IDisposable[] = [];
 
-    constructor() {
-    }
+
+    listRef = createRef<HTMLDivElement>();
 
     @computed
     get checkedTokenIndices(): Set<number> {
@@ -111,6 +119,28 @@ class TokensStore {
         this.disposables.push({ dispose: d1 }, { dispose: d2 });
     }
 
+    @action
+    handleTokenClick(token: TokenInfo) {
+        const editor = editorStore.editor;
+        if (editor) {
+            editor.setSelection(new monaco.Selection(
+                token.line,
+                token.startColumn,
+                token.line,
+                token.endColumn
+            ));
+            editor.revealPositionInCenter({ lineNumber: token.line, column: token.startColumn });
+            editor.focus();
+        }
+    }
+
+    @action
+    dispose() {
+        this.disposables.forEach(d => d.dispose());
+        this.disposables = [];
+        this.cleanupEditorListeners();
+    }
+
     private cleanupEditorListeners() {
         this.editorDisposables.forEach(d => d.dispose());
         this.editorDisposables = [];
@@ -133,30 +163,23 @@ class TokensStore {
             );
 
             runInAction(() => {
-                this.activeTokenIndex = idx !== -1 ? idx : null;
+                this._activeTokenIndex = idx !== -1 ? idx : null;
             });
 
             this.scrollToActiveToken();
         }));
     }
 
-    @action
-    dispose() {
-        this.disposables.forEach(d => d.dispose());
-        this.disposables = [];
-        this.cleanupEditorListeners();
-    }
-
-    async loadExpectations() {
+    private async loadExpectations() {
         const handle = fileSystemStore.currentFileHandle;
         if (!handle) {
-            runInAction(() => this.expectations = null);
+            runInAction(() => this._expectations = null);
             return;
         }
 
         const name = handle.name;
         if (!name.endsWith('.adoc')) {
-            runInAction(() => this.expectations = null);
+            runInAction(() => this._expectations = null);
             return;
         }
 
@@ -164,7 +187,7 @@ class TokensStore {
         const jsonHandle = await fileSystemStore.findSiblingFile(handle, jsonName);
 
         if (!jsonHandle) {
-            runInAction(() => this.expectations = null);
+            runInAction(() => this._expectations = null);
             return;
         }
 
@@ -173,16 +196,16 @@ class TokensStore {
             const text = await file.text();
             const json = JSON.parse(text);
             runInAction(() => {
-                this.expectations = json;
+                this._expectations = json;
             });
         } catch (e) {
             console.error('Error loading expectations', e);
-            runInAction(() => this.expectations = null);
+            runInAction(() => this._expectations = null);
         }
     }
 
     @action
-    updateTokens() {
+    private updateTokens() {
         const editor = editorStore.editor;
         if (!editor) return;
 
@@ -216,26 +239,11 @@ class TokensStore {
         });
 
         runInAction(() => {
-            this.tokens = flatTokens;
+            this._tokens = flatTokens;
         });
     }
 
-    @action
-    handleTokenClick(token: TokenInfo) {
-        const editor = editorStore.editor;
-        if (editor) {
-            editor.setSelection(new monaco.Selection(
-                token.line,
-                token.startColumn,
-                token.line,
-                token.endColumn
-            ));
-            editor.revealPositionInCenter({ lineNumber: token.line, column: token.startColumn });
-            editor.focus();
-        }
-    }
-
-    scrollToActiveToken() {
+    private scrollToActiveToken() {
         if (this.activeTokenIndex !== null && this.activeTokenIndex !== -1 && this.listRef.current) {
             const el = this.listRef.current.children[this.activeTokenIndex] as HTMLElement;
             if (el) {

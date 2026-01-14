@@ -20,17 +20,25 @@ Click the "Help" icon in the title bar to see this message again.
 // MARKER: WELCOME_CONTENT_END
 
 export class EditorStore {
-    @observable accessor content: string = WELCOME_CONTENT;
-    editor: monaco.editor.IStandaloneCodeEditor | null = null;
-    disposers: (() => void)[] = [];
+
+    constructor() {}
+    
+    @observable private accessor _content: string = WELCOME_CONTENT;
+    get content() { return this._content; }
+
+    private _editor: monaco.editor.IStandaloneCodeEditor | null = null;
+    get editor() { return this._editor; }
+
+    private _disposers: (() => void)[] = [];
+
     focusCurrentFileItem: (() => void) | undefined = undefined;
 
     @action
     setContent(newContent: string) {
-        if (this.content !== newContent) {
-            this.content = newContent;
-            if (this.editor && this.editor.getValue() !== newContent) {
-                this.editor.setValue(newContent);
+        if (this._content !== newContent) {
+            this._content = newContent;
+            if (this._editor && this._editor.getValue() !== newContent) {
+                this._editor.setValue(newContent);
             }
         }
     }
@@ -47,7 +55,7 @@ export class EditorStore {
 
     @action
     setLanguage(extensionOrFilename: string) {
-        if (!this.editor) return;
+        if (!this._editor) return;
 
         // Monaco's setModelLanguage needs an ID.
         let langId = 'plaintext';
@@ -90,7 +98,7 @@ export class EditorStore {
             }
         }
 
-        const model = this.editor.getModel();
+        const model = this._editor.getModel();
         if (model) {
             monaco.editor.setModelLanguage(model, langId);
         }
@@ -98,15 +106,15 @@ export class EditorStore {
 
     @action
     focusEditor() {
-        this.editor?.focus();
+        this._editor?.focus();
     }
 
     @action
     initialize(container: HTMLDivElement, initialTheme: string) {
         registerAsciiDoc();
 
-        this.editor = monaco.editor.create(container, {
-            value: this.content,
+        this._editor = monaco.editor.create(container, {
+            value: this._content,
             language: 'asciidoc',
             theme: initialTheme,
             automaticLayout: true,
@@ -114,31 +122,31 @@ export class EditorStore {
         });
 
         // Sync content changes
-        const model = this.editor.getModel();
+        const model = this._editor.getModel();
         if (model) {
             const contentDisposable = model.onDidChangeContent(() => {
                 const value = model.getValue();
-                if (value !== this.content) {
+                if (value !== this._content) {
                     this.setContent(value);
                 }
             });
-            this.disposers.push(() => contentDisposable.dispose());
+            this._disposers.push(() => contentDisposable.dispose());
         }
 
         // Handle Escape to focus sidebar
         // PRECONDITION: Only if other widgets are NOT visible
-        this.editor.addCommand(monaco.KeyCode.Escape, () => {
+        this._editor.addCommand(monaco.KeyCode.Escape, () => {
             this.focusCurrentFileItem?.();
         }, '!findWidgetVisible && !suggestWidgetVisible && !parameterHintsVisible && !referenceSearchVisible && !renameInputVisible');
     }
 
     @action
     dispose() {
-        this.disposers.forEach(dispose => dispose());
-        this.disposers = [];
-        if (this.editor) {
-            this.editor.dispose();
-            this.editor = null;
+        this._disposers.forEach(dispose => dispose());
+        this._disposers = [];
+        if (this._editor) {
+            this._editor.dispose();
+            this._editor = null;
         }
     }
 }

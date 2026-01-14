@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures.ts';
-import { loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { expectContextMenuOpen, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
     fsSetup.cleanup();
@@ -14,8 +14,7 @@ test('should show context menu for file with correct options', async ({ page }) 
     await fileItem.click({ button: 'right' });
 
     // Verify context menu appears
-    const contextMenu = page.locator('[data-testid="sidebar-contextmenu"]');
-    await expect(contextMenu).toBeVisible();
+    const contextMenu = await expectContextMenuOpen(page);
 
     // Verify options
     await expect(contextMenu).toContainText('Open');
@@ -34,8 +33,7 @@ test('should show context menu for directory with correct options', async ({ pag
     await dirItem.click({ button: 'right' });
 
     // Verify context menu appears
-    const contextMenu = page.getByTestId('sidebar-contextmenu');
-    await expect(contextMenu).toBeVisible();
+    const contextMenu = await expectContextMenuOpen(page);
 
     // Verify options
     await expect(contextMenu).toContainText('New File');
@@ -148,6 +146,9 @@ test('should execute action with Enter key', async ({ page }) => {
 
     const fileItem = page.locator('[data-file-path="file1.txt"]');
     await fileItem.click({ button: 'right' });
+    
+    // Verify context menu appears
+    await expectContextMenuOpen(page);
 
     // Navigate to Rename
     await page.keyboard.press('ArrowDown'); // Focus Open
@@ -174,8 +175,8 @@ test('should show context menu for root directory', async ({ page }) => {
     const header = page.getByTestId('sidebar-header');
     await header.click({ button: 'right' });
 
-    const contextMenu = page.getByTestId('sidebar-contextmenu');
-    await expect(contextMenu).toBeVisible();
+    // Verify context menu appears
+    const contextMenu = await expectContextMenuOpen(page);
 
     // Verify options
     await expect(contextMenu).toContainText('New File');

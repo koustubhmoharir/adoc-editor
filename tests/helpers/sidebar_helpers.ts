@@ -76,3 +76,8 @@ export async function loadInitialDirectory(page: Page, dir: string) {
     await expect(page.locator('data-testid=file-item').first()).toBeVisible();
 }
 
+export async function expectContextMenuOpen(page: Page) {
+    const contextMenu = page.locator('[data-testid="sidebar-contextmenu"]');
+    await expect(contextMenu).toBeVisible();
+    return contextMenu;
+}
