@@ -14,6 +14,18 @@ export const sidebar = style({
     position: 'relative'
 });
 
+export const resizeHandle = style({
+    width: '8px',
+    cursor: 'col-resize',
+    ':hover': {
+        borderLeft: `2px solid ${themeVars.color.selectionBackground}`
+    },
+    // Prevent text selection during drag
+    userSelect: 'none',
+    // Make it transparent but interactive
+    backgroundColor: 'transparent',
+});
+
 export const emptyState = style({
     padding: '4px 8px',
     color: themeVars.color.textSecondary,
@@ -31,9 +43,6 @@ export const itemBase = style({
     padding: '4px 8px 4px 0',
     display: 'flex',
     alignItems: 'center',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
     color: themeVars.color.text,
     ':hover': {
         backgroundColor: themeVars.color.hoverBackground
@@ -44,6 +53,14 @@ export const itemBase = style({
         outlineWidth: '1px',
         outlineOffset: '-1px'
     }
+});
+
+export const itemText = style({
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
 });
 
 export const directoryContainer = style({

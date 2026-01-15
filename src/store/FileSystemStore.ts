@@ -535,6 +535,35 @@ class FileSystemStore extends EffectAwareModel {
     @observable private accessor _highlightedPath: string | null = null;
     get highlightedPath() { return this._highlightedPath; }
 
+    @observable private accessor _sidebarWidth: number = 250;
+    get sidebarWidth() { return this._sidebarWidth; }
+
+    @action
+    setSidebarWidth(width: number) {
+        this._sidebarWidth = width;
+    }
+
+    @action.bound
+    handleSidebarResizeStart(e: React.MouseEvent) {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startWidth = this.sidebarWidth;
+
+        const handleMouseMove = action((mmE: MouseEvent) => {
+            const delta = mmE.clientX - startX;
+            const newWidth = Math.max(150, startWidth + delta);
+            this.setSidebarWidth(newWidth);
+        });
+
+        const handleMouseUp = () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    }
+
     @observable private accessor _contextMenuTarget: FileSystemNodeModelBase | null = null;
     get contextMenuTarget() { return this._contextMenuTarget; }
 
@@ -1307,7 +1336,7 @@ class FileSystemStore extends EffectAwareModel {
     @action
     handleSearchResultClick(item: FileSystemNodeModel) {
         this.openFileInEditor(item, false).then(() => {
-                editorStore.focusEditor();
+            editorStore.focusEditor();
         });
         this.closeSearch();
     }

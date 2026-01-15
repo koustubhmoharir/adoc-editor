@@ -230,6 +230,7 @@ export class FsTestSetup {
                     // We'll assume recursive: true behavior always
                     // But if it's a file, it should probably fail?
                     // Just overwrite or ignore? Native fs throws ENOTDIR
+                    throw new Error('Not a directory path');
                 }
                 current = next;
             }

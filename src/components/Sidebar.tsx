@@ -72,6 +72,7 @@ const FileTreeItem: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }
             data-file-path={!isDirectory ? node.path : undefined}
             data-dir-path={isDirectory ? node.path : undefined}
             data-selected={isSelected}
+            title={node.name}
         >
             {isRenaming ? (
                 <RenameControl node={node} />
@@ -89,7 +90,7 @@ const FileTreeItem: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }
                     ) : (
                         <i className={`fas fa-file-lines ${styles.fileIcon}`} />
                     )}
-                    <span>{node.name}</span>
+                    <span className={styles.itemText}>{node.name}</span>
                 </>
             )}
         </div>
@@ -123,7 +124,7 @@ const SidebarHeader: React.FC = observer(() => {
             data-testid="sidebar-header"
         >
             <i className={`fas fa-folder-open ${styles.rootFolderIcon}`} />
-            <span className={styles.headerText}>{rootNode.name}</span>
+            <span className={`${styles.headerText} ${styles.itemText}`}>{rootNode.name}</span>
 
             <button
                 className={styles.searchToggleButton}
@@ -184,7 +185,7 @@ const SidebarSearchResults: React.FC = observer(() => {
                         data-file-path={item.path}
                         data-highlighted={model.isHighlighted}
                     >
-                        <span className={styles.resultName}>{item.name}</span>
+                        <span className={`${styles.resultName} ${styles.itemText}`}>{item.name}</span>
                         <span className={styles.resultPath} title={item.path}>{item.path.substring(0, item.path.length - item.name.length - 1)}</span>
                     </div>
                 );
@@ -231,24 +232,35 @@ export const Sidebar: React.FC = observer(() => {
     const rootNode = fileSystemStore.rootNode;
 
     return (
-        <div className={styles.sidebar}>
-            <SidebarContextMenu />
+        <>
+            <div
+                className={styles.sidebar}
+                style={{ width: `${fileSystemStore.sidebarWidth}px`, flexShrink: 0 }}
+                data-testid="sidebar"
+            >
+                <SidebarContextMenu />
 
-            {rootNode ?
-                <>
-                    <SidebarHeader />
-                    <SidebarSearch />
-                    <div className={styles.treeContainer}>
-                        {fileSystemStore.searchQuery ? (
-                            <SidebarSearchResults />
-                        ) : (
-                            <SidebarTree />
-                        )}
-                    </div>
-                </> :
+                {rootNode ?
+                    <>
+                        <SidebarHeader />
+                        <SidebarSearch />
+                        <div className={styles.treeContainer}>
+                            {fileSystemStore.searchQuery ? (
+                                <SidebarSearchResults />
+                            ) : (
+                                <SidebarTree />
+                            )}
+                        </div>
+                    </> :
 
-                <SidebarEmptyState />
-            }
-        </div>
+                    <SidebarEmptyState />
+                }
+            </div>
+            <div
+                className={styles.resizeHandle}
+                onMouseDown={fileSystemStore.handleSidebarResizeStart}
+                data-testid="sidebar-resize-handle"
+            />
+        </>
     );
 });
