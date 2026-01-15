@@ -32,6 +32,7 @@ export class EditorStore {
     private _disposers: (() => void)[] = [];
 
     focusCurrentFileItem: (() => void) | undefined = undefined;
+    setDirty: (() => void) | undefined = undefined;
 
     @action
     setContent(newContent: string) {
@@ -40,6 +41,7 @@ export class EditorStore {
             if (this._editor && this._editor.getValue() !== newContent) {
                 this._editor.setValue(newContent);
             }
+            this.setDirty?.();
         }
     }
 

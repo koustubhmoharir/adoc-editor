@@ -53,6 +53,12 @@ export const SidebarContextMenu = observer(() => {
             {targetNode?.kind === 'directory' && (
                 <>
                     <button className={styles.contextMenuItem} onClick={() => {
+                        fileSystemStore.refresh(targetNode as any);
+                    }} data-testid="ctx-refresh">
+                        <i className={`fas fa-sync-alt ${styles.contextMenuIcon}`} />
+                        Refresh
+                    </button>
+                    <button className={styles.contextMenuItem} onClick={() => {
                         fileSystemStore.createNewFile(targetNode.handle as FileSystemDirectoryHandle);
                     }} data-testid="ctx-new-file">
                         <i className={`fas fa-file-circle-plus ${styles.contextMenuIcon}`} />

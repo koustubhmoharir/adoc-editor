@@ -1,4 +1,4 @@
-import { observable, action, runInAction, reaction, computed } from "mobx";
+import { observable, action, runInAction, computed } from "mobx";
 import { get as getDbValue, set as setDbValue, clear as clearAllDbValues } from 'idb-keyval';
 import { Fzf } from 'fzf';
 import { editorStore } from './EditorStore';
@@ -36,11 +36,11 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
         this._handle = data.handle;
         this.parent = parent;
     }
-    
+
     readonly kind: Kind;
     isFile(): this is FileNodeModel { return this.kind === 'file'; }
     isDirectory(): this is DirectoryNodeModel { return this.kind === 'directory'; }
-    
+
     @observable accessor _path: string;
     get path() { return this._path; }
 
@@ -235,7 +235,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
     }
 
     abstract handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent): void;
-    
+
     @action
     private async createRealNode(finalName: string): Promise<boolean> {
         if (!this.parent) return false;
@@ -269,10 +269,6 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
                 }
             } catch (e) { /* Good */ }
 
-            let n!: FileSystemNodeModelBase;
-            if (n.isFile()) {
-                n._handle = await this.parent.handle.getFileHandle(finalName, { create: true });
-            }
             // 2. Create
             let self: FileSystemNodeModelBase = this; // TypeScript hack to get type assertion functions below to work
             if (self.isFile()) {
@@ -293,7 +289,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
             this._isRenaming = false;
 
             // Refresh tree to ensure sync and proper sorting
-            await fileSystemStore.refreshTree(this.path, this.kind === 'file');
+            await fileSystemStore.refresh(this.parent?.isRoot ? undefined : this.parent, this._path, true);
 
             return true;
         } catch (e) {
@@ -381,7 +377,9 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
                 const parentPath = this.path.substring(0, this.path.lastIndexOf('/'));
                 const newPath = parentPath ? `${parentPath}/${finalName}` : finalName;
 
-                await fileSystemStore.refreshTree(newPath); // This is too heavy. We shouldn't do this.
+                // Refresh the parent directory
+                const parentNode = this.parent;
+                await fileSystemStore.refresh(parentNode?.isRoot ? undefined : parentNode as DirectoryNodeModel, newPath);
                 return true;
             } catch (error) {
                 console.error('Rename failed:', error);
@@ -458,14 +456,11 @@ class FileSystemStore extends EffectAwareModel {
         this.restoreDirectory();
         editorStore.focusCurrentFileItem = this.focusCurrentFileInSidebar;
         // React to editor content changes to set dirty state
-        reaction(
-            () => editorStore.content,
-            () => {
-                if (!this.isLoading && this.currentFileHandle) {
-                    this._dirty = true;
-                }
+        editorStore.setDirty = action(() => {
+            if (!this.isLoading && this.currentFileHandle) {
+                this._dirty = true;
             }
-        );
+        });
 
         // Save on close/refresh
         window.addEventListener('beforeunload', () => {
@@ -609,7 +604,7 @@ class FileSystemStore extends EffectAwareModel {
                 }, null);
             });
             await this.pushDbOperation(setDbValue('directoryHandle', handle), 'Failed to persist directory handle:');
-            await this.refreshTree();
+            await this.refresh();
         } catch (error) {
             console.error('Error opening directory:', error);
         }
@@ -1081,7 +1076,9 @@ class FileSystemStore extends EffectAwareModel {
             }
             await parentDir.removeEntry(node.name, { recursive: node.kind === 'directory' });
 
-            await this.refreshTree();
+            // Refresh the parent directory
+            const parent = node.parent;
+            await this.refresh(parent?.isRoot ? undefined : parent);
         } catch (error) {
             console.error('Error deleting node:', error);
             await dialog.alert(`Failed to delete ${node.kind}: ${error}`);
@@ -1089,46 +1086,55 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    async refreshTree(focusPath?: string, openFile: boolean = false) {
-        if (!this.rootNode) return;
+    async refresh(node?: DirectoryNodeModel, focusPath?: string, openFile: boolean = false) {
+        // Default to root if no node provided
+        const targetNode = node || this.rootNode;
+        if (!targetNode) return;
 
-        // This might trigger a prompt if not granted, so it should ideally be called from a user action 
-        // if permission is not 'granted'.
-        const hasPerm = await this.verifyPermission(this.rootNode.handle);
+        // Verify permission if root (needed?) or simple check
+        // For root, we generally already checked, but let's be safe.
+        // For subdirectories, permission is inherited usually.
+        const hasPerm = await this.verifyPermission(targetNode.handle);
         if (!hasPerm) return;
 
-        const tree = await this.readDirectory(this.rootNode.handle, this.rootNode);
-        runInAction(() => {
-            if (this._rootNode) {
-                this._rootNode.children = tree;
-            }
+        const pathBase = targetNode.isRoot ? '' : targetNode.path;
+        const tree = await this.readDirectory(targetNode.handle, targetNode, pathBase);
 
-            // Handle pending focus
-            if (focusPath) {
-                const findNode = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
-                    for (const node of nodes) {
-                        if (node.path === focusPath) return node;
-                        if (node.kind === 'directory' && node.children) {
-                            const found = findNode(node.children);
-                            if (found) return found;
-                        }
-                    }
-                }
-                const nodeToFocus = findNode(this.rootNode?.children ?? []);
-                if (nodeToFocus) {
-                    nodeToFocus.scheduleEffect(() => {
-                        nodeToFocus.treeItemRef.current?.focus();
-                    });
-                    if (openFile && nodeToFocus.kind === 'file') {
-                        this.openFileInEditor(nodeToFocus);
+        runInAction(() => {
+            targetNode.children = tree;
+        });
+
+        // Handle pending focus - RECURSIVE search from targetNode
+        if (focusPath) {
+            const findNode = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
+                for (const n of nodes) {
+                    if (n.path === focusPath) return n;
+                    if (n.kind === 'directory' && n.children) {
+                        const found = findNode(n.children);
+                        if (found) return found;
                     }
                 }
             }
-        });
-        if (!focusPath) {
-            const node = await this.findNodeByHandle(this._currentFileHandle);
+            const nodeToFocus = findNode(targetNode.children ?? []);
+            if (nodeToFocus) {
+                nodeToFocus.scheduleEffect(() => {
+                    nodeToFocus!.treeItemRef.current?.focus();
+                });
+                if (openFile && nodeToFocus.kind === 'file') {
+                    await this.openFileInEditor(nodeToFocus);
+                }
+            }
+        }
+
+        // Current file check (global) - we might need to re-verify if the current file was inside the refreshed tree
+        if (!focusPath && this.currentFileHandle) {
+            // Only if we haven't just focused something else.
+            // We can check if `currentFileHandle` is still valid in the tree?
+            // Actually `refreshTree` logic for re-selecting was:
+            const node = await this.findNodeByHandle(this.currentFileHandle);
             if (node?.kind === 'file') {
                 runInAction(() => {
+                    // Update handle reference in case it changed (it shouldn't for same file)
                     this._currentFileHandle = node.handle;
                     this._highlightedPath = node.path;
                 });
@@ -1254,7 +1260,7 @@ class FileSystemStore extends EffectAwareModel {
                 // rootNode is definitely set above
                 const perm = await this.rootNode!.handle.queryPermission({ mode: 'read' });
                 if (perm === 'granted') {
-                    await this.refreshTree();
+                    await this.refresh();
                     await this.restoreCollapsedPaths();
                     await this.restoreLastFile();
                 } else {

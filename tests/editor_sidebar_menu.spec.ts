@@ -102,9 +102,11 @@ test('should create new file from context menu', async ({ page }) => {
     // Commit
     await page.keyboard.press('Enter');
     await expect(renameInput).not.toBeVisible();
+    // Verify new file is visible
     await expect(page.locator('[data-testid="file-item"][data-file-path^="folder1/new-"]')).toBeVisible();
 
-
+    // Verify it is NOT dirty
+    await expect(page.getByTestId('dirty-indicator')).not.toBeVisible();
 });
 
 test('should navigate context menu items with arrow keys', async ({ page }) => {

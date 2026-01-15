@@ -25,6 +25,9 @@ test('Opening a directory shows all adoc files within it recursively', async ({ 
     await expect(page.locator('[data-testid="directory-item"][data-dir-path="subdir"]')).toBeVisible();
     await expect(page.locator('[data-testid="file-item"][data-file-path="subdir/nested.adoc"]')).toBeVisible();
     await expect(page.locator('[data-testid="file-item"][data-file-path="other.txt"]')).toBeVisible();
+
+    // Verify no dirty indicator initially
+    await expect(page.getByTestId('dirty-indicator')).not.toBeVisible();
 });
 
 test('Clicking on a file opens the file in the editor', async ({ page }) => {
@@ -42,6 +45,9 @@ test('Clicking on a file opens the file in the editor', async ({ page }) => {
 
     // Check title bar name
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
+
+    // Check dirty indicator is NOT visible
+    await expect(page.getByTestId('dirty-indicator')).not.toBeVisible();
 });
 
 test('If there are no unsaved changes, opening a new directory does not change content on disk', async ({ page, fsSetup }) => {
@@ -270,6 +276,9 @@ test('Creating a new file from Title Bar', async ({ page, fsSetup }) => {
 
     // Check sidebar has new file selected
     await expect(page.locator('[data-testid="file-item"][data-file-path="new-1.adoc"]')).toBeVisible();
+
+    // Verify NEW file is valid and clean (not dirty)
+    await expect(page.getByTestId('dirty-indicator')).not.toBeVisible();
 });
 
 test('Cancelling new file creation creates nothing', async ({ page, fsSetup }) => {
@@ -343,6 +352,9 @@ test('Creating new file auto-saves current dirty file', async ({ page, fsSetup }
     // Check existing file content
     const content = fsSetup.readFile('dir1', 'file1.adoc');
     expect(content).toBe('Modified content.');
+
+    // New file should be clean
+    await expect(page.getByTestId('dirty-indicator')).not.toBeVisible();
 });
 
 test('Creating new file in subdirectory via Sidebar', async ({ page, fsSetup }) => {

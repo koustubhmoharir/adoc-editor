@@ -133,18 +133,6 @@ const SidebarHeader: React.FC = observer(() => {
             >
                 <i className="fas fa-search" />
             </button>
-
-            <button
-                className={styles.newFileButton}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    fileSystemStore.createNewFile();
-                }}
-                title={`New File in ${rootNode.name}`}
-                data-testid="new-file-button-sidebar"
-            >
-                <i className="fas fa-file-circle-plus" />
-            </button>
         </div>
     );
 });

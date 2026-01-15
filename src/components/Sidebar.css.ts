@@ -127,31 +127,8 @@ export const actionButton = style({
     }
 });
 
-export const newFileButton = style({
-    marginLeft: 'auto',
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    color: themeVars.color.newFileIcon,
-    padding: '0 4px',
-    borderRadius: '4px',
-    fontSize: '14px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0, // Hidden by default
-    transition: 'opacity 0.2s',
-    selectors: {
-        [`${sidebar}:hover &`]: {
-            opacity: 1 // Show on hover of parent
-        },
-    },
-    ':hover': {
-        backgroundColor: themeVars.color.hoverBackground
-    }
-});
-
 export const searchToggleButton = style({
+    marginLeft: "auto",
     position: "relative",
     top: "1px",
     background: 'none',
