@@ -1,141 +1,304 @@
 import { Page } from '@playwright/test';
-import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Helper to create a temporary directory unique to the test
-export const createTempDir = () => {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'adoc-editor-test-'));
-};
+type InMemoryEntry = InMemoryFile | InMemoryDirectory;
+
+interface InMemoryFile {
+    kind: 'file';
+    content: Uint8Array;
+}
+
+interface InMemoryDirectory {
+    kind: 'directory';
+    children: Map<string, InMemoryEntry>;
+}
 
 export class FsTestSetup {
-    private readonly tempDirs = new Map<string, string>();
+    private readonly roots = new Map<string, InMemoryDirectory>();
 
     cleanup() {
-        for (const path of this.tempDirs.values()) {
-            try {
-                fs.rmSync(path, { recursive: true, force: true });
-            } catch (e) {
-                console.error(`Failed to cleanup temp dirs`, e);
-            }
+        this.roots.clear();
+    }
+
+    private getRoot(dirName: string): InMemoryDirectory {
+        let root = this.roots.get(dirName);
+        if (!root) {
+            root = { kind: 'directory', children: new Map() };
+            this.roots.set(dirName, root);
         }
-        this.tempDirs.clear();
+        return root;
+    }
+
+    private traversePath(root: InMemoryDirectory, parts: string[], create: boolean = false): InMemoryEntry | undefined {
+        let current: InMemoryEntry = root;
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (current.kind !== 'directory') {
+                return undefined;
+            }
+            let next = current.children.get(part);
+            if (!next) {
+                if (create) {
+                    // processing last part?
+                    if (i === parts.length - 1) {
+                        // caller should handle creating the final node if specific type needed, 
+                        // but here we are just traversing intermediate directories usually
+                        // actually traversePath is usually for finding.
+                        // Let's make helper for ensureDirectory
+                        return undefined;
+                    }
+                    // Create intermediate directory
+                    next = { kind: 'directory', children: new Map() };
+                    current.children.set(part, next);
+                } else {
+                    return undefined;
+                }
+            }
+            current = next;
+        }
+        return current;
+    }
+
+    // Helper to ensure a directory path exists and return the directory node
+    private ensureDirectory(root: InMemoryDirectory, parts: string[]): InMemoryDirectory {
+        let current = root;
+        for (const part of parts) {
+            let next = current.children.get(part);
+            if (!next) {
+                next = { kind: 'directory', children: new Map() };
+                current.children.set(part, next);
+            } else if (next.kind !== 'directory') {
+                throw new Error(`Path segment '${part}' is a file, expected directory`);
+            }
+            current = next;
+        }
+        return current;
     }
 
     createFile(dirName: string, relativePath: string, content: string | Buffer) {
-        let baseDir = this.tempDirs.get(dirName);
-        if (baseDir === undefined) {
-            baseDir = createTempDir();
-            this.tempDirs.set(dirName, baseDir);
-        }
-        const fullPath = path.join(baseDir, relativePath);
-        const folder = path.dirname(fullPath);
-        if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
+        const root = this.getRoot(dirName);
+        const parts = relativePath.split(/[/\\]/);
+        const fileName = parts.pop();
+        if (!fileName) throw new Error("Invalid file path");
 
-        if (Buffer.isBuffer(content)) {
-            fs.writeFileSync(fullPath, content);
+        const parent = this.ensureDirectory(root, parts);
+
+        let buffer: Uint8Array;
+        if (typeof content === 'string') {
+            buffer = new TextEncoder().encode(content);
+        } else if (Buffer.isBuffer(content)) {
+            buffer = new Uint8Array(content);
         } else {
-            fs.writeFileSync(fullPath, content as string);
+            throw new Error("Invalid content type");
         }
+
+        parent.children.set(fileName, { kind: 'file', content: buffer });
     }
 
     createDirectory(dirName: string, relativePath: string) {
-        let baseDir = this.tempDirs.get(dirName);
-        if (baseDir === undefined) {
-            baseDir = createTempDir();
-            this.tempDirs.set(dirName, baseDir);
-        }
-        const fullPath = path.join(baseDir, relativePath);
-        if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
+        const root = this.getRoot(dirName);
+        const parts = relativePath.split(/[/\\]/);
+        this.ensureDirectory(root, parts);
     }
 
     readFile(dirName: string, relativePath: string): string {
-        const baseDir = this.tempDirs.get(dirName);
-        if (baseDir === undefined) throw new Error(`Directory not created for ${dirName}`);
-        return fs.readFileSync(path.join(baseDir, relativePath), 'utf8');
+        const root = this.getRoot(dirName);
+        const parts = relativePath.split(/[/\\]/);
+        const entry = this.traversePath(root, parts);
+
+        if (!entry || entry.kind !== 'file') {
+            throw new Error(`File not found: ${relativePath} in ${dirName}`);
+        }
+
+        return new TextDecoder().decode(entry.content);
     }
 
     exists(dirName: string, relativePath: string): boolean {
-        const baseDir = this.tempDirs.get(dirName);
-        if (baseDir === undefined) throw new Error(`Directory not created for ${dirName}`);
-        return fs.existsSync(path.join(baseDir, relativePath));
+        const root = this.getRoot(dirName);
+        const parts = relativePath.split(/[/\\]/);
+        const entry = this.traversePath(root, parts);
+        return entry !== undefined;
     }
 
     // Renamed from init to register to verify it is only called once per page
     async register(page: Page) {
-        // Helper to resolve path based on prefix (dir1 or dir2)
-        const resolvePath = (virtualPath: string) => {
+        const resolveNode = (virtualPath: string): { parent: InMemoryDirectory, name: string, entry: InMemoryEntry | undefined } => {
             if (virtualPath === '.') throw new Error(`A single . as path is not supported`);
             const parts = virtualPath.split(/[/\\]/);
-            const root = parts[0];
-            const rest = parts.slice(1).join(path.sep);
+            const rootName = parts[0];
+            const rest = parts.slice(1);
 
-            const baseDir = this.tempDirs.get(root);
-            if (baseDir === undefined) throw new Error(`Directory not created for ${root}`);
-            return path.join(baseDir, rest);
+            // If path is just "rootName", we treat it as the root directory itself?
+            // The original implementation joined with a temp dir base.
+            // Here "rootName" corresponds to the key in this.roots.
+
+            const root = this.getRoot(rootName);
+            if (rest.length === 0) {
+                // It's the root itself.
+                // We can't really return "parent" of root easily, but usually we operate on children.
+                // Let's handle special case or assume paths always have at least one component if manipulating files?
+                // But readDir("root") is valid.
+                return { parent: undefined as any, name: rootName, entry: root };
+            }
+
+            const parentParts = rest.slice(0, rest.length - 1);
+            const fileName = rest[rest.length - 1];
+
+            // Traverse to parent
+            let parent = root;
+            for (const part of parentParts) {
+                const next = parent.children.get(part);
+                if (!next || next.kind !== 'directory') {
+                    throw new Error(`Path not found: ${virtualPath}`);
+                }
+                parent = next as InMemoryDirectory;
+            }
+
+            const entry = parent.children.get(fileName);
+            return { parent, name: fileName, entry };
         };
 
-        // Expose bindings to bridge the mocked FS access in browser to Node fs
+        // Need to be careful about closure capturing 'this'.
+        // We bind the methods to 'this' implicitly by using arrow functions or accessing 'this.roots' directly.
+
         await page.exposeFunction('__fs_readDir', async (dirPath: string) => {
-            const fullPath = resolvePath(dirPath);
-            if (!fs.existsSync(fullPath)) return [];
-            const entries = fs.readdirSync(fullPath, { withFileTypes: true });
-            return entries.map(e => ({
-                name: e.name,
-                kind: e.isDirectory() ? 'directory' : 'file'
-            }));
+            try {
+                const { entry } = resolveNode(dirPath);
+                if (!entry || entry.kind !== 'directory') return [];
+
+                return Array.from(entry.children.entries()).map(([name, child]) => ({
+                    name,
+                    kind: child.kind
+                }));
+            } catch (e) {
+                return [];
+            }
         });
 
         await page.exposeFunction('__fs_readFile', async (filePath: string) => {
-            const fullPath = resolvePath(filePath);
-            const buffer = fs.readFileSync(fullPath);
-            return buffer.toString('base64');
+            const { entry } = resolveNode(filePath);
+            if (!entry || entry.kind !== 'file') throw new Error(`File not found: ${filePath}`);
+
+            // Convert Uint8Array to Base64 string
+            // Node.js buffer handling
+            return Buffer.from(entry.content).toString('base64');
         });
 
         await page.exposeFunction('__fs_writeFile', async (filePath: string, content: string) => {
-            const fullPath = resolvePath(filePath);
-            const dir = path.dirname(fullPath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(fullPath, content);
+            // Write file, creating directories if needed. 
+            // Reuse logic from createDirectory/createFile but adapted for single path string
+            const parts = filePath.split(/[/\\]/);
+            const rootName = parts[0];
+            const rest = parts.slice(1);
+            if (rest.length === 0) throw new Error("Cannot write to root directory directly");
+
+            const root = this.getRoot(rootName);
+            const parentParts = rest.slice(0, rest.length - 1);
+            const fileName = rest[rest.length - 1];
+
+            const parent = this.ensureDirectory(root, parentParts);
+
+            // Content matches fs_test_setup: string (legacy) or buffer? 
+            // The exposed function receives string. fs_mock sends string buffer (sometimes accumulated).
+            // in fs_mock.js: window.__fs_writeFile(path, contentBuffer);
+            // In original fs_test_setup: fs.writeFileSync(fullPath, content);
+
+            // We'll treat it as string and encode to utf8 bytes
+            const buffer = new TextEncoder().encode(content);
+            parent.children.set(fileName, { kind: 'file', content: buffer });
         });
 
         await page.exposeFunction('__fs_mkdir', async (dirPath: string) => {
-            const fullPath = resolvePath(dirPath);
-            if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
+            const parts = dirPath.split(/[/\\]/);
+            const rootName = parts[0];
+            const rest = parts.slice(1);
+            const root = this.getRoot(rootName);
+
+            // Recursive creation
+            let current = root;
+            for (const part of rest) {
+                let next = current.children.get(part);
+                if (!next) {
+                    next = { kind: 'directory', children: new Map() };
+                    current.children.set(part, next);
+                } else if (next.kind !== 'directory') {
+                    // Error or ignore? fs.mkdir with recursive:true ignores existing dirs but fails on files
+                    // We'll assume recursive: true behavior always
+                    // But if it's a file, it should probably fail?
+                    // Just overwrite or ignore? Native fs throws ENOTDIR
+                }
+                current = next;
+            }
         });
 
         await page.exposeFunction('__fs_stat', async (filePath: string) => {
-            const fullPath = resolvePath(filePath);
+            // resolveNode throws if parent not found, return null/error if entry not found
             try {
-                const s = fs.statSync(fullPath);
-                return { isDirectory: s.isDirectory(), isFile: s.isFile() };
+                const { entry } = resolveNode(filePath);
+                if (!entry) throw new Error("Not found");
+                return { isDirectory: entry.kind === 'directory', isFile: entry.kind === 'file' };
             } catch (e) {
-                // Return null or similar if not found? Original threw error to emulate native catch
-                throw new Error(`File not found: ${filePath} (resolved: ${fullPath})`);
+                throw new Error(`File not found: ${filePath}`);
             }
         });
 
         await page.exposeFunction('__fs_rename', async (oldPath: string, newPath: string) => {
-            const fullOldPath = resolvePath(oldPath);
-            const fullNewPath = resolvePath(newPath);
-            // Overwrite destination if exists
-            if (fs.existsSync(fullNewPath)) {
-                fs.rmSync(fullNewPath, { recursive: true, force: true });
+            // Resolve source
+            const source = resolveNode(oldPath);
+            if (!source.entry) throw new Error(`Source not found: ${oldPath}`);
+
+            // Resolve destination parent
+            const newParts = newPath.split(/[/\\]/);
+            const newRootName = newParts[0];
+            const newRest = newParts.slice(1);
+            const newFileName = newRest[newRest.length - 1];
+
+            const root = this.getRoot(newRootName);
+
+            // Need to ensure new parent exists? fs.rename usually implies parent exists.
+            // But let's check.
+            // Also need to handle "overwrite destination if exists" logic from original
+
+            // Logic: remove from old parent, add to new parent.
+
+            // Get new parent
+            // traversePath stops if not found
+            // We assume parent of newPath exists, consistent with fs.rename (usually)
+            // But original implementation used fs.renameSync which requires parents to exist.
+            // AND original implementation did `rmSync` on dest if it existed.
+
+            const destParentParts = newRest.slice(0, newRest.length - 1);
+            let destParent = root;
+            for (const part of destParentParts) {
+                const next = destParent.children.get(part);
+                if (!next || next.kind !== 'directory') throw new Error("Destination parent directory not found");
+                destParent = next;
             }
-            fs.renameSync(fullOldPath, fullNewPath);
+
+            // Remove from source
+            source.parent.children.delete(source.name);
+
+            // Add to dest (overwriting)
+            destParent.children.set(newFileName, source.entry);
         });
 
         await page.exposeFunction('__fs_remove', async (filePath: string) => {
-            const fullPath = resolvePath(filePath);
-            fs.rmSync(fullPath, { recursive: true, force: true });
+            try {
+                const { parent, name, entry } = resolveNode(filePath);
+                if (entry) {
+                    parent.children.delete(name);
+                }
+            } catch (e) {
+                // ignore if not found? 
+                // Original: fs.rmSync(fullPath, { recursive: true, force: true }); which ignores missing
+            }
         });
 
         // Inject the mock implementation
-        // Start one level up from this file (tests/helpers) -> tests/helpers/fs_mock.js
         await page.addInitScript({ path: path.join(__dirname, 'fs_mock.js') });
     }
 }
