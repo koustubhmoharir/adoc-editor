@@ -898,6 +898,35 @@ class FileSystemStore extends EffectAwareModel {
         return `${rootName}/${path.substring(0, lastSlash)}`;
     }
 
+    @computed
+    get currentRelativeFilePath(): string {
+        if (!this.rootNode || !this.currentFileHandle) return '';
+
+        const findPath = (nodes: FileSystemNodeModel[]): string | null => {
+            for (const node of nodes) {
+                if (node.kind === 'file') {
+                    if (node.isCreating) continue;
+                    if (node.handle === this.currentFileHandle) return node.path;
+                } else if (node.kind === 'directory' && node.children) {
+                    const found = findPath(node.children);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+
+        let fullPath = findPath(this.rootNode.children ?? []);
+
+        if (fullPath) return fullPath;
+
+        // If the file is literally a direct child of root, node.path is just "filename".
+        // That fits the requirement "excluding the top-level directory name".
+        // E.g. "README.md" -> "README.md"
+
+        // If fail to find (e.g. loading), fallback to name
+        return this.currentFileHandle.name;
+    }
+
     async createNewFile(parentDirectory?: FileSystemDirectoryHandle) {
         if (!this.rootNode) {
             await dialog.alert('Please open a directory first.');

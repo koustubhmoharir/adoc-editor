@@ -17,7 +17,7 @@ export const TitleBar: React.FC = observer(() => {
                 <h3 className={styles.title}>{appName}</h3>
                 <button
                     className={styles.newFileButton}
-                    onClick={() => fileSystemStore.createNewFile()}
+                    onClick={() => fileSystemStore.createNewFile}
                     title={`New File in ${fileSystemStore.currentDirectoryPath}`}
                     data-testid="new-file-button-titlebar"
                 >
@@ -26,14 +26,21 @@ export const TitleBar: React.FC = observer(() => {
             </div>
 
             <div className={styles.centerSection}>
-                <span className={styles.fileName} data-testid="current-filename">{fileName}</span>
+                <span
+                    className={styles.fileName}
+                    data-testid="current-filename"
+                    title={fileSystemStore.currentRelativeFilePath}
+                    onClick={fileSystemStore.focusCurrentFileInSidebar}
+                >
+                    {fileName}
+                </span>
                 {fileSystemStore.dirty && <span className={styles.dirtyIndicator} data-testid="dirty-indicator">*</span>}
             </div>
 
             <div className={styles.rightSection}>
                 <button
                     className={themeStore.theme === 'light' ? styles.themeButtonDark : styles.themeButtonLight}
-                    onClick={() => themeStore.toggleTheme()}
+                    onClick={themeStore.toggleTheme}
                     data-testid="theme-toggle-button"
                 >
                     {themeStore.theme === 'light' ? <i className="fa-solid fa-moon"></i> : <i className="fa-regular fa-moon"></i>}

@@ -391,10 +391,49 @@ test('Creating new file in subdirectory via Sidebar', async ({ page, fsSetup }) 
 
     // Check it is selected in title bar
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
-    
+
 
     // Verify TitleBar tooltip updates to subdirectory
     // Since we refactored title bar to use data-testid, querying by title is fine for check, or use data-testid
     // The title updates dynamically, so checking attribute on data-testid element is better
     await expect(page.locator('[data-testid="new-file-button-titlebar"]')).toHaveAttribute('title', 'New File in dir1/subdir');
+});
+
+test('Title bar filename tooltip shows relative path and clicking focuses sidebar', async ({ page, fsSetup }) => {
+    // Setup nested structure
+    // structure: root/dirA/fileA.adoc
+    // structure: root/dirA/subdirB/fileB.adoc
+    fsSetup.createFile('dirA', 'fileA.adoc', 'File A');
+    fsSetup.createFile('dirA', 'subdirB/fileB.adoc', 'File B');
+
+    await loadInitialDirectory(page, 'dirA');
+
+    // 1. Open deeply nested file
+    // Check expandability
+    await expect(page.locator('[data-testid="directory-item"][data-dir-path="subdirB"]')).toBeVisible();
+
+    const fileBItem = page.locator('[data-testid="file-item"][data-file-path="subdirB/fileB.adoc"]');
+    await expect(fileBItem).toBeVisible();
+    await fileBItem.click();
+
+    // Verify Title Bar
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('fileB.adoc');
+    // Verify Tooltip
+    // root is dirA. path relative to root is subdirB/fileB.adoc
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveAttribute('title', 'subdirB/fileB.adoc');
+
+    // 2. Test Click to Focus
+
+    // Focus the editor to blur the sidebar item
+    await helpers.getEditorContent(page); // wait for content
+    await page.locator('.monaco-editor').first().click();
+
+    // Verify tree item is NOT focused
+    await expect(fileBItem).not.toBeFocused();
+
+    // Click Title Bar Filename
+    await page.locator('[data-testid="current-filename"]').click();
+
+    // Verify sidebar item IS focused
+    await expect(fileBItem).toBeFocused();
 });

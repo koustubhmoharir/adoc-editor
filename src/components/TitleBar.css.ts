@@ -38,7 +38,11 @@ export const title = style({
 });
 
 export const fileName = style({
-    fontSize: '14px'
+    fontSize: '14px',
+    cursor: 'pointer',
+    ':hover': {
+        textDecoration: 'underline'
+    }
 });
 
 export const dirtyIndicator = style({

@@ -15,8 +15,8 @@ class ThemeStore {
     get theme() { return this._theme; }
     set theme(val: Theme) { this._theme = val; }
 
-    @action
-    toggleTheme = () => {
+    @action.bound
+    toggleTheme() {
         this.theme = this.theme === 'light' ? 'dark' : 'light';
         localStorage.setItem('app-theme', this.theme);
     }
