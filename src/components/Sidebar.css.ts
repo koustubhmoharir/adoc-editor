@@ -128,14 +128,14 @@ export const actionButton = style({
 });
 
 export const searchToggleButton = style({
-    marginLeft: "auto",
+    margin: "-4px -4px -4px auto",
     position: "relative",
     top: "1px",
     background: 'none',
     border: 'none',
     cursor: 'pointer',
     color: themeVars.color.textLight,
-    padding: '0 4px',
+    padding: '5px 4px',
     borderRadius: '4px',
     fontSize: '14px',
     display: 'flex',
