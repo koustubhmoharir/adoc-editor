@@ -9,7 +9,7 @@
         "rebuild": "cross-env PORT=8001 node scripts/verify_rebuild.ts",
         "build": "node scripts/build.ts",
         "test": "cross-env PORT=8001 npx playwright test",
-        "test-debug": "cross-env PORT=8001 DEBUG_TESTS=1 npx playwright test --reporter=list --workers=1",
+        "test-debug": "cross-env ci=true FORCE_COLOR=0 PORT=8001 DEBUG_TESTS=1 npx playwright test --reporter=json --workers=1",
         "test:syntax": "cross-env PORT=8001 npx playwright test tests/syntax_verification.spec.ts",
         "test:editor": "cross-env PORT=8001 npx playwright test \"tests/editor_.*.spec.ts\"",
         "test:components": "cross-env PORT=8001 npx playwright test \"tests/components_.*.spec.ts\"",

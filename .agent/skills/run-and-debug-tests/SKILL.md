@@ -7,7 +7,11 @@ description: Guide for running and debugging tests, including filtering and inte
 
 This skill outlines how to run the project's Playwright test suite, ranging from full suite execution to targeted debugging of individual tests.
 
-Note the very important difference between running tests for verification and running specific tests for debugging failures. The `npm test` commands are for verification and `npm run test-debug` are for debugging. The `npm test` commands produce minimal outputs and should only be used to identify which tests are failing. The `npm run test-debug` commands produce detailed outputs and should be used to debug failing tests one test at a time. **DO NOT** repeat `npm test` commands when debugging as they will not produce sufficiently useful logging information.
+Note the very important difference between running tests for verification and running specific tests for debugging failures. The `npm test` commands are for verification and the `npm run test-debug` command is for debugging. The `npm test` commands produce minimal outputs and should only be used to identify which tests are failing. The `npm run test-debug` command produces detailed outputs and should be used to debug failing tests one test at a time.
+
+**IMPORTANT**: Do not repeat `npm test` commands when debugging as they will not produce sufficiently useful logging information.
+
+**IMPORTANT**: Do not run `npx playwright` directly. Use the `npm run test` or `npm run test-debug` commands instead with appropriate arguments and options for playwright provided after a `--`, for example `npm run test-debug -- -g "test name"`.
 
 ## 1. Running Tests for Verification
 
@@ -22,8 +26,6 @@ Use these standard commands to run one or more suite of tests together.
 
 **Note**: All commands automatically set `PORT=8001`.
 
-**Important**: Do not run `npx playwright` directly. Use the `npm run test` commands instead with appropriate arguments and options. Arguments pass through to playwright and options can be passed through with `--`.
-
 Run multiple spec files with a single command as in the example below:
 ```bash
 npm run test -- tests/editor_filesystem_ops.spec.ts tests/editor_filesystem_ops.spec.ts
@@ -32,7 +34,7 @@ This runs faster than running them separately by reusing the browser context and
 
 ## 2. Debugging Failing Tests
 
-Use the `test-debug` commands to enable detailed browser and dialog logging.
+Use the `test-debug` commands to enable detailed browser and dialog logging. This command also turns off colors and uses the json reporter for maximum readability for tools.
 
 > [!CAUTION]
 > **Avoid massive log output.**
