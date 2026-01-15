@@ -1,6 +1,6 @@
-= AsciiDoc Editor
+= ADoc Editor
 
-Welcome to the AsciiDoc Editor!
+Welcome to the ADoc Editor!
 
 == Features
 

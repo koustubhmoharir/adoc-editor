@@ -1,7 +1,7 @@
 {
     "name": "adoc-editor",
     "version": "1.0.0",
-    "description": "AsciiDoc Editor with Monaco and MobX",
+    "description": "ADoc Editor with Monaco and MobX",
     "type": "module",
     "scripts": {
         "start": "node scripts/build.ts --serve --watch --show-tokens",

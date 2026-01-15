@@ -57,7 +57,7 @@ test('Detects binary file and asks for confirmation (Cancel)', async ({ page }) 
     // Content should NOT change (should remain default or whatever was before)
     // Since we just loaded, it might be the welcome screen.
     const content = await helpers.getEditorContent(page);
-    expect(content).toContain('Welcome to the AsciiDoc Editor');
+    expect(content).toContain('Welcome to the ADoc Editor');
 });
 
 test('Detects binary file and asks for confirmation (Proceed)', async ({ page }) => {
@@ -79,7 +79,7 @@ test('Detects binary file and asks for confirmation (Proceed)', async ({ page })
         const content = await helpers.getEditorContent(page);
         // The binary content 0x00 0x01 might look empty or weird.
         // But it shouldn't be the Welcome message.
-        expect(content).not.toContain('Welcome to the AsciiDoc Editor');
+        expect(content).not.toContain('Welcome to the ADoc Editor');
     }).toPass();
 });
 

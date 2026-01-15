@@ -1,6 +1,6 @@
 # Testing Methodology
 
-This document outlines the testing strategy for the AsciiDoc Editor, covering both syntax highlighting and functional behavior.
+This document outlines the testing strategy for the ADoc Editor, covering both syntax highlighting and functional behavior.
 
 ## Overview
 

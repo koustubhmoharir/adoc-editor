@@ -5,7 +5,7 @@ description: Create a new end-to-end test for editor functionality following pro
 
 # Editor Test Creation
 
-This skill guides the creation of end-to-end tests for the AsciiDoc Editor using Playwright, adhering to the project's specific testing methodology and fixture system.
+This skill guides the creation of end-to-end tests for the ADoc Editor using Playwright, adhering to the project's specific testing methodology and fixture system.
 
 ## 1. Imports & Fixtures
 

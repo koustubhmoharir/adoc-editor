@@ -4,9 +4,9 @@ import { registerAsciiDoc } from '../utils/asciidocMode';
 
 // MARKER: WELCOME_CONTENT_START
 const WELCOME_CONTENT = `
-= AsciiDoc Editor
+= ADoc Editor
 
-Welcome to the AsciiDoc Editor!
+Welcome to the ADoc Editor!
 
 == Features
 
