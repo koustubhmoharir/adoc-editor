@@ -264,3 +264,46 @@ test('should create new directory in subdirectory', async ({ page, fsSetup }) =>
     await expect(page.locator('[data-dir-path="folder1/sub_folder"]')).toBeVisible();
     expect(fsSetup.exists('dir1', 'folder1/sub_folder')).toBe(true);
 });
+
+test('should highlight ghost node and expand parents on creation', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
+    const dirItem = page.locator('[data-dir-path="folder1"]');
+
+    // 1. Context click on folder1
+    await dirItem.click({ button: 'right' });
+    await page.getByTestId('ctx-new-file').click();
+
+    // 2. Expect rename input
+    const renameInput = page.getByTestId('rename-input');
+    await expect(renameInput).toBeVisible();
+    await expect(renameInput).toBeFocused();
+
+    // 3. Commit
+    await renameInput.fill('nested-file.txt');
+    await page.keyboard.press('Enter');
+
+    // 4. Verify highlight on NEW file
+    await expect(page.locator('[data-file-path="folder1/nested-file.txt"]')).toHaveAttribute('data-selected', 'true');
+});
+
+test('should revert highlight to parent on cancellation', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
+    const folder1 = page.locator('[data-dir-path="folder1"]');
+
+    // 1. Right click folder1 -> New Directory
+    await folder1.click({ button: 'right' });
+    await page.getByTestId('ctx-new-directory').click();
+
+    const renameInput = page.getByTestId('rename-input');
+    await expect(renameInput).toBeVisible();
+    await expect(renameInput).toBeFocused();
+
+    // 2. Cancel
+    await page.keyboard.press('Escape');
+
+    // 3. Verify input gone
+    await expect(renameInput).not.toBeVisible();
+
+    // 4. Verify highlight and focus reverted to folder1
+    await expect(folder1).toHaveAttribute('data-selected', 'true');
+});

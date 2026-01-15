@@ -6,37 +6,45 @@ import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
 
-export interface FileSystemNodeDataBase {
-    kind: 'file' | 'directory';
+interface FSHandleTypes {
+    file: FileSystemFileHandle;
+    directory: FileSystemDirectoryHandle;
+}
+
+// type FSHandleType<Kind extends 'file' | 'directory'> = Kind extends 'file' ? FileSystemFileHandle : Kind extends 'directory' ? FileSystemDirectoryHandle : FileSystemFileHandle | FileSystemDirectoryHandle;
+
+export interface FileSystemNodeDataBase<Kind extends 'file' | 'directory' = 'file' | 'directory'> {
+    kind: Kind;
     name: string;
     path: string;
-    handle?: FileSystemFileHandle | FileSystemDirectoryHandle;
+    handle?: FSHandleTypes[Kind];
 }
 
-export interface FileNodeData extends FileSystemNodeDataBase {
-    kind: 'file';
-    handle?: FileSystemFileHandle;
-}
+export type FileNodeData = FileSystemNodeDataBase<'file'>;
 
-export interface DirectoryNodeData extends FileSystemNodeDataBase {
-    kind: 'directory';
-    handle?: FileSystemDirectoryHandle;
+export interface DirectoryNodeData extends FileSystemNodeDataBase<'directory'> {
     children?: FileSystemNodeModel[];
 }
 
-export abstract class FileSystemNodeModelBase extends EffectAwareModel {
+export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' = 'file' | 'directory'> extends EffectAwareModel {
 
-    constructor(data: FileSystemNodeDataBase, parent: DirectoryNodeModel | null) {
+    constructor(data: FileSystemNodeDataBase<Kind>, parent: DirectoryNodeModel | null) {
         super();
         this.kind = data.kind;
         this._name = data.name;
-        this.path = data.path;
+        this._path = data.path;
         this._handle = data.handle;
         this.parent = parent;
     }
-    readonly kind: 'file' | 'directory';
-    @observable accessor path: string;
-    @observable protected accessor _handle: FileSystemFileHandle | FileSystemDirectoryHandle | undefined;
+    
+    readonly kind: Kind;
+    isFile(): this is FileNodeModel { return this.kind === 'file'; }
+    isDirectory(): this is DirectoryNodeModel { return this.kind === 'directory'; }
+    
+    @observable accessor _path: string;
+    get path() { return this._path; }
+
+    @observable protected accessor _handle: FSHandleTypes[Kind] | undefined;
     get handle() {
         if (!this._handle) throw new Error("Accessing handle of a ghost node");
         return this._handle;
@@ -97,6 +105,9 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
                 if (idx !== -1) {
                     children.splice(idx, 1);
                     this.parent.children = [...children]; // Trigger observer update if needed
+
+                    // Revert highlight and focus to parent
+                    fileSystemStore.selectNode(this.parent, 'focus');
                 }
             }
         } else {
@@ -224,7 +235,7 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
     }
 
     abstract handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent): void;
-
+    
     @action
     private async createRealNode(finalName: string): Promise<boolean> {
         if (!this.parent) return false;
@@ -258,20 +269,24 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
                 }
             } catch (e) { /* Good */ }
 
-
+            let n!: FileSystemNodeModelBase;
+            if (n.isFile()) {
+                n._handle = await this.parent.handle.getFileHandle(finalName, { create: true });
+            }
             // 2. Create
-            if (this.kind === 'file') {
-                this._handle = await this.parent.handle.getFileHandle(finalName, { create: true });
-            } else {
-                this._handle = await this.parent.handle.getDirectoryHandle(finalName, { create: true });
+            let self: FileSystemNodeModelBase = this; // TypeScript hack to get type assertion functions below to work
+            if (self.isFile()) {
+                self._handle = await this.parent.handle.getFileHandle(finalName, { create: true });
+            } else if (self.isDirectory()) {
+                self._handle = await this.parent.handle.getDirectoryHandle(finalName, { create: true });
             }
 
             this._name = finalName;
             // Update path - although refreshTree will fix it, we want local consistency
             if (this.parent && this.parent.isRoot) {
-                this.path = finalName;
+                this._path = finalName;
             } else if (this.parent) {
-                this.path = this.parent.path + '/' + finalName;
+                this._path = this.parent.path + '/' + finalName;
             }
 
             // 3. Finish
@@ -380,15 +395,10 @@ export abstract class FileSystemNodeModelBase extends EffectAwareModel {
     }
 }
 
-export class FileNodeModel extends FileSystemNodeModelBase {
+export class FileNodeModel extends FileSystemNodeModelBase<'file'> {
     constructor(data: FileNodeData, parent: DirectoryNodeModel) {
         super(data, parent);
     }
-
-    declare readonly kind: 'file';
-    // declare readonly handle: FileSystemFileHandle; 
-    // Handle is handled by base accessor
-    get handle() { return super.handle as FileSystemFileHandle; }
 
     @action
     handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
@@ -400,16 +410,12 @@ export class FileNodeModel extends FileSystemNodeModelBase {
     }
 }
 
-export class DirectoryNodeModel extends FileSystemNodeModelBase {
+export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
 
     constructor(data: DirectoryNodeData, parent: DirectoryNodeModel | null) {
         super(data, parent);
         this.children = data.children;
     }
-
-    declare readonly kind: 'directory';
-    // declare readonly handle: FileSystemDirectoryHandle;
-    get handle() { return super.handle as FileSystemDirectoryHandle; }
     @observable accessor children: FileSystemNodeModel[] | undefined;
 
     @action
@@ -897,6 +903,16 @@ class FileSystemStore extends EffectAwareModel {
                 if (!parentNode!.children) parentNode!.children = [];
                 // Reassign to trigger observer
                 parentNode!.children = [ghostNode, ...parentNode!.children];
+
+                // Expand parent lineage
+                let curr: DirectoryNodeModel | null = parentNode;
+                while (curr && !curr.isRoot) {
+                    this._collapsedPaths.delete(curr.path);
+                    curr = curr.parent;
+                }
+
+                // Highlight the new ghost node
+                this._highlightedPath = ghostNode.path;
             });
 
             // 6. Start renaming
@@ -1000,6 +1016,16 @@ class FileSystemStore extends EffectAwareModel {
                 if (!parentNode!.children) parentNode!.children = [];
                 // Reassign to trigger observer
                 parentNode!.children = [ghostNode, ...parentNode!.children];
+
+                // Expand parent lineage
+                let curr: DirectoryNodeModel | null = parentNode;
+                while (curr && !curr.isRoot) {
+                    this._collapsedPaths.delete(curr.path);
+                    curr = curr.parent;
+                }
+
+                // Highlight the new ghost node
+                this._highlightedPath = ghostNode.path;
             });
 
             // 5. Start renaming

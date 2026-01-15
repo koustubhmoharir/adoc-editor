@@ -37,6 +37,12 @@ export const itemBase = style({
     color: themeVars.color.text,
     ':hover': {
         backgroundColor: themeVars.color.hoverBackground
+    },
+    ':focus-visible': {
+        outlineColor: 'currentColor',
+        outlineStyle: 'dotted',
+        outlineWidth: '1px',
+        outlineOffset: '-1px'
     }
 });
 
