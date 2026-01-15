@@ -79,7 +79,7 @@ export async function loadInitialDirectory(page: Page, dir: string) {
 export async function openContextMenu(page: Page, itemLocator: Locator) {
     await itemLocator.click({ button: 'right' });
     const contextMenu = page.locator('[data-testid="sidebar-contextmenu"]');
-    await expect(contextMenu).toBeVisible();
+    await expect(contextMenu).toBeFocused();
     return contextMenu;
 }
 

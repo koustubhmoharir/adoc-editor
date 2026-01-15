@@ -10,8 +10,12 @@ import * as styles from './App.css';
 
 import { NativeDialog } from './components/Dialog';
 
+
+
 const App: React.FC = observer(() => {
     const themeClass = themeStore.theme === 'light' ? lightTheme : darkTheme;
+
+
 
     return (
         <div className={`${styles.container} ${themeClass}`}>

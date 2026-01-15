@@ -116,7 +116,7 @@ test('should navigate context menu items with arrow keys', async ({ page }) => {
 
     await openContextMenu(page, fileItem);
 
-    await expect(contextMenu).toBeVisible();
+    await expect(contextMenu).toBeFocused();
 
     // Interaction:
     // Press ArrowDown -> First item (Open) should be focused

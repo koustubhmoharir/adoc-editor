@@ -1,5 +1,5 @@
 import { observer } from 'mobx-react-lite';
-import { fileSystemStore } from '../store/FileSystemStore';
+import { DirectoryNodeModel, fileSystemStore } from '../store/FileSystemStore';
 // Using inline styles for now as vanilla-extract issues with newer CSS properties like anchor-name/position-anchor inside keyframes or complex selectors might arise, 
 // and typescript support for them is cutting edge. But we can put basic styles in CSS and positioning in style tag.
 import * as styles from './Sidebar.css';
@@ -59,7 +59,7 @@ export const SidebarContextMenu = observer(() => {
             {targetNode?.kind === 'directory' && (
                 <>
                     <button className={styles.contextMenuItem} onClick={() => {
-                        fileSystemStore.refresh(targetNode as any);
+                        fileSystemStore.refresh(targetNode as DirectoryNodeModel, targetNode.path);
                     }} data-testid="ctx-refresh">
                         <i className={`fas fa-sync-alt ${styles.contextMenuIcon}`} />
                         Refresh

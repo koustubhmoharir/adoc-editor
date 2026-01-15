@@ -54,6 +54,8 @@ test('Keyboard Navigation (Arrows)', async ({ page }) => {
     await file1.click();
     await expect(file1).toBeFocused();
 
+    // This test is flaky because we focus in a normal effect, not in a layout effect.
+    
     await page.keyboard.press('ArrowUp');
     const file4 = page.locator('[data-testid="file-item"][data-file-path="dir-b/file4.adoc"]');
     await expect(file4).toBeFocused();

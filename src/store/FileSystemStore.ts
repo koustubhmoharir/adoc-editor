@@ -502,16 +502,26 @@ class FileSystemStore extends EffectAwareModel {
         });
 
         // Global Keyboard Shortcuts
-        window.addEventListener('keydown', (e: KeyboardEvent) => {
-            // Ctrl + Backtick or Cmd + Backtick (often referred to as Ctrl/Cmd + ~)
-            if ((e.ctrlKey || e.metaKey) && (e.code === 'Backquote' || e.key === '`')) {
-                e.preventDefault();
-                e.stopPropagation();
-                // We don't need to pass 'e' here anymore since we handle prevention above
-                this.toggleSearch();
-            }
-        });
+        // Global Keyboard Shortcuts
+        window.addEventListener('keydown', this.handleGlobalKeyDown);
     }
+
+    private handleGlobalKeyDown = (e: KeyboardEvent) => {
+        // F5 - Refresh
+        if (e.key === 'F5') {
+            e.preventDefault();
+            this.handleF5();
+            return;
+        }
+
+        // Ctrl + Backtick - Search
+        if ((e.ctrlKey || e.metaKey) && (e.code === 'Backquote' || e.key === '`')) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggleSearch();
+        }
+    }
+
 
 
     @observable private accessor _currentFileHandle: FileSystemFileHandle | null = null;
@@ -1230,6 +1240,19 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
+    async handleF5() {
+        if (this.highlightedPath) {
+            const nodes = this.visibleNodes;
+            const highlighted = nodes.find(n => n.path === this.highlightedPath);
+            if (highlighted?.kind === 'directory') {
+                await this.refresh(highlighted, highlighted.path);
+                return;
+            }
+        }
+        await this.refresh();
+    }
+
+    @action
     async refresh(node?: DirectoryNodeModel, focusPath?: string, openFile: boolean = false) {
         // Default to root if no node provided
         const targetNode = node || this.rootNode;
@@ -1274,18 +1297,23 @@ class FileSystemStore extends EffectAwareModel {
             }
         }
 
-        // Current file check (global) - we might need to re-verify if the current file was inside the refreshed tree
-        if (!focusPath && this.currentFileHandle) {
-            // Only if we haven't just focused something else.
-            // We can check if `currentFileHandle` is still valid in the tree?
-            // Actually `refreshTree` logic for re-selecting was:
-            const node = await this.findNodeByHandle(this.currentFileHandle);
-            if (node?.kind === 'file') {
-                runInAction(() => {
-                    // Update handle reference in case it changed (it shouldn't for same file)
-                    this._currentFileHandle = node.handle;
-                    this._highlightedPath = node.path;
-                });
+        if (this.currentFileHandle) {
+            const fileNode = await this.findNodeByHandle(this.currentFileHandle);
+            if (fileNode) {
+                // Ensure we only reload/re-bind if the file is actually within the scope of what we refreshed.
+                // If we refreshed a subdirectory, and the file is outside, we shouldn't touch it.
+                const isRelevant = targetNode.isRoot || fileNode.path.startsWith(targetNode.path + '/');
+                if (isRelevant) {
+                    runInAction(() => {
+                        this._currentFileHandle = fileNode.handle as FileSystemFileHandle;
+                        // Only move highlight if we didn't explicitly focus something else
+                        if (!focusPath) {
+                            this._highlightedPath = fileNode.path;
+                        }
+                    });
+                    // Always reload content but DON'T override highlight if we are focusing a specific path (e.g. directory refresh)
+                    await this.openFileInEditor(fileNode, false, !focusPath);
+                }
             }
         }
     }
@@ -1540,7 +1568,7 @@ class FileSystemStore extends EffectAwareModel {
         });
     }
 
-    private async openFileInEditor(node: FileSystemNodeModel, focusNode: boolean) {
+    private async openFileInEditor(node: FileSystemNodeModel, focusNode: boolean, updateHighlight: boolean = true) {
         if (node.kind !== 'file') return;
         // Auto-save previous file if dirty
         if (this.currentFileHandle && this.dirty) {
@@ -1591,7 +1619,7 @@ class FileSystemStore extends EffectAwareModel {
         }
 
         // Update Store State
-        this.loadFileInEditor(node, content);
+        this.loadFileInEditor(node, content, updateHighlight);
         if (focusNode) {
             node.scheduleFocusTreeItem();
         }
@@ -1599,9 +1627,11 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    private loadFileInEditor(node: FileNodeModel, content: string) {
+    private loadFileInEditor(node: FileNodeModel, content: string, updateHighlight: boolean = true) {
         this._currentFileHandle = node.handle;
-        this._highlightedPath = node.path;
+        if (updateHighlight) {
+            this._highlightedPath = node.path;
+        }
         this._isLoading = true;
         editorStore.setContent(content);
         this._dirty = false;
