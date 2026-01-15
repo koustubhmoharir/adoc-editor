@@ -772,7 +772,7 @@ class FileSystemStore extends EffectAwareModel {
 
     @action.bound
     async focusCurrentFileInSidebar() {
-        const node = await this.findNodeByHandle(this.currentFileHandle);
+        const node = this.currentFileNode;
         if (!node) return;
 
         // Expand all parents
@@ -872,10 +872,9 @@ class FileSystemStore extends EffectAwareModel {
         let parentNode: DirectoryNodeModel | null = null;
 
         if (!targetDir) {
-            const node = await this.findNodeByHandle(this.currentFileHandle);
-            if (node && node.parent) {
-                targetDir = node.parent.handle;
-                parentNode = node.parent;
+            if (this.currentFileNode && this.currentFileNode.parent) {
+                targetDir = this.currentFileNode.parent.handle;
+                parentNode = this.currentFileNode.parent;
             }
             if (!targetDir && this.rootNode) {
                 targetDir = this.rootNode.handle;
@@ -966,7 +965,7 @@ class FileSystemStore extends EffectAwareModel {
         if (!parentDir) return;
 
         // Auto-save if needed (though we copy FROM disk usually)
-        if (this.dirty && this.currentFileHandle && await node.handle.isSameEntry(this.currentFileHandle)) {
+        if (this.dirty && this.currentFileNode === node) {
             await this.saveFile();
         }
 
@@ -1057,11 +1056,10 @@ class FileSystemStore extends EffectAwareModel {
             // If file selected, create in same folder.
 
             // Current logic uses parent of current file, or root.
-            if (this.currentFileHandle) {
-                const node = await this.findNodeByHandle(this.currentFileHandle);
-                if (node && node.parent) {
-                    targetDir = node.parent.handle;
-                    parentNode = node.parent;
+            if (this.currentFileNode) {
+                if (this.currentFileNode.parent) {
+                    targetDir = this.currentFileNode.parent.handle;
+                    parentNode = this.currentFileNode.parent;
                 }
             } else if (this.highlightedPath) {
                 // If directory is highlighted, create inside? 
@@ -1179,9 +1177,9 @@ class FileSystemStore extends EffectAwareModel {
         try {
             // Clear selection if deleted file was active (or if active file was inside deleted directory)
             // If we delete a directory, we need to check if currentFileHandle is inside it.
-            if (this.currentFileHandle) {
+            if (this.currentFileNode) {
                 // If deleted node is file and matches
-                if (node.kind === 'file' && await node.handle.isSameEntry(this.currentFileHandle)) {
+                if (node === this.currentFileNode) {
                     await this.clearSelection();
                 } else if (node.kind === 'directory') {
                     // Check if current file is child of deleted directory
@@ -1447,6 +1445,10 @@ class FileSystemStore extends EffectAwareModel {
 
     private async findNodeByHandle(handle: FileSystemHandle | null) {
         if (!handle) return null;
+
+        if (this.currentFileNode && await this.currentFileNode.handle.isSameEntry(handle)) {
+            return this.currentFileNode;
+        }
 
         if (this.rootNode && await this.rootNode.handle.isSameEntry(handle)) {
             return this.rootNode;
