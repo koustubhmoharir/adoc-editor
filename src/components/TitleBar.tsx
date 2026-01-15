@@ -7,9 +7,9 @@ import { editorStore } from '../store/EditorStore';
 import * as styles from './TitleBar.css';
 
 export const TitleBar: React.FC = observer(() => {
-    const fileName = fileSystemStore.currentFileHandle
-        ? fileSystemStore.currentFileHandle.name
-        : '';
+    const fileName = fileSystemStore.currentFileNode?.name || '';
+    let filePath: string | undefined = fileSystemStore.currentFileNode?.path || '';
+    if (fileName === filePath) filePath = undefined;
 
     return (
         <header className={styles.header} data-testid="title-bar">
@@ -17,7 +17,7 @@ export const TitleBar: React.FC = observer(() => {
                 <h3 className={styles.title}>{appName}</h3>
                 <button
                     className={styles.newFileButton}
-                    onClick={() => fileSystemStore.createNewFile}
+                    onClick={() => fileSystemStore.createNewFile()}
                     title={`New File in ${fileSystemStore.currentDirectoryPath}`}
                     data-testid="new-file-button-titlebar"
                 >
@@ -29,7 +29,7 @@ export const TitleBar: React.FC = observer(() => {
                 <span
                     className={styles.fileName}
                     data-testid="current-filename"
-                    title={fileSystemStore.currentRelativeFilePath}
+                    title={filePath}
                     onClick={fileSystemStore.focusCurrentFileInSidebar}
                 >
                     {fileName}

@@ -506,26 +506,9 @@ class FileSystemStore extends EffectAwareModel {
         window.addEventListener('keydown', this.handleGlobalKeyDown);
     }
 
-    private handleGlobalKeyDown = (e: KeyboardEvent) => {
-        // F5 - Refresh
-        if (e.key === 'F5') {
-            e.preventDefault();
-            this.handleF5();
-            return;
-        }
-
-        // Ctrl + Backtick - Search
-        if ((e.ctrlKey || e.metaKey) && (e.code === 'Backquote' || e.key === '`')) {
-            e.preventDefault();
-            e.stopPropagation();
-            this.toggleSearch();
-        }
-    }
-
-
-
-    @observable private accessor _currentFileHandle: FileSystemFileHandle | null = null;
-    get currentFileHandle() { return this._currentFileHandle; }
+    @observable private accessor _currentFileNode: FileNodeModel | null = null;
+    get currentFileNode() { return this._currentFileNode; }
+    get currentFileHandle() { return this._currentFileNode?.handle ?? null; }
 
     @observable private accessor _dirty: boolean = false;
     get dirty() { return this._dirty; }
@@ -684,7 +667,7 @@ class FileSystemStore extends EffectAwareModel {
     @action
     async clearDirectory() {
         this._rootNode = null;
-        this._currentFileHandle = null;
+        this._currentFileNode = null;
         this._dirty = false;
         this._isLoading = false;
         this._collapsedPaths = new Set();
@@ -824,7 +807,7 @@ class FileSystemStore extends EffectAwareModel {
         await this.pushDbOperation(setDbValue('lastOpenFile', null), 'failed to clear lastOpenFile');
 
         runInAction(() => {
-            this._currentFileHandle = null;
+            this._currentFileNode = null;
             this._dirty = false;
         });
 
@@ -865,66 +848,17 @@ class FileSystemStore extends EffectAwareModel {
 
     get currentDirectoryPath(): string {
         if (!this.rootNode) return '';
-        const rootName = this.rootNode.name;
+        if (!this.currentFileNode) return this.rootNode.name;
 
-        if (!this.currentFileHandle) return rootName;
-
-        // Find path of current file in tree
-        const findPath = (nodes: FileSystemNodeModel[]): string | null => {
-            for (const node of nodes) {
-                if (node.kind === 'file') {
-                    // Skip ghost nodes
-                    if (node.isCreating) continue;
-
-                    // Optimized check? node.handle is same as currentFileHandle?
-                    // We can check reference equality first
-                    if (node.handle === this.currentFileHandle) return node.path;
-                    // Fallback to isSameEntry async? computed properties shouldn't be async.
-                    // relying on reference equality assuming syncSelectedFileWithTree updated it.
-                } else if (node.kind === 'directory' && node.children) {
-                    const found = findPath(node.children);
-                    if (found) return found;
-                }
-            }
-            return null;
-        };
-
-        const path = findPath(this.rootNode.children ?? []);
-        if (!path) return rootName; // Fallback
-
+        const path = this.currentFileNode.path;
         const lastSlash = path.lastIndexOf('/');
-        if (lastSlash === -1) return rootName;
 
-        return `${rootName}/${path.substring(0, lastSlash)}`;
-    }
+        if (lastSlash === -1) {
+            return this.rootNode.name;
+        }
 
-    @computed
-    get currentRelativeFilePath(): string {
-        if (!this.rootNode || !this.currentFileHandle) return '';
-
-        const findPath = (nodes: FileSystemNodeModel[]): string | null => {
-            for (const node of nodes) {
-                if (node.kind === 'file') {
-                    if (node.isCreating) continue;
-                    if (node.handle === this.currentFileHandle) return node.path;
-                } else if (node.kind === 'directory' && node.children) {
-                    const found = findPath(node.children);
-                    if (found) return found;
-                }
-            }
-            return null;
-        };
-
-        let fullPath = findPath(this.rootNode.children ?? []);
-
-        if (fullPath) return fullPath;
-
-        // If the file is literally a direct child of root, node.path is just "filename".
-        // That fits the requirement "excluding the top-level directory name".
-        // E.g. "README.md" -> "README.md"
-
-        // If fail to find (e.g. loading), fallback to name
-        return this.currentFileHandle.name;
+        const relativeDir = path.substring(0, lastSlash);
+        return `${this.rootNode.name}/${relativeDir}`;
     }
 
     async createNewFile(parentDirectory?: FileSystemDirectoryHandle) {
@@ -1334,7 +1268,7 @@ class FileSystemStore extends EffectAwareModel {
                 const isRelevant = targetNode.isRoot || fileNode.path.startsWith(targetNode.path + '/');
                 if (isRelevant) {
                     runInAction(() => {
-                        this._currentFileHandle = fileNode.handle as FileSystemFileHandle;
+                        this._currentFileNode = fileNode as FileNodeModel;
                         // Only move highlight if we didn't explicitly focus something else
                         if (!focusPath) {
                             this._highlightedPath = fileNode.path;
@@ -1498,6 +1432,9 @@ class FileSystemStore extends EffectAwareModel {
                     // Sync with tree if it's already loaded
                     // rootNode check
                     if (node?.kind === 'file') {
+                        runInAction(() => {
+                            this._currentFileNode = node as FileNodeModel;
+                        });
                         this.loadFileInEditor(node, content);
                     }
                     this.startAutoSave();
@@ -1657,7 +1594,7 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     private loadFileInEditor(node: FileNodeModel, content: string, updateHighlight: boolean = true) {
-        this._currentFileHandle = node.handle;
+        this._currentFileNode = node;
         if (updateHighlight) {
             this._highlightedPath = node.path;
         }
@@ -1742,6 +1679,22 @@ class FileSystemStore extends EffectAwareModel {
     private closeSearch() {
         this._isSearchVisible = false;
         this.setSearchQuery('');
+    }
+
+    private handleGlobalKeyDown = (e: KeyboardEvent) => {
+        // F5 - Refresh
+        if (e.key === 'F5') {
+            e.preventDefault();
+            this.handleF5();
+            return;
+        }
+
+        // Ctrl + Backtick - Search
+        if ((e.ctrlKey || e.metaKey) && (e.code === 'Backquote' || e.key === '`')) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggleSearch();
+        }
     }
 }
 
