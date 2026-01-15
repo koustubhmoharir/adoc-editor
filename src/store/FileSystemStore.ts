@@ -41,7 +41,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
     isFile(): this is FileNodeModel { return this.kind === 'file'; }
     isDirectory(): this is DirectoryNodeModel { return this.kind === 'directory'; }
 
-    @observable accessor _path: string;
+    @observable private accessor _path: string;
     get path() { return this._path; }
 
     @observable protected accessor _handle: FSHandleTypes[Kind] | undefined;
@@ -106,15 +106,27 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
                     children.splice(idx, 1);
                     this.parent.children = [...children]; // Trigger observer update if needed
 
-                    // Revert highlight and focus to parent
-                    fileSystemStore.selectNode(this.parent, 'focus');
+                    // Revert highlight and focus to parent OR source if it was a duplicate
+                    let handled = false;
+                    if (this.isFile() && this.copySource) {
+                        // Attempt to focus source
+                        fileSystemStore.focusNodeByHandle(this.copySource);
+                        handled = true;
+                    }
+
+                    if (!handled) {
+                        fileSystemStore.selectNode(this.parent, 'show');
+                    }
                 }
             }
         } else {
-            this.scheduleEffect(() => {
-                this.treeItemRef.current?.focus();
-            });
         }
+    }
+
+    scheduleFocusTreeItem() {
+        this.scheduleEffect(() => {
+            this.treeItemRef.current?.focus();
+        });
     }
 
     @action
@@ -273,6 +285,23 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
             let self: FileSystemNodeModelBase = this; // TypeScript hack to get type assertion functions below to work
             if (self.isFile()) {
                 self._handle = await this.parent.handle.getFileHandle(finalName, { create: true });
+
+                // If this is a duplicate operation, copy content
+                if (self.copySource) {
+                    try {
+                        const sourceFile = await self.copySource.getFile();
+                        // Check for binary? For now just copy blob/text
+                        // stream() is robust for large files
+                        const writable = await self._handle.createWritable();
+                        await writable.write(await sourceFile.text());
+                        await writable.close();
+                    } catch (err) {
+                        console.error("Failed to copy content", err);
+                        await dialog.alert(`Failed to copy content from source file: ${err}`);
+                    }
+                    self.copySource = undefined;
+                }
+
             } else if (self.isDirectory()) {
                 self._handle = await this.parent.handle.getDirectoryHandle(finalName, { create: true });
             }
@@ -397,6 +426,9 @@ export class FileNodeModel extends FileSystemNodeModelBase<'file'> {
     constructor(data: FileNodeData, parent: DirectoryNodeModel) {
         super(data, parent);
     }
+
+    // Temporary storage for the handle to copy from when creating a duplicate
+    copySource?: FileSystemFileHandle;
 
     @action
     handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
@@ -634,9 +666,7 @@ class FileSystemStore extends EffectAwareModel {
         this._highlightedPath = node.path;
 
         if (loadContent !== 'focus') {
-            node.scheduleEffect(() => {
-                node.treeItemRef.current?.focus();
-            });
+            node.scheduleFocusTreeItem();
         }
 
         if (this.loadTimeout) {
@@ -648,10 +678,10 @@ class FileSystemStore extends EffectAwareModel {
             if (loadContent === 'delay') {
                 // Debounce load
                 this.loadTimeout = window.setTimeout(() => {
-                    this.openFileInEditor(node);
+                    this.openFileInEditor(node, false);
                 }, 750);
             } else {
-                this.openFileInEditor(node).then(() => {
+                this.openFileInEditor(node, false).then(() => {
                     if (loadContent === 'focus') {
                         editorStore.focusEditor();
                     }
@@ -924,6 +954,91 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
+    async duplicateNode(node: FileNodeModel) {
+        if (!node.parent) {
+            await dialog.alert('Cannot duplicate root or orphaned node.');
+            return;
+        }
+
+        const parentDir = node.parent.handle;
+        if (!parentDir) return;
+
+        // Auto-save if needed (though we copy FROM disk usually)
+        if (this.dirty && this.currentFileHandle && await node.handle.isSameEntry(this.currentFileHandle)) {
+            await this.saveFile();
+        }
+
+        try {
+            // 1. Find unique filename
+            const originalName = node.name;
+            const lastDot = originalName.lastIndexOf('.');
+            let namePart = originalName;
+            let extPart = '';
+            if (lastDot > 0) {
+                namePart = originalName.substring(0, lastDot);
+                extPart = originalName.substring(lastDot);
+            }
+
+            // Start from 2
+            let index = 2;
+            let newName = `${namePart}-${index}${extPart}`;
+
+            // Check existence in parent's loaded children if possible, or verify against disk
+            // Verifying against disk is safer
+            while (true) {
+                try {
+                    await parentDir.getFileHandle(newName);
+                    // Exists
+                    index++;
+                    newName = `${namePart}-${index}${extPart}`;
+                } catch (e) {
+                    // Does not exist
+                    break;
+                }
+            }
+
+            // 2. Create Ghost Node
+            const path = node.parent.isRoot ? newName : node.parent.path + '/' + newName;
+
+            const ghostNode = new FileNodeModel({
+                kind: 'file',
+                name: newName,
+                path: path,
+                handle: undefined
+            }, node.parent);
+
+            ghostNode.copySource = node.handle; // Set source for copying
+
+            // 3. Add to parent children
+            runInAction(() => {
+                const parentNode = node.parent!;
+                if (!parentNode.children) parentNode.children = [];
+
+                // Insert after the original node if possible? Or at top?
+                // Standard behavior often places it next to original or sorted. 
+                // Since our list is sorted by name usually, inserting at top or pushing might be resorted later.
+                // Let's put it at top for visibility as per "New File" logic, or tries to find index.
+                // "New File" puts at top. Let's do that for consistency with ghost nodes.
+                parentNode.children = [ghostNode, ...parentNode.children];
+
+                // Highlight
+                this._highlightedPath = ghostNode.path;
+            });
+
+            // 4. Start renaming
+            ghostNode.startRenaming();
+
+            // Scroll
+            ghostNode.scheduleEffect(() => {
+                ghostNode.treeItemRef.current?.scrollIntoView({ block: 'nearest' });
+            });
+
+        } catch (err) {
+            console.error('Error duplicating file:', err);
+            await dialog.alert('Failed to duplicate file.');
+        }
+    }
+
     async createNewDirectory(parentDirectory?: FileSystemDirectoryHandle) {
         if (!this.rootNode) {
             await dialog.alert('Please open a directory first.');
@@ -1078,7 +1193,7 @@ class FileSystemStore extends EffectAwareModel {
 
             // Refresh the parent directory
             const parent = node.parent;
-            await this.refresh(parent?.isRoot ? undefined : parent);
+            await this.refresh(parent?.isRoot ? undefined : parent, parent?.isRoot ? undefined : parent.path);
         } catch (error) {
             console.error('Error deleting node:', error);
             await dialog.alert(`Failed to delete ${node.kind}: ${error}`);
@@ -1105,24 +1220,28 @@ class FileSystemStore extends EffectAwareModel {
         });
 
         // Handle pending focus - RECURSIVE search from targetNode
+        let nodeToFocus: FileSystemNodeModel | undefined = undefined;
         if (focusPath) {
-            const findNode = (nodes: FileSystemNodeModel[]): FileSystemNodeModel | undefined => {
-                for (const n of nodes) {
-                    if (n.path === focusPath) return n;
-                    if (n.kind === 'directory' && n.children) {
-                        const found = findNode(n.children);
+            const findNode = (n: FileSystemNodeModel): FileSystemNodeModel | undefined => {
+                if (n.path === focusPath) return n;
+                if (n.kind === 'directory' && n.children) {
+                    for (const cn of n.children) {
+                        const found = findNode(cn);
                         if (found) return found;
                     }
                 }
             }
-            const nodeToFocus = findNode(targetNode.children ?? []);
-            if (nodeToFocus) {
-                nodeToFocus.scheduleEffect(() => {
-                    nodeToFocus!.treeItemRef.current?.focus();
+            nodeToFocus = findNode(targetNode);
+        }
+        if (nodeToFocus) {
+            if (nodeToFocus.kind === 'directory') {
+                runInAction(() => {
+                    this._highlightedPath = nodeToFocus.path;
                 });
-                if (openFile && nodeToFocus.kind === 'file') {
-                    await this.openFileInEditor(nodeToFocus);
-                }
+                nodeToFocus.scheduleFocusTreeItem();
+            }
+            else if (openFile && nodeToFocus.kind === 'file') {
+                await this.openFileInEditor(nodeToFocus, true);
             }
         }
 
@@ -1187,7 +1306,9 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     handleSearchResultClick(item: FileSystemNodeModel) {
-        this.openFileInEditor(item);
+        this.openFileInEditor(item, false).then(() => {
+                editorStore.focusEditor();
+        });
         this.closeSearch();
     }
 
@@ -1328,6 +1449,17 @@ class FileSystemStore extends EffectAwareModel {
         return null;
     }
 
+
+
+    async focusNodeByHandle(handle: FileSystemHandle) {
+        const node = await this.findNodeByHandle(handle);
+        if (node) {
+            this.selectNode(node, 'show');
+        } else {
+            // Fallback to root or something?
+        }
+    }
+
     private async verifyPermission(handle: FileSystemDirectoryHandle, readWrite: boolean = false) {
         const options: FileSystemHandlePermissionDescriptor = {
             mode: readWrite ? 'readwrite' : 'read',
@@ -1379,7 +1511,7 @@ class FileSystemStore extends EffectAwareModel {
         });
     }
 
-    private async openFileInEditor(node: FileSystemNodeModel) {
+    private async openFileInEditor(node: FileSystemNodeModel, focusNode: boolean) {
         if (node.kind !== 'file') return;
         // Auto-save previous file if dirty
         if (this.currentFileHandle && this.dirty) {
@@ -1431,7 +1563,9 @@ class FileSystemStore extends EffectAwareModel {
 
         // Update Store State
         this.loadFileInEditor(node, content);
-
+        if (focusNode) {
+            node.scheduleFocusTreeItem();
+        }
         this.startAutoSave();
     }
 

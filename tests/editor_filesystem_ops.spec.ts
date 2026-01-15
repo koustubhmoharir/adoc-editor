@@ -1,13 +1,14 @@
 import { helpers, test, expect } from './fixtures.ts';
 
 // Helpers
-import { getFileItem, getRenameInput } from './helpers/locators.ts';
-import { triggerRename, completeRename, cancelRename, verifyRenameOnFocusChange, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { getDirectoryItem, getFileItem, getRenameInput } from './helpers/locators.ts';
+import { triggerRename, completeRename, cancelRename, verifyRenameOnFocusChange, loadInitialDirectory, openContextMenu } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
     fsSetup.cleanup();
     fsSetup.createFile('dir1', 'file1.adoc', '== File 1 content');
     fsSetup.createFile('dir1', 'file2.adoc', '== File 2 content');
+    fsSetup.createFile('dir1', 'nested/file3.adoc', '== File 3 content');
     fsSetup.createFile('dir1', 'conflict.adoc', '== Conflict File');
 });
 
@@ -293,12 +294,12 @@ test('Rename stays active on invalid name when clicking another file', async ({ 
 
 test('Delete file via Context Menu', async ({ page, fsSetup }) => {
     await loadInitialDirectory(page, 'dir1');
-    const fileItem = getFileItem(page, 'file1.adoc');
+    const fileItem = getFileItem(page, 'nested/file3.adoc');
 
     const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
 
     // 1. Right click -> Delete
-    await fileItem.click({ button: 'right' });
+    await openContextMenu(page, fileItem);
     await page.getByTestId('ctx-delete').click();
 
     // Verify dialog message (this also awaits the dialog handling)
@@ -306,12 +307,16 @@ test('Delete file via Context Menu', async ({ page, fsSetup }) => {
 
     // 4. Verify gone
     await expect(fileItem).not.toBeVisible();
-    expect(fsSetup.exists('dir1', 'file1.adoc')).toBe(false);
+    expect(fsSetup.exists('dir1', 'nested/file3.adoc')).toBe(false);
+
+    // Verify focus is on parent
+    const parentNode = getDirectoryItem(page, 'nested');
+    await expect(parentNode).toBeFocused();
 });
 
 test('Delete file via Delete key', async ({ page, fsSetup }) => {
     await loadInitialDirectory(page, 'dir1');
-    const fileItem = getFileItem(page, 'file1.adoc');
+    const fileItem = getFileItem(page, 'nested/file3.adoc');
 
     // Focus
     await fileItem.click();
@@ -323,7 +328,11 @@ test('Delete file via Delete key', async ({ page, fsSetup }) => {
     expect(await dialogHandle.getMessage()).toContain('Are you sure you want to delete');
 
     await expect(fileItem).not.toBeVisible();
-    expect(fsSetup.exists('dir1', 'file1.adoc')).toBe(false);
+    expect(fsSetup.exists('dir1', 'nested/file3.adoc')).toBe(false);
+
+    // Verify focus is on parent
+    const parentNode = getDirectoryItem(page, 'nested');
+    await expect(parentNode).toBeFocused();
 });
 
 test('Cancel delete file', async ({ page, fsSetup }) => {

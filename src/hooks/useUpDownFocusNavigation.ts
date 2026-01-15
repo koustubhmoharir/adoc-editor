@@ -10,7 +10,6 @@ function handleKeyDown(e: KeyboardEvent) {
     const currentIndex = focusableElements.indexOf(document.activeElement as HTMLElement);
 
     if (e.key === 'ArrowDown') {
-        console.log("ArrowDown");
         e.preventDefault();
         const nextIndex = (currentIndex + 1) % focusableElements.length;
         focusableElements[nextIndex].focus();

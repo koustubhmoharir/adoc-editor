@@ -2,7 +2,7 @@ import { helpers, test, expect } from './fixtures.ts';
 
 // Helpers
 import { getDirectoryItem, getRenameInput } from './helpers/locators.ts';
-import { triggerRename, completeRename, cancelRename, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { triggerRename, completeRename, cancelRename, loadInitialDirectory, openContextMenu } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
     fsSetup.cleanup();
@@ -18,7 +18,7 @@ test('Rename directory via Context Menu', async ({ page, fsSetup }) => {
     const dirItem = getDirectoryItem(page, 'subdir1');
 
     // Right clip + Rename
-    await dirItem.click({ button: 'right' });
+    await openContextMenu(page, dirItem);
     await page.getByTestId('ctx-rename').click();
 
     await expect(getRenameInput(page)).toBeVisible();

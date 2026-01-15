@@ -2,7 +2,8 @@ import { helpers, test, expect } from './fixtures.ts';
 import * as path from 'path';
 
 // Helpers
-import { loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { openContextMenu, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { getFileItem } from './helpers/locators.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
     fsSetup.cleanup();
@@ -370,7 +371,7 @@ test('Creating new file in subdirectory via Sidebar', async ({ page, fsSetup }) 
 
 
     // Right click to open context menu
-    await subdirItem.click({ button: 'right' });
+    await openContextMenu(page, subdirItem);
 
     const newFileBtn = page.locator('[data-testid="ctx-new-file"]');
     await expect(newFileBtn).toBeVisible();
@@ -386,8 +387,11 @@ test('Creating new file in subdirectory via Sidebar', async ({ page, fsSetup }) 
     // Allow operation to complete
     expect(fsSetup.readFile('dir1', 'subdir/new-1.adoc')).toBe('');
 
+    await expect(getFileItem(page, 'subdir/new-1.adoc')).toBeFocused();
+
     // Check it is selected in title bar
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');
+    
 
     // Verify TitleBar tooltip updates to subdirectory
     // Since we refactored title bar to use data-testid, querying by title is fine for check, or use data-testid

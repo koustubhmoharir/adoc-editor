@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures.ts';
-import { expectContextMenuOpen, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { openContextMenu, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
     fsSetup.cleanup();
@@ -11,10 +11,9 @@ test.beforeEach(async ({ fsSetup }) => {
 test('should show context menu for file with correct options', async ({ page }) => {
     await loadInitialDirectory(page, 'dir1');
     const fileItem = page.locator('[data-file-path="file1.txt"]');
-    await fileItem.click({ button: 'right' });
 
     // Verify context menu appears
-    const contextMenu = await expectContextMenuOpen(page);
+    const contextMenu = await openContextMenu(page, fileItem);
 
     // Verify options
     await expect(contextMenu).toContainText('Open');
@@ -30,10 +29,9 @@ test('should show context menu for directory with correct options', async ({ pag
     await loadInitialDirectory(page, 'dir1');
 
     const dirItem = page.locator('[data-dir-path="folder1"]');
-    await dirItem.click({ button: 'right' });
 
     // Verify context menu appears
-    const contextMenu = await expectContextMenuOpen(page);
+    const contextMenu = await openContextMenu(page, dirItem);
 
     // Verify options
     await expect(contextMenu).toContainText('New File');
@@ -50,7 +48,7 @@ test('should trigger rename from context menu', async ({ page }) => {
     await loadInitialDirectory(page, 'dir1');
 
     const fileItem = page.locator('[data-file-path="file1.txt"]');
-    await fileItem.click({ button: 'right' });
+    await openContextMenu(page, fileItem);
 
     const renameBtn = page.getByTestId('ctx-rename');
     await renameBtn.click();
@@ -68,7 +66,7 @@ test('should trigger rename from context menu for directory', async ({ page }) =
     await loadInitialDirectory(page, 'dir1');
 
     const dirItem = page.locator('[data-dir-path="folder1"]');
-    await dirItem.click({ button: 'right' });
+    await openContextMenu(page, dirItem);
 
     const renameBtn = page.getByTestId('ctx-rename');
     await renameBtn.click();
@@ -86,7 +84,7 @@ test('should create new file from context menu', async ({ page }) => {
     await loadInitialDirectory(page, 'dir1');
 
     const dirItem = page.locator('[data-dir-path="folder1"]');
-    await dirItem.click({ button: 'right' });
+    await openContextMenu(page, dirItem);
 
     const newFileBtn = page.getByTestId('ctx-new-file');
     await newFileBtn.click();
@@ -116,7 +114,7 @@ test('should navigate context menu items with arrow keys', async ({ page }) => {
     const contextMenu = page.getByTestId('sidebar-contextmenu');
     await expect(contextMenu).not.toBeVisible();
 
-    await fileItem.click({ button: 'right' });
+    await openContextMenu(page, fileItem);
 
     await expect(contextMenu).toBeVisible();
 
@@ -129,7 +127,11 @@ test('should navigate context menu items with arrow keys', async ({ page }) => {
     await page.keyboard.press('ArrowDown');
     await expect(page.getByTestId('ctx-rename')).toBeFocused();
 
-    // Press ArrowDown -> Third item (Delete) should be focused
+    // Press ArrowDown -> Third item (Duplicate) should be focused
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('ctx-duplicate')).toBeFocused();
+
+    // Press ArrowDown -> Fourth item (Delete) should be focused
     await page.keyboard.press('ArrowDown');
     await expect(page.getByTestId('ctx-delete')).toBeFocused();
 
@@ -151,10 +153,9 @@ test('should execute action with Enter key', async ({ page }) => {
     await loadInitialDirectory(page, 'dir1');
 
     const fileItem = page.locator('[data-file-path="file1.txt"]');
-    await fileItem.click({ button: 'right' });
 
     // Verify context menu appears
-    await expectContextMenuOpen(page);
+    await openContextMenu(page, fileItem);
 
     // Navigate to Rename
     await page.keyboard.press('ArrowDown'); // Focus Open
@@ -179,10 +180,9 @@ test('should show context menu for root directory', async ({ page }) => {
 
     // Header select
     const header = page.getByTestId('sidebar-header');
-    await header.click({ button: 'right' });
 
     // Verify context menu appears
-    const contextMenu = await expectContextMenuOpen(page);
+    const contextMenu = await openContextMenu(page, header);
 
     // Verify options
     await expect(contextMenu).toContainText('New File');
@@ -194,7 +194,7 @@ test('should create new directory from context menu', async ({ page, fsSetup }) 
     await loadInitialDirectory(page, 'dir1');
 
     const header = page.getByTestId('sidebar-header');
-    await header.click({ button: 'right' });
+    await openContextMenu(page, header);
 
     await page.getByTestId('ctx-new-directory').click();
 
@@ -220,7 +220,7 @@ test('should cancel directory creation', async ({ page, fsSetup }) => {
     await loadInitialDirectory(page, 'dir1');
 
     const header = page.getByTestId('sidebar-header');
-    await header.click({ button: 'right' });
+    await openContextMenu(page, header);
 
     await page.getByTestId('ctx-new-directory').click();
 
@@ -243,7 +243,7 @@ test('should create new directory in subdirectory', async ({ page, fsSetup }) =>
     // Select folder1
     const dirItem = page.locator('[data-dir-path="folder1"]');
 
-    await dirItem.click({ button: 'right' });
+    await openContextMenu(page, dirItem);
     await page.getByTestId('ctx-new-directory').click();
 
     const renameInput = page.getByTestId('rename-input');
@@ -272,7 +272,7 @@ test('should highlight ghost node and expand parents on creation', async ({ page
     const dirItem = page.locator('[data-dir-path="folder1"]');
 
     // 1. Context click on folder1
-    await dirItem.click({ button: 'right' });
+    await openContextMenu(page, dirItem);
     await page.getByTestId('ctx-new-file').click();
 
     // 2. Expect rename input
@@ -293,7 +293,7 @@ test('should revert highlight to parent on cancellation', async ({ page }) => {
     const folder1 = page.locator('[data-dir-path="folder1"]');
 
     // 1. Right click folder1 -> New Directory
-    await folder1.click({ button: 'right' });
+    await openContextMenu(page, folder1);
     await page.getByTestId('ctx-new-directory').click();
 
     const renameInput = page.getByTestId('rename-input');

@@ -76,8 +76,15 @@ export async function loadInitialDirectory(page: Page, dir: string) {
     await expect(page.locator('data-testid=file-item').first()).toBeVisible();
 }
 
-export async function expectContextMenuOpen(page: Page) {
+export async function openContextMenu(page: Page, itemLocator: Locator) {
+    await itemLocator.click({ button: 'right' });
     const contextMenu = page.locator('[data-testid="sidebar-contextmenu"]');
     await expect(contextMenu).toBeVisible();
     return contextMenu;
+}
+
+export async function expectMonacoEditorToBeFocused(page: Page) {
+    const monaco = page.locator('.monaco-editor');
+    await expect(monaco.locator(':focus')).toHaveCount(1);
+    return monaco;
 }

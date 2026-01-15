@@ -42,6 +42,12 @@ export const SidebarContextMenu = observer(() => {
                         Rename
                     </button>
                     <button className={styles.contextMenuItem} onClick={() => {
+                        fileSystemStore.duplicateNode(targetNode as any);
+                    }} data-testid="ctx-duplicate">
+                        <i className={`fas fa-copy ${styles.contextMenuIcon}`} />
+                        Duplicate
+                    </button>
+                    <button className={styles.contextMenuItem} onClick={() => {
                         targetNode.delete();
                     }} data-testid="ctx-delete">
                         <i className={`fas fa-trash-alt ${styles.contextMenuIcon}`} />

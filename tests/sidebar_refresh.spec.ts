@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { loadInitialDirectory, expectContextMenuOpen } from './helpers/sidebar_helpers';
+import { loadInitialDirectory, openContextMenu } from './helpers/sidebar_helpers';
 
 test.describe('Sidebar Refresh', () => {
 
@@ -25,8 +25,8 @@ test.describe('Sidebar Refresh', () => {
         await expect(page.locator('[data-file-path="sub/external.txt"]')).not.toBeVisible();
 
         // Right-click subdir and refresh
-        await subDir.click({ button: 'right' });
-        const contextMenu = await expectContextMenuOpen(page);
+        const contextMenu = await openContextMenu(page, subDir);
+
         await expect(contextMenu).toContainText('Refresh');
 
         await page.getByTestId('ctx-refresh').click();
@@ -49,9 +49,7 @@ test.describe('Sidebar Refresh', () => {
 
         // Right-click ROOT (header)
         const header = page.getByTestId('sidebar-header');
-        await header.click({ button: 'right' });
-
-        const contextMenu = await expectContextMenuOpen(page);
+        const contextMenu = await openContextMenu(page, header);
 
         // Note: Logic for root context menu should also include Refresh?
         // Wait, did I add it to root? 

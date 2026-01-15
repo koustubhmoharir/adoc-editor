@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures.ts';
-import { loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { expectMonacoEditorToBeFocused, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ page, fsSetup }) => {
     // 1. Create large set of files for scrolling
@@ -151,6 +151,8 @@ test('Interaction & Selection', async ({ page }) => {
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('apple.adoc');
     // Search should close
     await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+    
+    await expectMonacoEditorToBeFocused(page);
 
     // Select via Click
     await page.click('[data-testid="search-toggle-button"]');
@@ -159,6 +161,8 @@ test('Interaction & Selection', async ({ page }) => {
 
     await expect(page.locator('[data-testid="title-bar"]')).toContainText('banana.adoc');
     await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+
+    await expectMonacoEditorToBeFocused(page);
 });
 
 test('Clear/Close Logic', async ({ page }) => {

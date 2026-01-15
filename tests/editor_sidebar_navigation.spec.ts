@@ -1,5 +1,5 @@
 import { helpers, test, expect } from './fixtures.ts';
-import { loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { expectMonacoEditorToBeFocused, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
     // Create a file structure for testing
@@ -146,8 +146,7 @@ test('Enter Navigation (File)', async ({ page }) => {
     await page.keyboard.press('Enter');
 
     // Verify Editor is focused
-    const monaco = page.locator('.monaco-editor');
-    await expect(monaco.locator(':focus')).toHaveCount(1);
+    expectMonacoEditorToBeFocused(page);
 });
 
 test('Space/Enter Navigation (Directory)', async ({ page }) => {
@@ -198,8 +197,7 @@ test('Double Click Navigation', async ({ page }) => {
     await file1.dblclick();
 
     // Verify Editor is focused
-    const monaco = page.locator('.monaco-editor');
-    await expect(monaco.locator(':focus')).toHaveCount(1);
+    const monaco = await expectMonacoEditorToBeFocused(page);
     await expect(monaco).toContainText('Content of file 1');
 
     // Double Click Directory (Toggle)
