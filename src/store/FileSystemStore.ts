@@ -861,31 +861,25 @@ class FileSystemStore extends EffectAwareModel {
         return `${this.rootNode.name}/${relativeDir}`;
     }
 
-    async createNewFile(parentDirectory?: FileSystemDirectoryHandle) {
+    async createNewFile(parentNode?: DirectoryNodeModel) {
         if (!this.rootNode) {
             await dialog.alert('Please open a directory first.');
             return;
         }
 
         // 1. Determine target directory
-        let targetDir: FileSystemDirectoryHandle | null | undefined = parentDirectory;
-        let parentNode: DirectoryNodeModel | null = null;
-
-        if (!targetDir) {
+        let targetNode: DirectoryNodeModel | null = parentNode || null;
+        
+        if (!targetNode) {
             if (this.currentFileNode && this.currentFileNode.parent) {
-                targetDir = this.currentFileNode.parent.handle;
-                parentNode = this.currentFileNode.parent;
+                targetNode = this.currentFileNode.parent;
+            } else if (this.rootNode) {
+                targetNode = this.rootNode;
             }
-            if (!targetDir && this.rootNode) {
-                targetDir = this.rootNode.handle;
-                parentNode = this.rootNode;
-            }
-        } else {
-            // Find model for this directory handle
-            parentNode = await this.findNodeByHandle(targetDir) as DirectoryNodeModel;
         }
+        const targetDir = targetNode?.handle || null;
 
-        if (!targetDir || !parentNode) return;
+        if (!targetDir || !targetNode) return;
 
         // 2. Auto-save current file
         if (this.dirty) {
@@ -916,22 +910,22 @@ class FileSystemStore extends EffectAwareModel {
             }
 
             // 4. Create Ghost Node
-            const path = parentNode.isRoot ? filename : parentNode.path + '/' + filename;
+            const path = targetNode.isRoot ? filename : targetNode.path + '/' + filename;
             const ghostNode = new FileNodeModel({
                 kind: 'file',
                 name: filename,
                 path: path,
                 handle: undefined
-            }, parentNode);
+            }, targetNode);
 
             // 5. Add to parent children
             runInAction(() => {
-                if (!parentNode!.children) parentNode!.children = [];
+                if (!targetNode!.children) targetNode!.children = [];
                 // Reassign to trigger observer
-                parentNode!.children = [ghostNode, ...parentNode!.children];
+                targetNode!.children = [ghostNode, ...targetNode!.children];
 
                 // Expand parent lineage
-                let curr: DirectoryNodeModel | null = parentNode;
+                let curr: DirectoryNodeModel | null = targetNode;
                 while (curr && !curr.isRoot) {
                     this._collapsedPaths.delete(curr.path);
                     curr = curr.parent;
@@ -1040,53 +1034,40 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    async createNewDirectory(parentDirectory?: FileSystemDirectoryHandle) {
+    async createNewDirectory(parentNode?: DirectoryNodeModel) {
         if (!this.rootNode) {
             await dialog.alert('Please open a directory first.');
             return;
         }
 
         // 1. Determine target directory
-        let targetDir: FileSystemDirectoryHandle | null | undefined = parentDirectory;
-        let parentNode: DirectoryNodeModel | null = null;
+        let targetNode: DirectoryNodeModel | null = parentNode || null;
 
-        if (!targetDir) {
+        if (!targetNode) {
             // If we are selecting a directory, create inside it (if permitted?)
-            // Logic for new directory usually: if directory selected, create inside? 
-            // If file selected, create in same folder.
-
-            // Current logic uses parent of current file, or root.
             if (this.currentFileNode) {
                 if (this.currentFileNode.parent) {
-                    targetDir = this.currentFileNode.parent.handle;
-                    parentNode = this.currentFileNode.parent;
+                    targetNode = this.currentFileNode.parent;
                 }
             } else if (this.highlightedPath) {
-                // If directory is highlighted, create inside? 
-                // The requirements are not super specific on "where", but "New Directory" usually works in current context.
-                // Let's stick to existing logic for consistency or improve.
                 const nodes = this.visibleNodes;
                 const highlighted = nodes.find(n => n.path === this.highlightedPath);
                 if (highlighted) {
                     if (highlighted.kind === 'directory') {
-                        targetDir = highlighted.handle; // Create INSIDE the highlighted directory
-                        parentNode = highlighted as DirectoryNodeModel;
+                        targetNode = highlighted as DirectoryNodeModel;
                     } else {
-                        targetDir = highlighted.parent?.handle;
-                        parentNode = highlighted.parent;
+                        targetNode = highlighted.parent;
                     }
                 }
             }
 
-            if (!targetDir && this.rootNode) {
-                targetDir = this.rootNode.handle;
-                parentNode = this.rootNode;
-            }
-        } else {
-            parentNode = await this.findNodeByHandle(targetDir) as DirectoryNodeModel;
+        }
+        if (!targetNode) {
+            targetNode = this.rootNode;
         }
 
-        if (!targetDir || !parentNode) return;
+        const targetDir = targetNode?.handle || null;
+        if (!targetDir || !targetNode) return;
 
         try {
             // 2. Find unique name
@@ -1109,26 +1090,26 @@ class FileSystemStore extends EffectAwareModel {
             }
 
             // 3. Create Ghost Node
-            const path = parentNode.isRoot ? dirname : parentNode.path + '/' + dirname;
+            const path = targetNode.isRoot ? dirname : targetNode.path + '/' + dirname;
             const ghostNode = new DirectoryNodeModel({
                 kind: 'directory',
                 name: dirname,
                 path: path,
                 handle: undefined,
                 children: []
-            }, parentNode);
+            }, targetNode);
 
             // 4. Add to parent
             runInAction(() => {
                 // Expand parent if needed (delete from collapsed)
-                this._collapsedPaths.delete(parentNode!.path);
+                this._collapsedPaths.delete(targetNode!.path);
 
-                if (!parentNode!.children) parentNode!.children = [];
+                if (!targetNode!.children) targetNode!.children = [];
                 // Reassign to trigger observer
-                parentNode!.children = [ghostNode, ...parentNode!.children];
+                targetNode!.children = [ghostNode, ...targetNode!.children];
 
                 // Expand parent lineage
-                let curr: DirectoryNodeModel | null = parentNode;
+                let curr: DirectoryNodeModel | null = targetNode;
                 while (curr && !curr.isRoot) {
                     this._collapsedPaths.delete(curr.path);
                     curr = curr.parent;
@@ -1151,8 +1132,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    async findSiblingFile(handle: FileSystemFileHandle, siblingName: string): Promise<FileSystemFileHandle | null> {
-        const node = await this.findNodeByHandle(handle);
+    async findSiblingFile(node: FileNodeModel, siblingName: string): Promise<FileSystemFileHandle | null> {
         if (node && node.parent) {
             try {
                 return await node.parent.handle.getFileHandle(siblingName);
@@ -1160,7 +1140,7 @@ class FileSystemStore extends EffectAwareModel {
                 return null;
             }
         }
-        return null;
+        return null; // If node is root (impossible for file?) or no parent
     }
 
     async deleteNode(node: FileSystemNodeModelBase) {
@@ -1220,13 +1200,11 @@ class FileSystemStore extends EffectAwareModel {
         if (!targetNode) return;
 
         // Verify permission if root (needed?) or simple check
-        // For root, we generally already checked, but let's be safe.
         // For subdirectories, permission is inherited usually.
         const hasPerm = await this.verifyPermission(targetNode.handle);
         if (!hasPerm) return;
 
-        const pathBase = targetNode.isRoot ? '' : targetNode.path;
-        const tree = await this.readDirectory(targetNode.handle, targetNode, pathBase);
+        const tree = await this.readDirectory(targetNode);
 
         runInAction(() => {
             targetNode.children = tree;
@@ -1498,8 +1476,10 @@ class FileSystemStore extends EffectAwareModel {
         return false;
     }
 
-    private async readDirectory(dirHandle: FileSystemDirectoryHandle, parent: DirectoryNodeModel, parentPath: string = ''): Promise<FileSystemNodeModel[]> {
+    private async readDirectory(parent: DirectoryNodeModel): Promise<FileSystemNodeModel[]> {
         const models: FileSystemNodeModel[] = [];
+        const dirHandle = parent.handle;
+        const parentPath = parent.isRoot ? '' : parent.path;
 
         for await (const entry of dirHandle.values()) {
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
@@ -1523,7 +1503,7 @@ class FileSystemStore extends EffectAwareModel {
                     children: [] // Will set children after
                 }, parent);
 
-                const children = await this.readDirectory(entry, dirModel, currentPath);
+                const children = await this.readDirectory(dirModel);
                 dirModel.children = children;
 
                 models.push(dirModel);

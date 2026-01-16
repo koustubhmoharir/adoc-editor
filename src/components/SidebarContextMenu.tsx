@@ -65,13 +65,13 @@ export const SidebarContextMenu = observer(() => {
                         Refresh
                     </button>
                     <button className={styles.contextMenuItem} onClick={() => {
-                        fileSystemStore.createNewFile(targetNode.handle as FileSystemDirectoryHandle);
+                        fileSystemStore.createNewFile(targetNode as DirectoryNodeModel);
                     }} data-testid="ctx-new-file">
                         <i className={`fas fa-file-circle-plus ${styles.contextMenuIcon}`} />
                         New File
                     </button>
                     <button className={styles.contextMenuItem} onClick={() => {
-                        fileSystemStore.createNewDirectory(targetNode.handle as FileSystemDirectoryHandle);
+                        fileSystemStore.createNewDirectory(targetNode as DirectoryNodeModel);
                     }} data-testid="ctx-new-directory">
                         <i className={`fas fa-folder-plus ${styles.contextMenuIcon}`} />
                         New Directory

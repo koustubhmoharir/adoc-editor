@@ -110,7 +110,7 @@ class TokensStore {
 
         // React to file changes to reload expectations
         const d2 = reaction(
-            () => fileSystemStore.currentFileHandle,
+            () => fileSystemStore.currentFileNode,
             () => {
                 this.loadExpectations();
             }
@@ -171,8 +171,9 @@ class TokensStore {
     }
 
     private async loadExpectations() {
-        const handle = fileSystemStore.currentFileHandle;
-        if (!handle) {
+        const fileNode = fileSystemStore.currentFileNode;
+        const handle = fileNode?.handle;
+        if (!fileNode || !handle) {
             runInAction(() => this._expectations = null);
             return;
         }
@@ -182,9 +183,9 @@ class TokensStore {
             runInAction(() => this._expectations = null);
             return;
         }
-
+        
         const jsonName = name.replace(/\.adoc$/, '.json');
-        const jsonHandle = await fileSystemStore.findSiblingFile(handle, jsonName);
+        const jsonHandle = await fileSystemStore.findSiblingFile(fileNode, jsonName);
 
         if (!jsonHandle) {
             runInAction(() => this._expectations = null);
