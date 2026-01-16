@@ -1,4 +1,5 @@
 import { test, expect, helpers } from './fixtures';
+import { getDirectoryItem } from './helpers/locators';
 import { loadInitialDirectory, openContextMenu } from './helpers/sidebar_helpers';
 
 test.describe('Refresh Features', () => {
@@ -140,8 +141,8 @@ test.describe('Refresh Features', () => {
         expect(content).toBe('outside content');
 
         // Now do a global refresh (F5 with file selected or root selected)
-        // Let's click sidebar header (root)
-        await page.getByTestId('sidebar-header').click();
+        // Let's click root
+        await getDirectoryItem(page, '').click();
         await page.keyboard.press('F5');
 
         await expect(async () => {

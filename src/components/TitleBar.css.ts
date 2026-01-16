@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css';
-import { sidebarWidth, vars } from '../theme.css';
+import { vars } from '../theme.css';
 
 export const header = style({
     height: '40px',
@@ -14,7 +14,6 @@ export const header = style({
 
 export const leftSection = style({
     padding: '0 0 0 16px',
-    width: sidebarWidth,
     display: 'flex',
     alignItems: 'center',
     gap: '16px'
@@ -80,7 +79,14 @@ export const helpButton = style([button, {
 
 export const newFileButton = style([button, {
     color: vars.color.newFileIcon,
-    marginLeft: "auto",
+}]);
+
+export const pickDirButton = style([button, {
+    //color: vars.color.newFileIcon,
+}]);
+
+export const searchFilesButton = style([button, {
+    //color: vars.color.newFileIcon,
 }]);
 
 

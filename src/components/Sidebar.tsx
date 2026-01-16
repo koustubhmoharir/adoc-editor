@@ -57,12 +57,15 @@ const FileTreeItem: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }
     const isSelected = fileSystemStore.highlightedPath === node.path;
     const isRenaming = node.isRenaming;
     const isDirectory = node.kind === 'directory';
+    const isRoot = node.isRoot;
     const isCollapsed = isDirectory ? fileSystemStore.isCollapsed(node.path) : false;
+
+    const itemClassName = `${isDirectory ? styles.directoryItem : styles.fileItem} ${isSelected ? styles.selected : ''}`;
 
     const itemContent = (
         <div
             ref={node.treeItemRef}
-            className={`${isDirectory ? styles.directoryItem : styles.fileItem} ${isSelected ? styles.selected : ''}`}
+            className={itemClassName}
             onClick={node.handleClick}
             onDoubleClick={node.handleDoubleClick}
             onContextMenu={node.handleContextMenu}
@@ -78,7 +81,7 @@ const FileTreeItem: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }
                 <RenameControl node={node} />
             ) : (
                 <>
-                    {node.kind === 'directory' ? (
+                    {isDirectory ?
                         <button
                             className={styles.directoryToggleButton}
                             onClick={node.handleToggleClick}
@@ -87,10 +90,10 @@ const FileTreeItem: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }
                         >
                             <i className={`fas ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} ${styles.folderIcon}`} />
                         </button>
-                    ) : (
+                        :
                         <i className={`fas fa-file-lines ${styles.fileIcon}`} />
-                    )}
-                    <span className={styles.itemText}>{node.name}</span>
+                    }
+                    <span className={`${styles.itemText} ${isRoot ? styles.headerText : ''}`}>{node.name}</span>
                 </>
             )}
         </div>
@@ -98,7 +101,7 @@ const FileTreeItem: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }
 
     if (isDirectory) {
         return (
-            <div className={styles.directoryContainer}>
+            <div className={isRoot ? styles.rootContainer : styles.directoryContainer}>
                 {itemContent}
                 {!isCollapsed && node.children && node.children.map((child, i) => (
                     <FileTreeItem key={i} node={child} />
@@ -110,33 +113,6 @@ const FileTreeItem: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }
     return itemContent;
 });
 
-const SidebarHeader: React.FC = observer(() => {
-    const rootNode = fileSystemStore.rootNode;
-    if (!rootNode) return null;
-
-    return (
-        <div
-            className={styles.header}
-            ref={rootNode.treeItemRef}
-            title={rootNode.name}
-            onClick={() => fileSystemStore.openDirectory()}
-            onContextMenu={rootNode.handleContextMenu}
-            data-testid="sidebar-header"
-        >
-            <i className={`fas fa-folder-open ${styles.rootFolderIcon}`} />
-            <span className={`${styles.headerText} ${styles.itemText}`}>{rootNode.name}</span>
-
-            <button
-                className={styles.searchToggleButton}
-                onClick={(e) => fileSystemStore.toggleSearch(e)}
-                title="Search files"
-                data-testid="search-toggle-button"
-            >
-                <i className="fas fa-search" />
-            </button>
-        </div>
-    );
-});
 
 const SidebarSearch: React.FC = observer(() => {
     if (!fileSystemStore.isSearchVisible) return null;
@@ -194,23 +170,6 @@ const SidebarSearchResults: React.FC = observer(() => {
     );
 });
 
-const SidebarTree: React.FC = observer(() => {
-    const rootNode = fileSystemStore.rootNode;
-    if (!rootNode) return null;
-
-    if (rootNode.children?.length === 0) {
-        return <div className={styles.emptyState}>Empty folder</div>;
-    }
-
-    return (
-        <>
-            {rootNode.children?.map((node: FileSystemNodeModel, i: number) => (
-                <FileTreeItem key={i} node={node} />
-            ))}
-        </>
-    );
-});
-
 const SidebarEmptyState: React.FC = observer(() => {
     return (
         <div className={styles.emptyState}>
@@ -218,7 +177,7 @@ const SidebarEmptyState: React.FC = observer(() => {
             <button
                 className={styles.actionButton}
                 onClick={fileSystemStore.openDirectory}
-                data-testid="open-directory-button"
+                data-testid="empty-open-directory-button"
             >
                 Open Directory
             </button>
@@ -242,14 +201,13 @@ export const Sidebar: React.FC = observer(() => {
 
                 {rootNode ?
                     <>
-                        <SidebarHeader />
                         <SidebarSearch />
                         <div className={styles.treeContainer}>
-                            {fileSystemStore.searchQuery ? (
+                            {fileSystemStore.searchQuery ?
                                 <SidebarSearchResults />
-                            ) : (
-                                <SidebarTree />
-                            )}
+                                :
+                                <FileTreeItem node={rootNode} />
+                            }
                         </div>
                     </> :
 

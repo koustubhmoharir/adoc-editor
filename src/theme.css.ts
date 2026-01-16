@@ -89,5 +89,3 @@ export const darkTheme = createTheme(vars, {
         medium: '20px'
     }
 });
-
-export const sidebarWidth = "250px";

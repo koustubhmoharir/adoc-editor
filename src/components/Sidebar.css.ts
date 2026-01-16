@@ -1,8 +1,8 @@
 import { style } from '@vanilla-extract/css';
-import { vars as themeVars, sidebarWidth } from '../theme.css';
+import { vars as themeVars } from '../theme.css';
 
 export const sidebar = style({
-    width: sidebarWidth,
+    width: "250px",
     height: '100%',
     backgroundColor: themeVars.color.background,
     borderRight: `1px solid ${themeVars.color.border}`,
@@ -35,7 +35,6 @@ export const emptyState = style({
 
 export const treeContainer = style({
     paddingBottom: '8px',
-    paddingLeft: '8px'
 });
 
 export const itemBase = style({
@@ -74,6 +73,7 @@ export const directoryItem = style([itemBase, {
 export const fileItem = style([itemBase, {
     position: 'relative',
     marginLeft: '12px',
+    paddingLeft: '0px'
 }]);
 
 export const selected = style({
@@ -94,10 +94,6 @@ export const folderIcon = style([icon, {
     color: themeVars.color.folderIcon,
     width: '19px',
     margin: '0',
-}]);
-
-export const rootFolderIcon = style([folderIcon, {
-    margin: '0 4px 0 0',
 }]);
 
 export const fileIcon = style([icon, {
@@ -139,25 +135,6 @@ export const actionButton = style({
     padding: '6px 12px',
     cursor: 'pointer',
     fontSize: '12px',
-    ':hover': {
-        backgroundColor: themeVars.color.hoverBackground
-    }
-});
-
-export const searchToggleButton = style({
-    margin: "-4px -4px -4px auto",
-    position: "relative",
-    top: "1px",
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    color: themeVars.color.textLight,
-    padding: '5px 4px',
-    borderRadius: '4px',
-    fontSize: '14px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     ':hover': {
         backgroundColor: themeVars.color.hoverBackground
     }
@@ -328,3 +305,7 @@ export const contextMenuIcon = style({
     color: themeVars.color.textLight
 });
 
+export const rootContainer = style({
+    // Less indentation for children of root if desired, or same as directoryContainer
+    paddingLeft: '4px'
+});

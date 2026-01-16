@@ -16,6 +16,28 @@ export const TitleBar: React.FC = observer(() => {
             <div className={styles.leftSection}>
                 <h3 className={styles.title}>{appName}</h3>
                 <button
+                    className={styles.pickDirButton}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        fileSystemStore.openDirectory();
+                    }}
+                    title="Open Directory"
+                    data-testid="open-directory-button"
+                >
+                    <i className="fas fa-folder-open" />
+                </button>
+                <button
+                    className={styles.searchFilesButton}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        fileSystemStore.toggleSearch(e);
+                    }}
+                    title="Search files (Ctrl + `)"
+                    data-testid="search-toggle-button"
+                >
+                    <i className="fas fa-search" />
+                </button>
+                <button
                     className={styles.newFileButton}
                     onClick={() => fileSystemStore.createNewFile()}
                     title={`New File in ${fileSystemStore.currentDirectoryPath}`}

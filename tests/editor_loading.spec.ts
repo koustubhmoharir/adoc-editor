@@ -62,7 +62,7 @@ test('If there are no unsaved changes, opening a new directory does not change c
     await helpers.setDirectoryPickerChoice(page, 'dir2');
 
     // Open directory again (click current directory name in sidebar)
-    await page.click('[data-testid="sidebar-header"]');
+    await page.click('[data-testid="open-directory-button"]');
 
     // Check if dir2 loaded
     await expect(page.locator('[data-testid="file-item"][data-file-path="dir2_file.adoc"]')).toBeVisible();

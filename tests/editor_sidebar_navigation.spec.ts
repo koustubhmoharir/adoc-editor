@@ -55,7 +55,7 @@ test('Keyboard Navigation (Arrows)', async ({ page }) => {
     await expect(file1).toBeFocused();
 
     // This test is flaky because we focus in a normal effect, not in a layout effect.
-    
+
     await page.keyboard.press('ArrowUp');
     const file4 = page.locator('[data-testid="file-item"][data-file-path="dir-b/file4.adoc"]');
     await expect(file4).toBeFocused();
@@ -63,6 +63,7 @@ test('Keyboard Navigation (Arrows)', async ({ page }) => {
     // Arrow Up -> Selects dir-b
     await page.keyboard.press('ArrowUp');
     const dirb = page.locator('[data-testid="directory-item"][data-dir-path="dir-b"]');
+    await expect(dirb).toHaveAttribute('data-selected', 'true');
     await expect(dirb).toBeFocused();
 
     // 4 Arrow Up -> Selects dir-a
@@ -211,4 +212,56 @@ test('Double Click Navigation', async ({ page }) => {
 
     await dira.dblclick();
     await expect(fileInDir).toBeVisible();
+});
+
+test('should navigate to root node with arrow keys', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
+
+    // Select dir-a (first child of root)
+    const dira = page.locator('[data-testid="directory-item"][data-dir-path="dir-a"]');
+    await dira.click();
+    await expect(dira).toHaveAttribute('data-selected', 'true');
+
+    // Press ArrowUp to reach root
+    await page.keyboard.press('ArrowUp');
+
+    const rootItem = page.locator('[data-dir-path=""]');
+    await expect(rootItem).toHaveAttribute('data-selected', 'true');
+});
+
+test('should toggle root node collapse/expand with Left/Right keys', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
+
+    // Select root
+    const rootItem = page.locator('[data-dir-path=""]');
+    await rootItem.click();
+    await expect(rootItem).toHaveAttribute('data-selected', 'true');
+
+    // Ensure it starts expanded (default) - Check if "dir-a" is visible
+    const dira = page.locator('[data-testid="directory-item"][data-dir-path="dir-a"]');
+    await expect(dira).toBeVisible();
+
+    // 3. Press ArrowLeft -> Should collapse
+    await page.keyboard.press('ArrowLeft');
+
+    // Verify collapsed state - dir-a should NOT be visible
+    await expect(dira).not.toBeVisible();
+
+    // 4. Press ArrowRight -> Should expand
+    await page.keyboard.press('ArrowRight');
+    await expect(dira).toBeVisible();
+});
+
+test('should navigate from root to first child with ArrowRight', async ({ page }) => {
+    await loadInitialDirectory(page, 'dir1');
+
+    // Select root
+    const rootItem = page.locator('[data-dir-path=""]');
+    await rootItem.click();
+
+    // Navigate Right (already expanded) -> First child (dir-a)
+    await page.keyboard.press('ArrowRight');
+
+    const dira = page.locator('[data-testid="directory-item"][data-dir-path="dir-a"]');
+    await expect(dira).toHaveAttribute('data-selected', 'true');
 });

@@ -178,8 +178,8 @@ test('should execute action with Enter key', async ({ page }) => {
 test('should show context menu for root directory', async ({ page }) => {
     await loadInitialDirectory(page, 'dir1');
 
-    // Header select
-    const header = page.getByTestId('sidebar-header');
+    // Root folder select (dir1)
+    const header = page.locator('[data-dir-path=""]');
 
     // Verify context menu appears
     const contextMenu = await openContextMenu(page, header);
@@ -193,7 +193,7 @@ test('should show context menu for root directory', async ({ page }) => {
 test('should create new directory from context menu', async ({ page, fsSetup }) => {
     await loadInitialDirectory(page, 'dir1');
 
-    const header = page.getByTestId('sidebar-header');
+    const header = page.locator('[data-dir-path=""]');
     await openContextMenu(page, header);
 
     await page.getByTestId('ctx-new-directory').click();
@@ -219,7 +219,7 @@ test('should create new directory from context menu', async ({ page, fsSetup }) 
 test('should cancel directory creation', async ({ page, fsSetup }) => {
     await loadInitialDirectory(page, 'dir1');
 
-    const header = page.getByTestId('sidebar-header');
+    const header = page.locator('[data-dir-path=""]');
     await openContextMenu(page, header);
 
     await page.getByTestId('ctx-new-directory').click();

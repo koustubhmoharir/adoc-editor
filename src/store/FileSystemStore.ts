@@ -573,6 +573,7 @@ class FileSystemStore extends EffectAwareModel {
     @computed
     get visibleNodes(): FileSystemNodeModel[] {
         const result: FileSystemNodeModel[] = [];
+        if (!this.rootNode) return result;
         const traverse = (nodes: FileSystemNodeModel[]) => {
             for (const node of nodes) {
                 result.push(node);
@@ -581,7 +582,7 @@ class FileSystemStore extends EffectAwareModel {
                 }
             }
         };
-        traverse(this.rootNode?.children ?? []);
+        traverse([this.rootNode]);
         return result;
     }
 
@@ -648,7 +649,7 @@ class FileSystemStore extends EffectAwareModel {
             runInAction(() => {
                 this._rootNode = new DirectoryNodeModel({
                     name: handle.name,
-                    path: handle.name,
+                    path: '',
                     kind: 'directory',
                     handle: handle,
                     children: []
@@ -741,13 +742,18 @@ class FileSystemStore extends EffectAwareModel {
                 this.toggleDirectory(currentNode.path);
             } else {
                 // Move to parent
-                // find strictly via path string manipulation
                 const lastSlash = currentNode.path.lastIndexOf('/');
                 if (lastSlash !== -1) {
                     const parentPath = currentNode.path.substring(0, lastSlash);
                     const parentNode = visible.find(n => n.path === parentPath);
                     if (parentNode) {
                         this.selectNode(parentNode, 'delay');
+                    }
+                } else {
+                    // Use parent logic if no slash? It implies it's a child of root (since path = name)
+                    // Or if parent is root
+                    if (currentNode.parent && currentNode.parent.isRoot) {
+                        this.selectNode(currentNode.parent, 'delay');
                     }
                 }
             }
