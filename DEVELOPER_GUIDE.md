@@ -170,5 +170,27 @@ We have implemented a custom, promise-based dialog system to replace the native 
   - `await dialog.confirm(message, options?)`: Shows a confirmation dialog. Returns a Promise that resolves to `true` (confirmed) or `false` (cancelled).
 - **Options**: Both methods accept an optional configuration object for titles, button text, and icons.
 
-> [!IMPORTANT]
 > Always use `dialog.alert` and `dialog.confirm` instead of the native browser methods. Native methods block the renderer process and cannot be styled.
+
+## 10. Focus & Highlight Specification
+
+To ensure a seamless keyboard navigation experience, the application adheres to strict rules regarding element focus and visual highlighting after file system operations.
+
+### Definitions
+- **Highlight**: The visual selection state in the Sidebar file tree (typically blue background).
+- **Focus**: The browser's active element (keyboard focus).
+
+### Behavior Table
+| Operation | Scenario | Resulting Focus | Resulting Highlight |
+| :--- | :--- | :--- | :--- |
+| **Create File** | Success | Monaco Editor | New Item |
+| **Create Dir** | Success | New Item (Sidebar) | New Item |
+| **Create** | Cancel | Parent Directory (or Top-Level) | Parent Directory |
+| **Rename** | Success | Renamed Item (Sidebar) | Renamed Item |
+| **Rename** | Cancel | Original Item (Sidebar) | Original Item |
+| **Delete** | Success | Parent Directory (Sidebar) | Parent Directory |
+| **Duplicate** | Success | Monaco Editor | New Item (Copy) |
+| **Duplicate** | Cancel | Original Item (Sidebar) | Original Item (Source) |
+| **Refresh (Context)** | specific directory | Refreshed Directory | Refreshed Directory |
+| **Refresh (F5)** | No sidebar focus | No change (Keep previous focus) | Retain current highlight |
+| **Refresh (F5)** | Sidebar focused | Retain key focus if possible | Retain current highlight |

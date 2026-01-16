@@ -1,6 +1,6 @@
 import { test, expect, helpers } from './fixtures';
 import { getDirectoryItem } from './helpers/locators';
-import { loadInitialDirectory, openContextMenu } from './helpers/sidebar_helpers';
+import { expectMonacoEditorToBeFocused, loadInitialDirectory, openContextMenu } from './helpers/sidebar_helpers';
 
 test.describe('Refresh Features', () => {
 
@@ -28,6 +28,8 @@ test.describe('Refresh Features', () => {
         fsSetup.createFile('dir1', 'new-file.txt', 'new content');
 
         // 3. Press F5
+        // Ensure editor is focused to start with, so we can test preservation
+        await page.locator('.monaco-editor').first().click();
         await page.keyboard.press('F5');
 
         // Verify content updated
@@ -41,6 +43,10 @@ test.describe('Refresh Features', () => {
 
         // Verify focus/highlight (F5 on file should keep file highlighted)
         await expect(page.locator('[data-file-path="file1.txt"]')).toHaveAttribute('data-selected', 'true');
+        // Editor was last focused (implicitly by opening?), actually F5 from body should preserve.
+        // If we want to test "No sidebar focus" scenario, we should ensure editor is focused first.
+        // Let's assume editor focus for "No sidebar focus" case.
+        await expectMonacoEditorToBeFocused(page);
     });
 
     test('F5 Directory Refresh: updates subdirectory and maintains selection', async ({ page, fsSetup }) => {
@@ -71,6 +77,7 @@ test.describe('Refresh Features', () => {
 
         // Verify 'sub' is STILL selected
         await expect(subDir).toHaveAttribute('data-selected', 'true');
+        await expect(subDir).toBeFocused();
 
         // Verify content updated in editor (since it was open and inside the refreshed dir)
         await expect(async () => {
@@ -102,6 +109,7 @@ test.describe('Refresh Features', () => {
 
         // Verify 'sub' is STILL selected
         await expect(subDir).toHaveAttribute('data-selected', 'true');
+        await expect(subDir).toBeFocused();
 
         // Verify content updated
         await expect(async () => {

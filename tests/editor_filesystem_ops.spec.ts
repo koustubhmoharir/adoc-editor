@@ -25,6 +25,7 @@ test('Enter and exit renaming via keyboard (F2, Enter)', async ({ page, fsSetup 
     await completeRename(page, input, 'renamed.adoc', 'enter');
 
     await expect(getFileItem(page, 'renamed.adoc')).toBeVisible();
+    await expect(getFileItem(page, 'renamed.adoc')).toBeFocused();
     expect(fsSetup.exists('dir1', 'renamed.adoc')).toBe(true);
 });
 
@@ -38,6 +39,7 @@ test('Cancel renaming via Esc', async ({ page, fsSetup }) => {
 
     // Input gone, old name remains
     await expect(getFileItem(page, 'file1.adoc')).toBeVisible();
+    await expect(getFileItem(page, 'file1.adoc')).toBeFocused();
     expect(fsSetup.exists('dir1', 'file1.adoc')).toBe(true);
     expect(fsSetup.exists('dir1', 'aborted_change.adoc')).toBe(false);
 });
@@ -58,6 +60,7 @@ test('Cancel renaming via cancel button', async ({ page, fsSetup }) => {
 
     // Input gone, old name remains
     await expect(getFileItem(page, 'file1.adoc')).toBeVisible();
+    await expect(getFileItem(page, 'file1.adoc')).toBeFocused();
     expect(fsSetup.exists('dir1', 'file1.adoc')).toBe(true);
     expect(fsSetup.exists('dir1', 'aborted_change.adoc')).toBe(false);
 });
@@ -347,5 +350,6 @@ test('Cancel delete file', async ({ page, fsSetup }) => {
     expect(await dialogHandle.getMessage()).toContain('Are you sure you want to delete');
 
     await expect(fileItem).toBeVisible();
+    await expect(fileItem).toBeFocused();
     expect(fsSetup.exists('dir1', 'file1.adoc')).toBe(true);
 });

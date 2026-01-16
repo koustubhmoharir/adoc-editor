@@ -110,13 +110,18 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
                     if (this.isFile() && this.copySource) {
                         // Attempt to focus source
                         fileSystemStore.selectNode(this.copySource, 'show');
+                        this.copySource.scheduleFocusTreeItem();
                     }
                     else {
                         fileSystemStore.selectNode(this.parent, 'show');
+                        this.parent.scheduleFocusTreeItem();
                     }
                 }
             }
         } else {
+            // Just cancelled rename of existing item -> restore focus to self
+            fileSystemStore.selectNode(this, 'show');
+            this.scheduleFocusTreeItem();
         }
     }
 
@@ -315,7 +320,8 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
             this._isRenaming = false;
 
             // Refresh tree to ensure sync and proper sorting
-            await fileSystemStore.refresh(this.parent?.isRoot ? undefined : this.parent, this._path, true);
+            const focusTarget = this.kind === 'file' ? 'editor' : 'sidebar';
+            await fileSystemStore.refresh(this.parent?.isRoot ? undefined : this.parent, this._path, true, focusTarget);
 
             return true;
         } catch (e) {
@@ -405,7 +411,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
 
                 // Refresh the parent directory
                 const parentNode = this.parent;
-                await fileSystemStore.refresh(parentNode?.isRoot ? undefined : parentNode as DirectoryNodeModel, newPath);
+                await fileSystemStore.refresh(parentNode?.isRoot ? undefined : parentNode as DirectoryNodeModel, newPath, false, 'sidebar');
                 return true;
             } catch (error) {
                 console.error('Rename failed:', error);
@@ -1176,7 +1182,7 @@ class FileSystemStore extends EffectAwareModel {
 
             // Refresh the parent directory
             const parent = node.parent;
-            await this.refresh(parent?.isRoot ? undefined : parent, parent?.isRoot ? undefined : parent.path);
+            await this.refresh(parent?.isRoot ? undefined : parent, parent?.isRoot ? undefined : parent.path, false, 'sidebar');
         } catch (error) {
             console.error('Error deleting node:', error);
             await dialog.alert(`Failed to delete ${node.kind}: ${error}`);
@@ -1189,15 +1195,15 @@ class FileSystemStore extends EffectAwareModel {
             const nodes = this.visibleNodes;
             const highlighted = nodes.find(n => n.path === this.highlightedPath);
             if (highlighted?.kind === 'directory') {
-                await this.refresh(highlighted, highlighted.path);
+                await this.refresh(highlighted, highlighted.path, false, 'none');
                 return;
             }
         }
-        await this.refresh();
+        await this.refresh(undefined, undefined, false, 'none');
     }
 
     @action
-    async refresh(node?: DirectoryNodeModel, focusPath?: string, openFile: boolean = false) {
+    async refresh(node?: DirectoryNodeModel, focusPath?: string, openFile: boolean = false, focusTarget: 'sidebar' | 'editor' | 'none' = 'none') {
         // Default to root if no node provided
         const targetNode = node || this.rootNode;
         if (!targetNode) return;
@@ -1228,14 +1234,32 @@ class FileSystemStore extends EffectAwareModel {
             nodeToFocus = findNode(targetNode);
         }
         if (nodeToFocus) {
-            if (nodeToFocus.kind === 'directory') {
-                runInAction(() => {
-                    this._highlightedPath = nodeToFocus.path;
-                });
-                nodeToFocus.scheduleFocusTreeItem();
+            runInAction(() => {
+                this._highlightedPath = nodeToFocus.path;
+            });
+
+            if (focusTarget === 'sidebar') {
+                if (nodeToFocus.kind === 'directory' || !openFile) {
+                    nodeToFocus.scheduleFocusTreeItem();
+                } else {
+                    // If it's a file and we are opening it, usually editor gets focus unless we explicitly want sidebar
+                    nodeToFocus.scheduleFocusTreeItem();
+                }
             }
-            else if (openFile && nodeToFocus.kind === 'file') {
-                await this.openFileInEditor(nodeToFocus, true);
+
+            if (openFile && nodeToFocus.kind === 'file') {
+                // Only focus tree item if specifically requested for sidebar
+                const focusTree = focusTarget === 'sidebar';
+                await this.openFileInEditor(nodeToFocus, focusTree);
+
+                if (focusTarget === 'editor') {
+                    editorStore.focusEditor();
+                }
+            } else if (focusTarget === 'editor' && nodeToFocus.kind === 'file') {
+                // Ensure editor is focused even if not 'opening' (already open?)
+                // Pass false to focusNode because we handle editor focus explicitly
+                await this.openFileInEditor(nodeToFocus, false);
+                editorStore.focusEditor();
             }
         }
 

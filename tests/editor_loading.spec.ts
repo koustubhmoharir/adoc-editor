@@ -2,7 +2,7 @@ import { helpers, test, expect } from './fixtures.ts';
 import * as path from 'path';
 
 // Helpers
-import { openContextMenu, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { openContextMenu, loadInitialDirectory, expectMonacoEditorToBeFocused } from './helpers/sidebar_helpers.ts';
 import { getFileItem } from './helpers/locators.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
@@ -387,7 +387,8 @@ test('Creating new file in subdirectory via Sidebar', async ({ page, fsSetup }) 
     // Allow operation to complete
     expect(fsSetup.readFile('dir1', 'subdir/new-1.adoc')).toBe('');
 
-    await expect(getFileItem(page, 'subdir/new-1.adoc')).toBeFocused();
+    await expectMonacoEditorToBeFocused(page);
+    await expect(getFileItem(page, 'subdir/new-1.adoc')).toHaveAttribute('data-selected');
 
     // Check it is selected in title bar
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('new-1.adoc');

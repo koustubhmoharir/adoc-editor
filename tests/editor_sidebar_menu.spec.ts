@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures.ts';
-import { openContextMenu, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { openContextMenu, loadInitialDirectory, expectMonacoEditorToBeFocused } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
     fsSetup.cleanup();
@@ -101,7 +101,10 @@ test('should create new file from context menu', async ({ page }) => {
     await page.keyboard.press('Enter');
     await expect(renameInput).not.toBeVisible();
     // Verify new file is visible
-    await expect(page.locator('[data-testid="file-item"][data-file-path^="folder1/new-"]')).toBeVisible();
+    const newFile = page.locator('[data-testid="file-item"][data-file-path^="folder1/new-"]');
+    await expect(newFile).toBeVisible();
+    await expect(newFile).toHaveAttribute('data-selected', 'true');
+    await expectMonacoEditorToBeFocused(page);
 
     // Verify it is NOT dirty
     await expect(page.getByTestId('dirty-indicator')).not.toBeVisible();
@@ -213,6 +216,7 @@ test('should create new directory from context menu', async ({ page, fsSetup }) 
 
     // Verify existence
     await expect(page.locator('[data-dir-path="my_new_folder"]')).toBeVisible();
+    await expect(page.locator('[data-dir-path="my_new_folder"]')).toBeFocused();
     expect(fsSetup.exists('dir1', 'my_new_folder')).toBe(true);
 });
 
@@ -235,6 +239,9 @@ test('should cancel directory creation', async ({ page, fsSetup }) => {
     // Verify not exists
     expect(fsSetup.exists('dir1', initialName)).toBe(false);
     await expect(page.getByTestId('directory-item').filter({ hasText: initialName })).not.toBeVisible();
+
+    // Verify focus returned to header
+    await expect(header).toBeFocused();
 });
 
 test('should create new directory in subdirectory', async ({ page, fsSetup }) => {
@@ -264,6 +271,7 @@ test('should create new directory in subdirectory', async ({ page, fsSetup }) =>
     // We might need to expand folder1 to see it if it wasn't expanded.
     // The createNewDirectory implementation deletes from collapsedPaths (expands parent).
     await expect(page.locator('[data-dir-path="folder1/sub_folder"]')).toBeVisible();
+    await expect(page.locator('[data-dir-path="folder1/sub_folder"]')).toBeFocused();
     expect(fsSetup.exists('dir1', 'folder1/sub_folder')).toBe(true);
 });
 
@@ -286,6 +294,7 @@ test('should highlight ghost node and expand parents on creation', async ({ page
 
     // 4. Verify highlight on NEW file
     await expect(page.locator('[data-file-path="folder1/nested-file.txt"]')).toHaveAttribute('data-selected', 'true');
+    await expectMonacoEditorToBeFocused(page);
 });
 
 test('should revert highlight to parent on cancellation', async ({ page }) => {
@@ -308,4 +317,5 @@ test('should revert highlight to parent on cancellation', async ({ page }) => {
 
     // 4. Verify highlight and focus reverted to folder1
     await expect(folder1).toHaveAttribute('data-selected', 'true');
+    await expect(folder1).toBeFocused();
 });

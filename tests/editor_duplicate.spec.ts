@@ -1,5 +1,5 @@
 import { test, expect, helpers } from './fixtures.ts';
-import { openContextMenu, loadInitialDirectory } from './helpers/sidebar_helpers.ts';
+import { openContextMenu, loadInitialDirectory, expectMonacoEditorToBeFocused } from './helpers/sidebar_helpers.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
     fsSetup.cleanup();
@@ -29,7 +29,9 @@ test('should duplicate file with correct name and content', async ({ page, fsSet
     // Verify new file exists
     const newFile = page.locator('[data-file-path="file1-2.txt"]');
     await expect(newFile).toBeVisible();
-    await expect(newFile).toBeFocused();
+    await expect(newFile).toHaveAttribute('data-selected', 'true');
+    // Verify editor focused
+    await expect(page.locator('.monaco-editor').first()).toHaveClass(/focused/);
 
     // Check editor content
     // We wait for content to be set
@@ -99,7 +101,9 @@ test('should duplicate file in subdirectory', async ({ page, fsSetup }) => {
 
     const newFile = page.locator('[data-file-path="folder1/nested_file-2.txt"]');
     await expect(newFile).toBeVisible();
-    await expect(newFile).toBeFocused();
+    await expect(newFile).toHaveAttribute('data-selected', 'true');
+    // Verify editor focused
+    await expectMonacoEditorToBeFocused(page);
 
     // Check editor content
     // We wait for content to be set
