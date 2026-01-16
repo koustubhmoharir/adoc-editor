@@ -16,7 +16,6 @@ export const leftSection = style({
     padding: '0 0 0 16px',
     display: 'flex',
     alignItems: 'center',
-    gap: '16px'
 });
 
 export const centerSection = style({
@@ -31,7 +30,7 @@ export const rightSection = style({
 });
 
 export const title = style({
-    margin: 0,
+    margin: '0 16px 0 0',
     fontSize: '16px',
     fontWeight: 'bold'
 });
@@ -82,7 +81,7 @@ export const newFileButton = style([button, {
 }]);
 
 export const pickDirButton = style([button, {
-    //color: vars.color.newFileIcon,
+    color: vars.color.folderIcon,
 }]);
 
 export const searchFilesButton = style([button, {

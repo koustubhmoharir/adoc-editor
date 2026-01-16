@@ -194,3 +194,4 @@ To ensure a seamless keyboard navigation experience, the application adheres to 
 | **Refresh (Context)** | specific directory | Refreshed Directory | Refreshed Directory |
 | **Refresh (F5)** | No sidebar focus | No change (Keep previous focus) | Retain current highlight |
 | **Refresh (F5)** | Sidebar focused | Retain key focus if possible | Retain current highlight |
+| **Go to Search Result** | Selection | Monaco Editor | Selected Item (Expanded & Scrolled) |

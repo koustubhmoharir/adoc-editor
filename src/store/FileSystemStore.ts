@@ -1330,6 +1330,21 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     handleSearchResultClick(item: FileSystemNodeModel) {
+        // 1. Expand all parents
+        let parent = item.parent;
+        while (parent && !parent.isRoot) {
+            this._collapsedPaths.delete(parent.path);
+            parent = parent.parent;
+        }
+
+        // 2. Highlight item
+        this._highlightedPath = item.path;
+
+        // 3. Scroll into view
+        item.scheduleEffect(() => {
+            item.treeItemRef.current?.scrollIntoView({ block: 'nearest' });
+        });
+
         this.openFileInEditor(item, false).then(() => {
             editorStore.focusEditor();
         });

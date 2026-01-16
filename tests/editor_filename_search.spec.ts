@@ -151,7 +151,7 @@ test('Interaction & Selection', async ({ page }) => {
     await expect(page.locator('[data-testid="current-filename"]')).toHaveText('apple.adoc');
     // Search should close
     await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
-    
+
     await expectMonacoEditorToBeFocused(page);
 
     // Select via Click
@@ -234,4 +234,45 @@ test('Keyboard Shortcut (Meta + ~ for Mac)', async ({ page }) => {
     // Toggle off via shortcut - should clear and close
     await page.keyboard.press('Meta+Backquote');
     await expect(page.locator('[data-testid="search-input"]')).not.toBeVisible();
+});
+
+test('Search Result: Highlights and Expands Sidebar', async ({ page, fsSetup }) => {
+    // 1. Setup deep nesting
+    fsSetup.createFile('dir1', 'deep/nested/folder/target_file.txt', 'Target Content');
+
+    await loadInitialDirectory(page, 'dir1');
+
+    // 2. Ensure parents are collapsed initially
+    // Directories are expanded by default. We must collapse them to test expansion.
+    const deepDir = page.locator('[data-dir-path="deep"]');
+    await deepDir.click(); // Select/Focus
+    // If it's expanded (default), clicking might just select it. We need to toggle it.
+    // Actually, Sidebar usually renders with an arrow. Checking if we can collapse it.
+    // We can use the store or UI. UI is better.
+    // If we click the arrow...
+    // Let's assume hitting "ArrowLeft" on the directory collapses it if focused.
+    await deepDir.focus();
+    await page.keyboard.press('ArrowLeft'); // Collapse
+
+    // Let's check visibility of the target file node first.
+    const targetFileNode = page.locator('[data-file-path="deep/nested/folder/target_file.txt"]');
+    await expect(targetFileNode).not.toBeVisible();
+
+    // 3. Search
+    await page.click('[data-testid="search-toggle-button"]');
+    await page.fill('[data-testid="search-input"]', 'target_file');
+
+    // 4. Select result
+    await page.click('[data-testid="search-result-item"]');
+
+    // 5. Verify Editor Focus (Existing behavior)
+    await expectMonacoEditorToBeFocused(page);
+
+    // 6. Verify Sidebar Behavior (The Fix)
+    // - Should be expanded (visible)
+    await expect(targetFileNode).toBeVisible();
+    // - Should be highlighted
+    await expect(targetFileNode).toHaveAttribute('data-selected', 'true');
+    // - Should be in viewport (scrolled to)
+    await expect(targetFileNode).toBeInViewport();
 });

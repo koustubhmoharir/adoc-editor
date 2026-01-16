@@ -141,7 +141,7 @@ export const actionButton = style({
 });
 
 export const searchContainer = style({
-    padding: '8px',
+    padding: '0',
     borderBottom: `1px solid ${themeVars.color.border}`,
     display: 'flex',
     alignItems: 'center',
@@ -153,7 +153,7 @@ export const searchInput = style({
     width: '100%',
     padding: '6px 24px 6px 8px', // Right padding for clear button
     borderRadius: '4px',
-    border: `1px solid ${themeVars.color.border}`,
+    border: `none`,
     backgroundColor: themeVars.color.background,
     color: themeVars.color.text,
     fontSize: '14px',
@@ -165,7 +165,7 @@ export const searchInput = style({
 
 export const clearButton = style({
     position: 'absolute',
-    right: '9px',
+    right: '0',
     top: '50%',
     transform: 'translateY(-50%)',
     background: 'transparent',
