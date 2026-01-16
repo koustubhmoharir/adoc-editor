@@ -107,14 +107,11 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
                     this.parent.children = [...children]; // Trigger observer update if needed
 
                     // Revert highlight and focus to parent OR source if it was a duplicate
-                    let handled = false;
                     if (this.isFile() && this.copySource) {
                         // Attempt to focus source
-                        fileSystemStore.focusNodeByHandle(this.copySource);
-                        handled = true;
+                        fileSystemStore.selectNode(this.copySource, 'show');
                     }
-
-                    if (!handled) {
+                    else {
                         fileSystemStore.selectNode(this.parent, 'show');
                     }
                 }
@@ -289,7 +286,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
                 // If this is a duplicate operation, copy content
                 if (self.copySource) {
                     try {
-                        const sourceFile = await self.copySource.getFile();
+                        const sourceFile = await self.copySource.handle.getFile();
                         // Check for binary? For now just copy blob/text
                         // stream() is robust for large files
                         const writable = await self._handle.createWritable();
@@ -427,8 +424,8 @@ export class FileNodeModel extends FileSystemNodeModelBase<'file'> {
         super(data, parent);
     }
 
-    // Temporary storage for the handle to copy from when creating a duplicate
-    copySource?: FileSystemFileHandle;
+    // Temporary storage for the model to copy from when creating a duplicate
+    copySource?: FileNodeModel;
 
     @action
     handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
@@ -869,7 +866,7 @@ class FileSystemStore extends EffectAwareModel {
 
         // 1. Determine target directory
         let targetNode: DirectoryNodeModel | null = parentNode || null;
-        
+
         if (!targetNode) {
             if (this.currentFileNode && this.currentFileNode.parent) {
                 targetNode = this.currentFileNode.parent;
@@ -1002,7 +999,7 @@ class FileSystemStore extends EffectAwareModel {
                 handle: undefined
             }, node.parent);
 
-            ghostNode.copySource = node.handle; // Set source for copying
+            ghostNode.copySource = node; // Set source for copying
 
             // 3. Add to parent children
             runInAction(() => {
@@ -1236,7 +1233,8 @@ class FileSystemStore extends EffectAwareModel {
             }
         }
 
-        if (this.currentFileHandle) {
+        if (this.currentFileNode) {
+            // We need to do this because the existing currentFileNode may now no longer be in the tree
             const fileNode = await this.findNodeByHandle(this.currentFileHandle);
             if (fileNode) {
                 // Ensure we only reload/re-bind if the file is actually within the scope of what we refreshed.
@@ -1424,10 +1422,6 @@ class FileSystemStore extends EffectAwareModel {
     private async findNodeByHandle(handle: FileSystemHandle | null) {
         if (!handle) return null;
 
-        if (this.currentFileNode && await this.currentFileNode.handle.isSameEntry(handle)) {
-            return this.currentFileNode;
-        }
-
         if (this.rootNode && await this.rootNode.handle.isSameEntry(handle)) {
             return this.rootNode;
         }
@@ -1454,14 +1448,7 @@ class FileSystemStore extends EffectAwareModel {
 
 
 
-    async focusNodeByHandle(handle: FileSystemHandle) {
-        const node = await this.findNodeByHandle(handle);
-        if (node) {
-            this.selectNode(node, 'show');
-        } else {
-            // Fallback to root or something?
-        }
-    }
+
 
     private async verifyPermission(handle: FileSystemDirectoryHandle, readWrite: boolean = false) {
         const options: FileSystemHandlePermissionDescriptor = {
