@@ -22,6 +22,7 @@ These helpers are available via the `helpers` object:
 
 - **`handleNextDialog(page, action)`**:
     - Pre-programs the handling of the *next* call to `dialog.alert` or `dialog.confirm`.
+    - **Parameters**: `action` (boolean | null). Pass `true` for Confirm/Yes/OK, `false` for No, and `null` for Cancel/Escape.
     - **Usage**: Call *before* the action that triggers the dialog.
     - Returns a handle on which `getMessage()` can be called. This must be called *after* verifying the effect of the action that triggers the dialog. If the dialog was not shown, this will fail the test, so this should be called to verify that the dialog was shown as expected.
     - **Critical**: Do not attempt to dismiss the dialog by looking for buttons on the dialog and clicking them directly. `handleNextDialog` is the only reliable way to dismiss dialogs and it must be used for every dialog that the application is expected to show. The fixture will discard the browser context if a test finishes with dialogs that have not been dismissed, resulting in an undesirable slow down.

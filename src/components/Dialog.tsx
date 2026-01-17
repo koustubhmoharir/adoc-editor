@@ -16,13 +16,15 @@ export interface ConfirmOptions {
     title?: string;
     yesText?: string;
     noText?: string;
+    showCancel?: boolean;
+    cancelText?: string;
 }
 
 export interface Dialog {
     readonly isOpen: boolean;
     readonly defaultTitle: string;
     alert(message: string, options?: AlertOptions): Promise<void>;
-    confirm(message: string, options?: ConfirmOptions): Promise<boolean>;
+    confirm(message: string, options?: ConfirmOptions): Promise<boolean | null>;
 }
 
 class DialogStore implements Dialog {
@@ -38,6 +40,8 @@ class DialogStore implements Dialog {
     // Confirm specific
     @observable accessor yesText: string = 'OK';
     @observable accessor noText: string = 'Cancel';
+    @observable accessor showCancel: boolean = false;
+    @observable accessor cancelText: string = 'Cancel';
 
     dialogRef: React.RefObject<HTMLDialogElement | null> = React.createRef();
     confirmButtonRef: React.RefObject<HTMLButtonElement | null> = React.createRef();
@@ -59,8 +63,10 @@ class DialogStore implements Dialog {
             this.okText = opts.okText || 'OK';
         } else {
             const opts = options as ConfirmOptions;
-            this.yesText = opts.yesText || 'OK';
-            this.noText = opts.noText || 'Cancel';
+            this.yesText = opts.yesText || 'Yes';
+            this.noText = opts.noText || 'No';
+            this.showCancel = opts.showCancel || false;
+            this.cancelText = opts.cancelText || 'Cancel';
         }
 
         if (this.dialogRef.current) {
@@ -91,7 +97,7 @@ class DialogStore implements Dialog {
     }
 
     @action
-    confirm(message: string, options?: ConfirmOptions): Promise<boolean> {
+    confirm(message: string, options?: ConfirmOptions): Promise<boolean | null> {
         //console.log('DialogStore.confirm', message);
         return this.show('confirm', message, options);
     }
@@ -104,8 +110,7 @@ class DialogStore implements Dialog {
     }
 
     @action
-    handleCancel = () => {
-        //console.log('DialogStore.handleCancel');
+    handleNo = () => {
         if (this.type === 'confirm') {
             this.pendingResult = false;
         } else {
@@ -114,10 +119,23 @@ class DialogStore implements Dialog {
         this.close();
     }
 
-    onCancelled = (_e: React.SyntheticEvent<HTMLDialogElement, Event>) => {
-        //console.log('DialogStore.onCancelled');
+    @action
+    handleCancel = () => {
         if (this.type === 'confirm') {
-            this.pendingResult = false;
+            this.pendingResult = null;
+        } else {
+            this.pendingResult = undefined;
+        }
+        this.close();
+    }
+
+    // Handles native cancel (Escape key)
+    onCancelled = (_e: React.SyntheticEvent<HTMLDialogElement, Event>) => {
+        // It's important to prevent default if we want to control the close process? 
+        // Or just let it close and set result.
+        // Dialog 'close' event fires after this.
+        if (this.type === 'confirm') {
+            this.pendingResult = null; // Map Escape to null (Cancel)
         } else {
             this.pendingResult = undefined;
         }
@@ -131,13 +149,22 @@ class DialogStore implements Dialog {
         }
         this.pendingResult = undefined;
     }
+
+    // Handler for keyboard events within the dialog to support customized navigation if needed
+    onKeyDown = (e: React.KeyboardEvent<HTMLDialogElement>) => {
+        if (e.key === 'Escape') {
+            // Native behavior handles this usually, but explicit handling ensures our state is correct
+            e.stopPropagation();
+            // Let native dialog handle closing via Escal
+        }
+    }
 }
 
 const dialogStore = new DialogStore();
 
 
 export const NativeDialog: React.FC = observer(() => {
-    const { type, message, title, alertIcon, okText, yesText, noText } = dialogStore;
+    const { type, message, title, alertIcon, okText, yesText, noText, showCancel, cancelText } = dialogStore;
 
     const defaultTitle = type === 'alert' ? 'Notification' : 'Confirm';
     const displayTitle = title || defaultTitle;
@@ -167,6 +194,7 @@ export const NativeDialog: React.FC = observer(() => {
             className={styles.dialog}
             onCancel={dialogStore.onCancelled}
             onClose={dialogStore.onClosed}
+            onKeyDown={dialogStore.onKeyDown}
             data-testid="dialog-overlay"
         >
             <div className={styles.dialogContent}>
@@ -182,20 +210,29 @@ export const NativeDialog: React.FC = observer(() => {
                     <span className={styles.messageText} data-testid="dialog-message">{message}</span>
                 </div>
                 <div className={styles.footer}>
-                    {type === 'confirm' && (
-                        <button key="cancel"
+                    {type === 'confirm' && showCancel && (
+                        <button key="null"
                             className={styles.button}
                             onClick={dialogStore.handleCancel}
-                            data-testid="dialog-cancel-button"
+                            data-testid="dialog-result-null"
+                        >
+                            {cancelText}
+                        </button>
+                    )}
+                    {type === 'confirm' && (
+                        <button key="false"
+                            className={styles.button}
+                            onClick={dialogStore.handleNo}
+                            data-testid="dialog-result-false"
                         >
                             {noText}
                         </button>
                     )}
-                    <button key="confirm"
+                    <button key="true"
                         className={styles.primaryButton}
                         onClick={dialogStore.handleConfirm}
                         ref={dialogStore.confirmButtonRef}
-                        data-testid="dialog-confirm-button"
+                        data-testid="dialog-result-true"
                     >
                         {type === 'alert' ? okText : yesText}
                     </button>

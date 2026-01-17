@@ -60,10 +60,10 @@ async function enableTestGlobals(page: Page) {
 
     await page.addInitScript(() => {
         window.__TEST_ENABLE_GLOBALS = true;
-        const dialogActionsQueue: ('confirm' | 'cancel')[] = [];
+        const dialogActionsQueue: (boolean | null)[] = [];
         let dialogInterval: number | null = null;
 
-        (window as any).__TEST_scheduleDialogAction = (action: 'confirm' | 'cancel') => {
+        (window as any).__TEST_scheduleDialogAction = (action: boolean | null) => {
             dialogActionsQueue.push(action);
 
             // Start the watcher loop only if not already running
@@ -90,18 +90,23 @@ async function enableTestGlobals(page: Page) {
                     const message = msgEl ? msgEl.textContent : '';
 
                     // Perform action
-                    const btnSelector = action === 'confirm'
-                        ? '[data-testid="dialog-confirm-button"]'
-                        : '[data-testid="dialog-cancel-button"]';
+                    let btnSelector = '';
+
+                    if (action === true) {
+                        btnSelector = '[data-testid="dialog-result-true"]';
+                    } else if (action === false) {
+                        btnSelector = '[data-testid="dialog-result-false"]';
+                    } else {
+                        btnSelector = '[data-testid="dialog-result-null"]';
+                    }
 
                     const btn = document.querySelector(btnSelector) as HTMLButtonElement | null;
                     if (btn) {
                         btn.click();
-
                         // Notify Playwright
                         (window as any).__TEST_onDialogHandled(message, true);
                     } else {
-                        // Notify Playwright
+                        // Notify Playwright that we failed to find the button
                         (window as any).__TEST_onDialogHandled(message, false);
                     }
                 }
@@ -167,15 +172,12 @@ export const helpers = {
     },
 
     /**
-     * Schedules a dialog action to be performed automatically when the dialog appears.
-     * Returns a handler object that can be used to synchronously retrieve the dialog message
-     * *after* the UI action has completed.
-     * 
-     * @param page Playwright Page object
-     * @param action The action to perform ('confirm' or 'cancel'). Defaults to 'confirm'.
+     * Programs the browser to automatically handle the next dialog that appears.
+     * @param page The Playwright page.
+     * @param action The action to perform (true for Confirm/Yes, false for No, null for Cancel). Defaults to true.
      * @returns An object with a getMessage() method.
      */
-    async handleNextDialog(page: Page, action: 'confirm' | 'cancel' = 'confirm'): Promise<DialogHandle> {
+    async handleNextDialog(page: Page, action: boolean | null = true): Promise<DialogHandle> {
         const resultPromise = new Promise<DialogResult>(resolve => {
             // Add the resolver to a queue
             // This will be called when onDialogHandled is called

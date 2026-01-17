@@ -105,7 +105,7 @@ test('Directory validation - Conflict', async ({ page }) => {
     await input.fill('subdir2');
 
     // Expect dialog
-    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, true);
     await page.keyboard.press('Enter');
 
     // Verify message
@@ -127,7 +127,7 @@ test('Delete non-empty directory', async ({ page, fsSetup }) => {
 
     await dirItem.click(); // Select it.
 
-    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, true);
     await page.keyboard.press('Delete');
 
     expect(await dialogHandle.getMessage()).toContain('Are you sure you want to delete');

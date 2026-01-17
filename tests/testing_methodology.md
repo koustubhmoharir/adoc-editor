@@ -149,7 +149,7 @@ Use the `handleNextDialog` pattern to test native/custom dialogs robustly.
 
 ```typescript
 // 1. Schedule the handler *before* the action
-const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+const dialogHandle = await helpers.handleNextDialog(page, true);
 
 // 2. Perform action that triggers dialog
 await page.click('button#delete-file');

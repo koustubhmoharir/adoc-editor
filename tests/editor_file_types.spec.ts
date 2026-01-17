@@ -50,7 +50,7 @@ test('Detects binary file and asks for confirmation (Cancel)', async ({ page }) 
     const fileItem = page.locator('[data-testid="file-item"][data-file-path="image.bin"]');
 
     // Prepare to handle confirm dialog - Cancel
-    const dialogHandle = await helpers.handleNextDialog(page, 'cancel');
+    const dialogHandle = await helpers.handleNextDialog(page, false);
 
     await fileItem.click();
     await expect(fileItem).toHaveAttribute('data-selected', 'true');
@@ -70,7 +70,7 @@ test('Detects binary file and asks for confirmation (Proceed)', async ({ page })
     const fileItem = page.locator('[data-testid="file-item"][data-file-path="image.bin"]');
 
     // Prepare to handle confirm dialog - Confirm
-    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, true);
 
     await fileItem.click();
     await expect(fileItem).toHaveAttribute('data-selected', 'true');

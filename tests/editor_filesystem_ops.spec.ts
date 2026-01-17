@@ -11,7 +11,7 @@ test.beforeEach(async ({ fsSetup }) => {
     fsSetup.createFile('dir1', 'nested/file3.adoc', '== File 3 content');
     fsSetup.createFile('dir1', 'conflict.adoc', '== Conflict File');
     fsSetup.createFile('dir1', '.adoc-editor/ignore.toml',
-`
+        `
 ignore_dot_files = false
 `);
 });
@@ -198,7 +198,7 @@ test('Validation - Unsafe characters', async ({ page }) => {
     await input.fill('bad/name.adoc');
 
     // Schedule dialog handling BEFORE the blocking action (Enter)
-    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, true);
     await page.keyboard.press('Enter');
 
     // Input should still be visible because validation failed
@@ -221,7 +221,7 @@ test('Validation - Conflict', async ({ page }) => {
     // 1. Decline override
     await input.fill('conflict.adoc');
 
-    let dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+    let dialogHandle = await helpers.handleNextDialog(page, true);
     await page.keyboard.press('Enter');
 
     // Should still be in rename mode (dialog dismissed)
@@ -281,7 +281,7 @@ test('Rename stays active on invalid name when clicking another file', async ({ 
     // Trigger the focus change (click other file)
     const otherFile = getFileItem(page, 'file2.adoc');
 
-    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, true);
     await otherFile.click();
 
     // Now input should STILL be visible and focused
@@ -303,7 +303,7 @@ test('Delete file via Context Menu', async ({ page, fsSetup }) => {
     await loadInitialDirectory(page, 'dir1');
     const fileItem = getFileItem(page, 'nested/file3.adoc');
 
-    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, true);
 
     // 1. Right click -> Delete
     await openContextMenu(page, fileItem);
@@ -328,7 +328,7 @@ test('Delete file via Delete key', async ({ page, fsSetup }) => {
     // Focus
     await fileItem.click();
 
-    const dialogHandle = await helpers.handleNextDialog(page, 'confirm');
+    const dialogHandle = await helpers.handleNextDialog(page, true);
     await page.keyboard.press('Delete');
 
     // Verify dialog handling
@@ -348,7 +348,7 @@ test('Cancel delete file', async ({ page, fsSetup }) => {
 
     await fileItem.click();
 
-    const dialogHandle = await helpers.handleNextDialog(page, 'cancel');
+    const dialogHandle = await helpers.handleNextDialog(page, false);
     await page.keyboard.press('Delete');
 
     expect(await dialogHandle.getMessage()).toContain('Are you sure you want to delete');
