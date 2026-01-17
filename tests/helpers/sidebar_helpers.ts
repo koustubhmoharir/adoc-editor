@@ -73,7 +73,7 @@ export async function loadInitialDirectory(page: Page, dir: string) {
     await openDirBtn.click();
 
     // Wait for tree to populate
-    await expect(page.locator('data-testid=file-item').first()).toBeVisible();
+    await expect(page.locator('[data-testid="file-item"], [data-testid="directory-item"]').first()).toBeVisible();
 }
 
 export async function openContextMenu(page: Page, itemLocator: Locator) {

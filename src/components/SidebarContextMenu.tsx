@@ -92,6 +92,12 @@ export const SidebarContextMenu = observer(() => {
                             </button>
                         </>
                     )}
+                    <button className={styles.contextMenuItem} onClick={() => {
+                        fileSystemStore.createDefaultIgnoreFile(targetNode as DirectoryNodeModel);
+                    }} data-testid="ctx-edit-ignore">
+                        <i className={`fas fa-cog ${styles.contextMenuIcon}`} />
+                        Edit ignore.toml
+                    </button>
                 </>
             )}
         </div>

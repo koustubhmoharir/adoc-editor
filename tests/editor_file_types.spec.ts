@@ -7,6 +7,10 @@ test.beforeEach(async ({ fsSetup }) => {
     fsSetup.createFile('dir1', 'script.js', 'console.log("hello");');
     fsSetup.createFile('dir1', 'style.css', 'body { color: red; }');
     fsSetup.createFile('dir1', '.gitignore', 'node_modules');
+    fsSetup.createFile('dir1', '.adoc-editor/ignore.toml',
+        `
+ignore_dot_files = false
+`);
 
     // Subdirectory for more structure
     fsSetup.createFile('dir1', 'src/main.ts', 'const x: number = 1;');

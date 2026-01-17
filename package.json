@@ -27,7 +27,8 @@
         "mobx-react-lite": "^4.0.0",
         "monaco-editor": "^0.45.0",
         "react": "^19.0.0",
-        "react-dom": "^19.0.0"
+        "react-dom": "^19.0.0",
+        "smol-toml": "^1.6.0"
     },
     "devDependencies": {
         "@playwright/test": "^1.57.0",

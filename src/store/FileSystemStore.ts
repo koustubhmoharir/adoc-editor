@@ -5,6 +5,8 @@ import { editorStore } from './EditorStore';
 import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
+import { parse } from 'smol-toml';
+import { IgnoreSettings, DEFAULT_SETTINGS, mergeSettings, shouldIgnoreDirectory, shouldIgnoreFile, generateDefaultIgnoreFileContent } from '../file_system/IgnoreSettings';
 
 interface FSHandleTypes {
     file: FileSystemFileHandle;
@@ -450,6 +452,7 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
         this.children = data.children;
     }
     @observable accessor children: FileSystemNodeModel[] | undefined;
+    effectiveSettings: IgnoreSettings = DEFAULT_SETTINGS;
 
     @action
     handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
@@ -869,7 +872,39 @@ class FileSystemStore extends EffectAwareModel {
         const relativeDir = path.substring(0, lastSlash);
         return `${this.rootNode.name}/${relativeDir}`;
     }
+    @action
+    async createDefaultIgnoreFile(directory: DirectoryNodeModel) {
+        try {
+            // Check/Create .adoc-editor folder
+            let configDir;
+            try {
+                // @ts-ignore
+                configDir = await directory.handle.getDirectoryHandle('.adoc-editor');
+            } catch {
+                // @ts-ignore
+                configDir = await directory.handle.getDirectoryHandle('.adoc-editor', { create: true });
+            }
 
+            // Check if ignore.toml exists
+            try {
+                // @ts-ignore
+                await configDir.getFileHandle('ignore.toml');
+                return;
+            } catch {
+                // Ignore doesn't exist, create it
+            }
+
+            // @ts-ignore
+            const fileHandle = await configDir.getFileHandle('ignore.toml', { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(generateDefaultIgnoreFileContent());
+            await writable.close();
+        } catch (error) {
+            console.error('Failed to create ignore.toml', error);
+        }
+    }
+
+    @action
     async createNewFile(parentNode?: DirectoryNodeModel) {
         if (!this.rootNode) {
             await dialog.alert('Please open a directory first.');
@@ -1513,10 +1548,31 @@ class FileSystemStore extends EffectAwareModel {
         const dirHandle = parent.handle;
         const parentPath = parent.isRoot ? '' : parent.path;
 
+        // 1. Calculate Settings
+        let settings = parent.isRoot ? DEFAULT_SETTINGS : (parent.parent?.effectiveSettings || DEFAULT_SETTINGS);
+
+
+        try {
+            const configDir = await dirHandle.getDirectoryHandle('.adoc-editor');
+            const configFile = await configDir.getFileHandle('ignore.toml');
+            const file = await configFile.getFile();
+            const text = await file.text();
+            const localSettings = parse(text);
+            settings = mergeSettings(settings, localSettings as any);
+        } catch (e) {
+            // Ignore missing config
+        }
+
+        parent.effectiveSettings = settings;
+
         for await (const entry of dirHandle.values()) {
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
 
             if (entry.kind === 'file') {
+                if (shouldIgnoreFile(entry.name, settings)) continue;
+                // ...
+
+
                 models.push(new FileNodeModel({
                     name: entry.name,
                     path: currentPath,
@@ -1524,7 +1580,7 @@ class FileSystemStore extends EffectAwareModel {
                     handle: entry
                 }, parent));
             } else if (entry.kind === 'directory') {
-                if (entry.name.startsWith('.')) continue;
+                if (shouldIgnoreDirectory(entry.name, settings)) continue;
 
                 // Create directory model first
                 const dirModel = new DirectoryNodeModel({
