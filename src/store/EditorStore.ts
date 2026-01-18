@@ -1,6 +1,7 @@
 import { observable, action } from "mobx";
 import * as monaco from 'monaco-editor';
-import { registerAsciiDoc } from '../utils/asciidocMode';
+import { registerAsciiDoc } from '../languages/asciidoc';
+import { registerToml } from '../languages/toml';
 import { fileSystemStore } from './FileSystemStore';
 
 // MARKER: WELCOME_CONTENT_START
@@ -82,7 +83,8 @@ export class EditorStore {
             '.sql': 'sql',
             '.sh': 'shell',
             '.yaml': 'yaml',
-            '.yml': 'yaml'
+            '.yml': 'yaml',
+            '.toml': 'toml'
         };
 
         if (map[ext]) {
@@ -112,6 +114,7 @@ export class EditorStore {
     @action
     initialize(container: HTMLDivElement, initialTheme: string) {
         registerAsciiDoc();
+        registerToml();
 
         this._editor = monaco.editor.create(container, {
             value: this._content,
