@@ -13,7 +13,7 @@ export const SidebarContextMenu = observer(() => {
     const targetNode = fileSystemStore.contextMenuTarget;
 
     const ref = fileSystemStore.contextMenuRef;
-    useUpDownFocusNavigationInPopover(ref, fileSystemStore.onContextMenuClosed)
+    useUpDownFocusNavigationInPopover(ref, fileSystemStore.onContextMenuClosed);
 
     return (
         <div
