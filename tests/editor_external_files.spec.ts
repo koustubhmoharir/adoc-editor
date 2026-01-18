@@ -275,3 +275,46 @@ test('should reveal external file location on title click', async ({ page }) => 
 
     expect(wasCalledWithStartIn).toBe(true);
 });
+
+test('should save external file with Ctrl+S shortcut', async ({ page, fsSetup }) => {
+    // 1. Open External File
+    await helpers.setFilePickerChoice(page, '/external.adoc');
+    await page.getByTestId('open-file-button').click();
+
+    // 2. Modify content
+    await helpers.replaceEditorContentByTyping(page, 'Ctrl+S Content');
+    await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+
+    // 3. Press Ctrl+S (in editor)
+    await page.keyboard.press('Control+s');
+
+    // 4. Verify dirty indicator gone
+    await expect(page.getByTestId('dirty-indicator')).not.toBeVisible();
+
+    // 5. Verify disk content
+    const content = fsSetup.readFile('', 'external.adoc');
+    expect(content).toBe('Ctrl+S Content');
+});
+
+test('should save external file with Ctrl+S shortcut when focus is not in editor', async ({ page, fsSetup }) => {
+    // 1. Open External File
+    await helpers.setFilePickerChoice(page, '/external.adoc');
+    await page.getByTestId('open-file-button').click();
+
+    // 2. Modify content
+    await helpers.replaceEditorContentByTyping(page, 'Global Ctrl+S Content');
+    await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+
+    // 3. Click title bar to shift focus out of editor
+    await page.getByTestId('current-filename').click();
+
+    // 4. Press Ctrl+S
+    await page.keyboard.press('Control+s');
+
+    // 5. Verify dirty indicator gone
+    await expect(page.getByTestId('dirty-indicator')).not.toBeVisible();
+
+    // 6. Verify disk content
+    const content = fsSetup.readFile('', 'external.adoc');
+    expect(content).toBe('Global Ctrl+S Content');
+});

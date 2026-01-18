@@ -1,6 +1,7 @@
 import { observable, action } from "mobx";
 import * as monaco from 'monaco-editor';
 import { registerAsciiDoc } from '../utils/asciidocMode';
+import { fileSystemStore } from './FileSystemStore';
 
 // MARKER: WELCOME_CONTENT_START
 const WELCOME_CONTENT = `
@@ -21,8 +22,8 @@ Click the "Help" icon in the title bar to see this message again.
 
 export class EditorStore {
 
-    constructor() {}
-    
+    constructor() { }
+
     @observable private accessor _content: string = WELCOME_CONTENT;
     get content() { return this._content; }
 
@@ -31,9 +32,6 @@ export class EditorStore {
 
     private _disposers: (() => void)[] = [];
 
-    focusCurrentFileItem: (() => void) | undefined = undefined;
-    setDirty: (() => void) | undefined = undefined;
-
     @action
     setContent(newContent: string) {
         if (this._content !== newContent) {
@@ -41,7 +39,7 @@ export class EditorStore {
             if (this._editor && this._editor.getValue() !== newContent) {
                 this._editor.setValue(newContent);
             }
-            this.setDirty?.();
+            fileSystemStore.markDirty();
         }
     }
 
@@ -138,8 +136,13 @@ export class EditorStore {
         // Handle Escape to focus sidebar
         // PRECONDITION: Only if other widgets are NOT visible
         this._editor.addCommand(monaco.KeyCode.Escape, () => {
-            this.focusCurrentFileItem?.();
+            fileSystemStore.focusCurrentFileInSidebar();
         }, '!findWidgetVisible && !suggestWidgetVisible && !parameterHintsVisible && !referenceSearchVisible && !renameInputVisible');
+
+        // Handle Ctrl+S to save
+        this._editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+            fileSystemStore.saveFile();
+        });
     }
 
     @action

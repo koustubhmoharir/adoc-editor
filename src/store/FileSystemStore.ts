@@ -14,13 +14,6 @@ class FileSystemStore extends EffectAwareModel {
     constructor() {
         super();
         this.restoreDirectory();
-        editorStore.focusCurrentFileItem = this.focusCurrentFileInSidebar;
-        // React to editor content changes to set dirty state
-        editorStore.setDirty = action(() => {
-            if (!this.isLoading && this.currentFileHandle) {
-                this._dirty = true;
-            }
-        });
 
         // Save on close/refresh
         window.addEventListener('beforeunload', (e) => {
@@ -37,8 +30,14 @@ class FileSystemStore extends EffectAwareModel {
         });
 
         // Global Keyboard Shortcuts
-        // Global Keyboard Shortcuts
         window.addEventListener('keydown', this.handleGlobalKeyDown);
+    }
+
+    @action.bound
+    markDirty() {
+        if (!this.isLoading && this.currentFileHandle) {
+            this._dirty = true;
+        }
     }
 
     @observable private accessor _currentFileNode: FileModel | null = null;
@@ -1417,6 +1416,13 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     private handleGlobalKeyDown = (e: KeyboardEvent) => {
+        // Ctrl + S - Save
+        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+            e.preventDefault();
+            this.saveFile();
+            return;
+        }
+
         // F5 - Refresh
         if (e.key === 'F5') {
             e.preventDefault();
