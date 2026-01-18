@@ -46,34 +46,141 @@ test('should handle unsaved changes when navigating away from external file', as
     await page.getByTestId('open-file-button').click();
 
     // 2. Modify content
-    await helpers.replaceEditorContentByTyping(page, 'Modified Content');
+    const modifiedContent = 'Modified Content';
+    await helpers.replaceEditorContentByTyping(page, modifiedContent);
     await expect(page.getByTestId('dirty-indicator')).toBeVisible();
 
-    // 3. Try to click internal file in sidebar
-    // Note: we need to find the element. Internal file is 'internal.adoc'
-    const internalFile = page.getByText('internal.adoc');
+    // Helper to perform an action, expect dialog, verify cancel, and verify we are still on external file
+    const verifyCancel = async (scenarioName: string, triggerAction: () => Promise<void>, prepareMocks?: () => Promise<void>) => {
+        console.log(`Testing scenario: ${scenarioName}`);
 
-    // Prepare to handle dialog (Cancel first)
-    let dialogMsg = "";
-    const handleCancel = await helpers.handleNextDialog(page, null); // Cancel
-    await internalFile.click();
-    dialogMsg = await handleCancel.getMessage();
-    expect(dialogMsg).toContain('unsaved changes');
+        if (prepareMocks) await prepareMocks();
 
-    // Assert we are still on external file
-    await expect(page.getByTestId('current-filename')).toHaveText('external.adoc');
-    const content = await helpers.getEditorContent(page);
-    expect(content).toBe('Modified Content'); // edits preserved
+        // Prepare dialog handler for Cancel (return null)
+        const dialogHandler = await helpers.handleNextDialog(page, null);
 
-    // 4. Try again, this time Discard
-    // We use boolean false for "Discard" (No button usually maps to Discard in our confirm dialog logic? 
-    // Logic: yes=Save, no=Discard, cancel=Cancel. dialog.confirm return true/false/null.
-    // false -> Discard.
-    const handleDiscard = await helpers.handleNextDialog(page, false);
-    await internalFile.click();
+        await triggerAction();
+
+        const msg = await dialogHandler.getMessage();
+        expect(msg).toContain('unsaved changes');
+
+        // Verify state preserved
+        await expect(page.getByTestId('current-filename')).toHaveText('external.adoc');
+        const content = await helpers.getEditorContent(page);
+        expect(content).toBe(modifiedContent);
+        await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+    };
+
+    // Scenario 1: Internal File Click
+    await verifyCancel('Sidebar File Click', async () => {
+        await page.getByText('internal.adoc').click();
+    });
+
+    // Scenario 2: Open Directory (Mock Picker first)
+    await verifyCancel('Open Directory', async () => {
+        await page.getByTestId('open-directory-button').click();
+    }, async () => {
+        await helpers.setDirectoryPickerChoice(page, 'work/other-project');
+    });
+
+    // Scenario 3: Open File (Mock Picker first)
+    await verifyCancel('Open File', async () => {
+        await page.getByTestId('open-file-button').click();
+    }, async () => {
+        await helpers.setFilePickerChoice(page, '/other.adoc');
+    });
+
+    // Scenario 4: New File
+    await verifyCancel('New File', async () => {
+        await page.getByTestId('new-file-button-titlebar').click();
+    });
+
+    // Scenario 5: Help
+    await verifyCancel('Help', async () => {
+        await page.getByTestId('help-button').click();
+    });
+
+    // Scenario 6: Close External File
+    await verifyCancel('Close Button', async () => {
+        await page.getByTestId('external-close-button').click();
+    });
+
+    // Scenario 7: Search Result Click
+    await verifyCancel('Search Result', async () => {
+        // Open search first
+        const toggle = page.getByTestId('search-toggle-button');
+        // Ensure search is open
+        await toggle.click();
+        await page.getByTestId('search-input').fill('internal');
+        // Wait for results
+        await expect(page.getByTestId('search-result-item').first()).toBeVisible();
+        await page.getByTestId('search-result-item').first().click();
+    });
+
+    // Scenario 8: Edit Ignore File (Context Menu)
+    await verifyCancel('Edit Ignore File', async () => {
+        // Ensure search is closed/cleared from previous scenario
+        const searchInput = page.getByTestId('search-input');
+        if (await searchInput.isVisible()) {
+            await searchInput.fill('');
+        }
+
+        // Context menu on root (rendered as directory-item)
+        // Ensure visible first
+        const rootItem = page.getByTestId('directory-item').first();
+        await expect(rootItem).toBeVisible();
+        await rootItem.click({ button: 'right' });
+
+        await expect(page.getByTestId('ctx-edit-ignore')).toBeVisible();
+        await page.getByTestId('ctx-edit-ignore').click();
+    });
+
+    // Scenario 9: Keyboard Down from Directory
+    await verifyCancel('Keyboard Down from Directory', async () => {
+        // Press Down
+        await page.keyboard.press('ArrowDown');
+    }, async () => {
+        // Pre-requisite: Select 'project' directory. This should NOT prompt.
+        const rootItem = page.getByTestId('directory-item').first();
+        await rootItem.click();
+        // Verify selection
+        await expect(rootItem).toHaveAttribute('data-selected', 'true');
+    });
+
+    // Scenario 10: Keyboard Right from Directory
+    await verifyCancel('Keyboard Right from Directory', async () => {
+        // Press Right to select child (internal.adoc)
+        await page.keyboard.press('ArrowRight');
+    }, async () => {
+        // Pre-requisite: Select 'project' directory.
+        const rootItem = page.getByTestId('directory-item').first();
+        await rootItem.click();
+        // Ensure it is expanded (it should be by default or from previous interactions)
+        // If not, first Right expands, second Right selects child.
+        // Let's assume expanded. If needed we can force expand.
+        const expanded = await rootItem.getAttribute('aria-expanded');
+        if (expanded === 'false') {
+            await page.keyboard.press('ArrowRight');
+        }
+    });
+
+    // Scenario 11: Context Menu New File
+    await verifyCancel('Context Menu New File', async () => {
+        await page.getByTestId('ctx-new-file').click();
+    }, async () => {
+        // Open context menu on directory
+        const rootItem = page.getByTestId('directory-item').first();
+        await rootItem.click({ button: 'right' });
+        await expect(page.getByTestId('ctx-new-file')).toBeVisible();
+    });
+
+    // Finally, verifying Discard works (transitioning away)
+    // We will do Discard via Internal File Click
+    const handleDiscard = await helpers.handleNextDialog(page, false); // False = Discard
+    await page.getByText('internal.adoc').click();
     await handleDiscard.getMessage();
 
-    // Assert we switched to internal file
+    // Verify we moved
     await expect(page.getByTestId('current-filename')).toHaveText('internal.adoc');
     const newContent = await helpers.getEditorContent(page);
     expect(newContent).toBe('Internal Content');
