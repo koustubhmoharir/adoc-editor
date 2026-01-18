@@ -135,6 +135,11 @@ test('should handle unsaved changes when navigating away from external file', as
         await page.getByTestId('ctx-edit-ignore').click();
     });
 
+    // Verify after cancel we are back to external file
+    await expect(page.getByTestId('current-filename')).toHaveText('external.adoc');
+    await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+
+
     // Scenario 9: Keyboard Down from Directory
     await verifyCancel('Keyboard Down from Directory', async () => {
         // Press Down
@@ -230,4 +235,23 @@ test('should close external file explicitly', async ({ page, fsSetup }) => {
     // Verify disk content
     content = fsSetup.readFile('', 'external.adoc');
     expect(content).toBe('External Content');
+});
+
+test('should open ignore.toml as external file from context menu', async ({ page }) => {
+    // 1. Right click root directory
+    const rootItem = page.getByTestId('directory-item').first();
+    await rootItem.click({ button: 'right' });
+
+    // 2. Click "Edit ignore.toml"
+    await expect(page.getByTestId('ctx-edit-ignore')).toBeVisible();
+    await page.getByTestId('ctx-edit-ignore').click();
+
+    // 3. Verify it opens as external file
+    await expect(page.getByTestId('current-filename')).toHaveText('ignore.toml');
+    // It should have the external banner
+    await expect(page.getByTestId('external-file-warning')).toBeVisible();
+    // Logic creates default content if new, or opens existing. 
+    // Since we start fresh, it should be new default content.
+    const content = await helpers.getEditorContent(page);
+    expect(content).toContain('# File and Directory Ignore Settings');
 });

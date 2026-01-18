@@ -510,22 +510,26 @@ class FileSystemStore extends EffectAwareModel {
                 configDir = await directory.handle.getDirectoryHandle('.adoc-editor', { create: true });
             }
 
+            let fileHandle;
             // Check if ignore.toml exists
             try {
                 // @ts-ignore
-                await configDir.getFileHandle('ignore.toml');
-                return;
+                fileHandle = await configDir.getFileHandle('ignore.toml');
             } catch {
                 // Ignore doesn't exist, create it
+                // @ts-ignore
+                fileHandle = await configDir.getFileHandle('ignore.toml', { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(generateDefaultIgnoreFileContent());
+                await writable.close();
             }
 
-            // @ts-ignore
-            const fileHandle = await configDir.getFileHandle('ignore.toml', { create: true });
-            const writable = await fileHandle.createWritable();
-            await writable.write(generateDefaultIgnoreFileContent());
-            await writable.close();
+            // Open as external file
+            const externalModel = new ExternalFileModel(fileHandle, 'ignore.toml');
+            await this.openFileInEditor(externalModel, { focusNode: false, updateHighlight: true });
+
         } catch (error) {
-            console.error('Failed to create ignore.toml', error);
+            console.error('Failed to edit ignore.toml', error);
         }
     }
 
