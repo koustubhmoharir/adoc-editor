@@ -80,6 +80,9 @@ export class FsTestSetup {
     }
 
     createFile(dirName: string, relativePath: string, content: string | Buffer) {
+        if (!dirName) {
+            throw new Error('dirName must be non-empty');
+        }
         const root = this.getRoot(dirName);
         const parts = relativePath.split(/[/\\]/);
         const fileName = parts.pop();
@@ -97,6 +100,23 @@ export class FsTestSetup {
         }
 
         parent.children.set(fileName, { kind: 'file', content: buffer });
+    }
+
+    createExternalFile(fileName: string, content: string | Buffer) {
+        // We create external files with an empty dirName
+        const root = this.getRoot('');
+        if (!fileName) throw new Error("Invalid file path");
+
+        let buffer: Uint8Array;
+        if (typeof content === 'string') {
+            buffer = new TextEncoder().encode(content);
+        } else if (Buffer.isBuffer(content)) {
+            buffer = new Uint8Array(content);
+        } else {
+            throw new Error("Invalid content type");
+        }
+
+        root.children.set(fileName, { kind: 'file', content: buffer });
     }
 
     createDirectory(dirName: string, relativePath: string) {

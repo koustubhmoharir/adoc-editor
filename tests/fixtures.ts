@@ -247,11 +247,28 @@ export const helpers = {
      * 
      * @param page - The Playwright Page object.
      * @param dirName - The name of the directory to simulate selection for.
+     * It corresponds to the dirName argument of the methods in the FsTestSetup class.
+     * It must be the name of the directory, not a path. It cannot contain a directory separator.
      */
     async setDirectoryPickerChoice(page: Page, dirName: string): Promise<void> {
         await page.evaluate((dirName) => {
-            window.__TEST_mockPickerConfig = { name: dirName, path: dirName };
+            window.__TEST_mockDirPickerDirName = dirName;
         }, dirName);
+    },
+
+    /**
+     * Sets the choice for the mock file picker.
+     * When the application calls showOpenFilePicker, it will receive a handle to this file.
+     * 
+     * @param page - The Playwright Page object.
+     * @param filePath - The full path (relative to mock FS root) of the file.
+     * For a file in a directory, it should be dirName/relativePath
+     * For an external file, it should be /fileName
+     */
+    async setFilePickerChoice(page: Page, filePath: string): Promise<void> {
+        await page.evaluate((filePath) => {
+            window.__TEST_mockFilePickerFilePath = filePath;
+        }, filePath);
     },
 
     /**

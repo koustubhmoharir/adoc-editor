@@ -6,486 +6,8 @@ import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
 import { parse } from 'smol-toml';
-import { IgnoreSettings, DEFAULT_SETTINGS, mergeSettings, shouldIgnoreDirectory, shouldIgnoreFile, generateDefaultIgnoreFileContent } from '../file_system/IgnoreSettings';
-
-interface FSHandleTypes {
-    file: FileSystemFileHandle;
-    directory: FileSystemDirectoryHandle;
-}
-
-// type FSHandleType<Kind extends 'file' | 'directory'> = Kind extends 'file' ? FileSystemFileHandle : Kind extends 'directory' ? FileSystemDirectoryHandle : FileSystemFileHandle | FileSystemDirectoryHandle;
-
-export interface FileSystemNodeDataBase<Kind extends 'file' | 'directory' = 'file' | 'directory'> {
-    kind: Kind;
-    name: string;
-    path: string;
-    handle?: FSHandleTypes[Kind];
-}
-
-export type FileNodeData = FileSystemNodeDataBase<'file'>;
-
-export interface DirectoryNodeData extends FileSystemNodeDataBase<'directory'> {
-    children?: FileSystemNodeModel[];
-}
-
-export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' = 'file' | 'directory'> extends EffectAwareModel {
-
-    constructor(data: FileSystemNodeDataBase<Kind>, parent: DirectoryNodeModel | null) {
-        super();
-        this.kind = data.kind;
-        this._name = data.name;
-        this._path = data.path;
-        this._handle = data.handle;
-        this.parent = parent;
-    }
-
-    readonly kind: Kind;
-    isFile(): this is FileNodeModel { return this.kind === 'file'; }
-    isDirectory(): this is DirectoryNodeModel { return this.kind === 'directory'; }
-
-    @observable private accessor _path: string;
-    get path() { return this._path; }
-
-    @observable protected accessor _handle: FSHandleTypes[Kind] | undefined;
-    get handle() {
-        if (!this._handle) throw new Error("Accessing handle of a ghost node");
-        return this._handle;
-    }
-
-    // Derived property to check if it's a ghost node
-    get isCreating() { return this._handle === undefined; }
-
-    readonly parent: DirectoryNodeModel | null;
-    get isRoot() { return this.parent == null; }
-
-    @observable protected accessor _name: string;
-    get name() { return this._name; }
-
-    // UI State
-    @observable protected accessor _isRenaming: boolean = false;
-    get isRenaming() { return this._isRenaming; }
-    @observable protected accessor _renameValue: string = '';
-    get renameValue() { return this._renameValue; }
-    @observable protected accessor _isCommitting: boolean = false;
-
-    // Refs
-    readonly renameInputRef = createRef<HTMLInputElement>();
-    readonly acceptRenameBtnRef = createRef<HTMLButtonElement>();
-    readonly treeItemRef = createRef<HTMLDivElement>();
-
-    @action
-    startRenaming() {
-        if (this.isRoot) return;
-        this._isRenaming = true;
-        this._renameValue = this.name;
-
-        // Schedule focus effect
-        this.scheduleEffect(() => {
-            if (this.renameInputRef.current) {
-                this.renameInputRef.current.focus();
-                // Select name part excluding extension
-                const dotIndex = this.renameValue.lastIndexOf('.');
-                if (dotIndex > 0) {
-                    this.renameInputRef.current.setSelectionRange(0, dotIndex);
-                } else {
-                    this.renameInputRef.current.select();
-                }
-            }
-        });
-    }
-
-    @action
-    cancelRenaming() {
-        this._isRenaming = false;
-        this._renameValue = '';
-
-        if (this.isCreating) {
-            // Remove self from parent
-            if (this.parent) {
-                const children = this.parent.children || [];
-                const idx = children.indexOf(this as any);
-                if (idx !== -1) {
-                    children.splice(idx, 1);
-                    this.parent.children = [...children]; // Trigger observer update if needed
-
-                    // Revert highlight and focus to parent OR source if it was a duplicate
-                    if (this.isFile() && this.copySource) {
-                        // Attempt to focus source
-                        fileSystemStore.selectNode(this.copySource, 'show');
-                        this.copySource.scheduleFocusTreeItem();
-                    }
-                    else {
-                        fileSystemStore.selectNode(this.parent, 'show');
-                        this.parent.scheduleFocusTreeItem();
-                    }
-                }
-            }
-        } else {
-            // Just cancelled rename of existing item -> restore focus to self
-            fileSystemStore.selectNode(this, 'show');
-            this.scheduleFocusTreeItem();
-        }
-    }
-
-    scheduleFocusTreeItem() {
-        this.scheduleEffect(() => {
-            this.treeItemRef.current?.focus();
-        });
-    }
-
-    @action
-    setRenameValue(val: string) {
-        this._renameValue = val;
-    }
-
-    @action
-    async commitRenaming() {
-        if (this._isCommitting) return;
-        this._isCommitting = true;
-        try {
-            if (!this.renameValue || (this.renameValue === this.name && !this.isCreating)) {
-                this.cancelRenaming();
-                return;
-            }
-
-            if (this.isCreating) {
-                const success = await this.createRealNode(this.renameValue);
-                if (!success) {
-                    this.renameInputRef.current?.focus();
-                }
-            } else {
-                const success = await this.rename(this.renameValue);
-                // If rename is successful, the store refreshes the tree, so this model instance might be discarded.
-                if (!success) {
-                    this.renameInputRef.current?.focus();
-                }
-            }
-        } finally {
-            this._isCommitting = false;
-        }
-    }
-
-    @action
-    async delete() {
-        if (this.isRoot) return;
-        if (await dialog.confirm(`Are you sure you want to delete '${this.name}'?`)) {
-            await fileSystemStore.deleteNode(this);
-        }
-    }
-
-    @action.bound
-    handleRenameInputKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
-        if (e.key === 'Enter') {
-            e.stopPropagation();
-            e.preventDefault();
-            this.commitRenaming();
-        } else if (e.key === 'Escape') {
-            e.stopPropagation();
-            e.preventDefault();
-            this.cancelRenaming();
-        }
-    }
-
-    @action.bound
-    handleRenameInputBlur(_e: React.FocusEvent) {
-        // If the window loses focus (e.g. alt-tab), we want to KEEP renaming state.
-        // If the click is inside the app but outside input, we want to COMMIT.
-        // We do NOT want to restore focus to the tree item, because the user likely clicked something else.
-        if (document.hasFocus() && !dialog.isOpen) {
-            this.commitRenaming();
-        }
-    }
-
-    @action.bound
-    handleTreeItemKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
-        if (this.isRenaming) return;
-
-        if (e.key === 'F2') {
-            e.preventDefault();
-            e.stopPropagation();
-            this.startRenaming();
-        } else if (e.key === 'Delete') {
-            e.preventDefault();
-            e.stopPropagation();
-            this.delete();
-        } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-            e.preventDefault();
-            e.stopPropagation();
-            const direction = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right';
-            fileSystemStore.navigate(direction);
-        } else {
-            this.handleSpecificKey(e);
-        }
-    }
-
-    @action.bound
-    handleContextMenu(e: React.MouseEvent) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (!this.isRoot && fileSystemStore.highlightedPath !== this.path) {
-            fileSystemStore.selectNode(this, 'show');
-        }
-
-        fileSystemStore.openContextMenu(this);
-    }
-
-    @action.bound
-    handleClick(e: React.MouseEvent) {
-        e.stopPropagation();
-        if (!this.isRenaming) {
-            fileSystemStore.selectNode(this, 'show');
-        }
-    }
-
-    @action.bound
-    handleDoubleClick(e: React.MouseEvent) {
-        e.stopPropagation();
-        if (!this.isRenaming) {
-            if (this.kind === 'directory') {
-                fileSystemStore.toggleDirectory(this.path);
-            } else {
-                fileSystemStore.selectNode(this, 'focus');
-            }
-        }
-    }
-
-    abstract handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent): void;
-
-    @action
-    private async createRealNode(finalName: string): Promise<boolean> {
-        if (!this.parent) return false;
-
-        // Validation (reuse logic?)
-        // Simply check if name is valid and unique in parent
-
-        try {
-            // 1. Validation similar to rename
-            if (!finalName || /^[\.]+$/.test(finalName)) {
-                // Invalid name for creation -> keep editing? or cancel? 
-                // If creation, maybe we should alert and let user try again.
-                return false;
-            }
-
-            // Check existence
-            try {
-                await this.parent.handle.getFileHandle(finalName);
-                if (this.kind === 'file') {
-                    await dialog.alert(`File '${finalName}' already exists.`);
-                    return false;
-                }
-            } catch (e) {
-                // Good, logic continues
-            }
-            try {
-                await this.parent.handle.getDirectoryHandle(finalName);
-                if (this.kind === 'directory') {
-                    await dialog.alert(`Directory '${finalName}' already exists.`);
-                    return false;
-                }
-            } catch (e) { /* Good */ }
-
-            // 2. Create
-            let self: FileSystemNodeModelBase = this; // TypeScript hack to get type assertion functions below to work
-            if (self.isFile()) {
-                self._handle = await this.parent.handle.getFileHandle(finalName, { create: true });
-
-                // If this is a duplicate operation, copy content
-                if (self.copySource) {
-                    try {
-                        const sourceFile = await self.copySource.handle.getFile();
-                        // Check for binary? For now just copy blob/text
-                        // stream() is robust for large files
-                        const writable = await self._handle.createWritable();
-                        await writable.write(await sourceFile.text());
-                        await writable.close();
-                    } catch (err) {
-                        console.error("Failed to copy content", err);
-                        await dialog.alert(`Failed to copy content from source file: ${err}`);
-                    }
-                    self.copySource = undefined;
-                }
-
-            } else if (self.isDirectory()) {
-                self._handle = await this.parent.handle.getDirectoryHandle(finalName, { create: true });
-            }
-
-            this._name = finalName;
-            // Update path - although refreshTree will fix it, we want local consistency
-            if (this.parent && this.parent.isRoot) {
-                this._path = finalName;
-            } else if (this.parent) {
-                this._path = this.parent.path + '/' + finalName;
-            }
-
-            // 3. Finish
-            this._isRenaming = false;
-
-            // Refresh tree to ensure sync and proper sorting
-            const focusTarget = this.kind === 'file' ? 'editor' : 'sidebar';
-            await fileSystemStore.refresh(this.parent?.isRoot ? undefined : this.parent, this._path, true, focusTarget);
-
-            return true;
-        } catch (e) {
-            console.error("Creation failed", e);
-            await dialog.alert(`Creation failed: ${e}`);
-            return false;
-        }
-    }
-
-    @action
-    private async rename(newName: string): Promise<boolean> {
-        if (this.isRoot) return false;
-
-        // 1. Prepare final name based on kind
-        let finalName = '';
-        const trimmedInput = newName.trim();
-
-        const startsWithDot = trimmedInput.startsWith('.');
-        // split by dot, trim parts, rejoin
-        const parts = trimmedInput.split('.').map(p => p.trim()).filter(p => p.length > 0);
-        finalName = parts.join('.');
-        if (startsWithDot) {
-            finalName = '.' + finalName;
-        }
-
-        // 2. Check for empty or just dot(s) (disallowed)
-        if (!finalName || /^[\.]+$/.test(finalName)) {
-            this.cancelRenaming();
-            return true;
-        }
-
-        // 3. Validation
-        const unsafeAsciiRegex = /[<>:"/\\|?*]/;
-        const printableAsciiRegex = /^[\x20-\x7E]$/;
-        const unicodeWordRegex = /^[\p{L}\p{N}]$/u;
-
-        for (const char of finalName) {
-            if (this.name.includes(char)) continue;
-
-            if (printableAsciiRegex.test(char)) {
-                if (unsafeAsciiRegex.test(char)) {
-                    await dialog.alert(`Invalid character: ${char}`);
-                    return false;
-                }
-            } else {
-                if (!unicodeWordRegex.test(char)) {
-                    await dialog.alert(`Invalid character: ${char}`);
-                    return false;
-                }
-            }
-        }
-
-        const parentDir = this.parent?.handle;
-        if (!parentDir) {
-            await dialog.alert('Cannot find parent directory.');
-            return false;
-        }
-
-        // 4. Uniqueness Check
-        let conflict = false;
-        try {
-            for await (const entry of parentDir.values()) {
-                if (entry.name === this.name) continue; // self
-                if (entry.name.toLowerCase() === finalName.toLowerCase()) {
-                    conflict = true;
-                    break;
-                }
-            }
-        } catch (e) {
-            console.warn('Error checking siblings', e);
-        }
-
-        if (conflict) {
-            await dialog.alert(`A ${this.kind} with the name "${finalName}" already exists (case-insensitive). Please use a different name.`);
-            return false;
-        }
-
-        // 5. Execute Rename
-        const handle = this.handle;
-        if ('move' in handle) {
-            try {
-                await (handle.move as any)(parentDir, finalName);
-
-                // Determine new path to set pending focus
-                const parentPath = this.path.substring(0, this.path.lastIndexOf('/'));
-                const newPath = parentPath ? `${parentPath}/${finalName}` : finalName;
-
-                // Refresh the parent directory
-                const parentNode = this.parent;
-                await fileSystemStore.refresh(parentNode?.isRoot ? undefined : parentNode as DirectoryNodeModel, newPath, false, 'sidebar');
-                return true;
-            } catch (error) {
-                console.error('Rename failed:', error);
-                await dialog.alert(`Rename failed: ${error}`);
-                return false;
-            }
-        } else {
-            await dialog.alert('Your browser does not support renaming items directly (File System Access API "move" method is missing).');
-            return false;
-        }
-    }
-}
-
-export class FileNodeModel extends FileSystemNodeModelBase<'file'> {
-    constructor(data: FileNodeData, parent: DirectoryNodeModel) {
-        super(data, parent);
-    }
-
-    // Temporary storage for the model to copy from when creating a duplicate
-    copySource?: FileNodeModel;
-
-    @action
-    handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            e.stopPropagation();
-            fileSystemStore.selectNode(this, 'focus');
-        }
-    }
-}
-
-export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
-
-    constructor(data: DirectoryNodeData, parent: DirectoryNodeModel | null) {
-        super(data, parent);
-        this.children = data.children;
-    }
-    @observable accessor children: FileSystemNodeModel[] | undefined;
-    effectiveSettings: IgnoreSettings = DEFAULT_SETTINGS;
-
-    @action
-    handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            e.stopPropagation();
-            fileSystemStore.toggleDirectory(this.path);
-        }
-    }
-
-    @action.bound
-    handleToggleClick(e: React.MouseEvent) {
-        e.stopPropagation();
-        // If not selected, select it as well? User request says: "Clicking it should toggle and select (if not already selected)."
-        if (fileSystemStore.highlightedPath !== this.path) {
-            fileSystemStore.selectNode(this, 'show');
-        }
-        fileSystemStore.toggleDirectory(this.path);
-    }
-}
-
-export type FileSystemNodeModel = FileNodeModel | DirectoryNodeModel;
-
-export class SearchResultItemModel {
-    @observable accessor isHighlighted: boolean = false;
-    readonly ref = createRef<HTMLDivElement>();
-    constructor(public readonly item: FileSystemNodeModel) { }
-
-    @action
-    setHighlight(val: boolean) {
-        this.isHighlighted = val;
-    }
-}
+import { DEFAULT_SETTINGS, mergeSettings, shouldIgnoreDirectory, shouldIgnoreFile, generateDefaultIgnoreFileContent } from '../file_system/IgnoreSettings';
+import { DirectoryNodeModel, ExternalFileModel, FileModel, FileNodeModel, FileSystemNodeModel, FileSystemNodeModelBase, SearchResultItemModel } from "./FileSystemModels";
 
 class FileSystemStore extends EffectAwareModel {
 
@@ -501,9 +23,16 @@ class FileSystemStore extends EffectAwareModel {
         });
 
         // Save on close/refresh
-        window.addEventListener('beforeunload', () => {
-            if (this.dirty && this.currentFileHandle) {
-                this.saveFile(); // Attempt to save (best effort)
+        window.addEventListener('beforeunload', (e) => {
+            if (this.dirty) {
+                if (this.currentFileNode?.kind === 'file') {
+                    this.saveFile(); // Attempt to save (best effort)
+                }
+                else if (this.currentFileNode?.kind === 'external_file') {
+                    // No auto-save. User should save or discard explicitly
+                    e.preventDefault();
+                    e.returnValue = true;
+                }
             }
         });
 
@@ -512,7 +41,7 @@ class FileSystemStore extends EffectAwareModel {
         window.addEventListener('keydown', this.handleGlobalKeyDown);
     }
 
-    @observable private accessor _currentFileNode: FileNodeModel | null = null;
+    @observable private accessor _currentFileNode: FileModel | null = null;
     get currentFileNode() { return this._currentFileNode; }
     get currentFileHandle() { return this._currentFileNode?.handle ?? null; }
 
@@ -595,6 +124,74 @@ class FileSystemStore extends EffectAwareModel {
         return result;
     }
 
+    @action
+    async confirmUnsavedChanges(): Promise<boolean> {
+        if (!this.dirty || !this.currentFileNode) return true;
+
+        if (this.currentFileNode.kind === 'external_file') {
+            const result = await dialog.confirm(
+                `You have unsaved changes in the external file '${this.currentFileNode.name}'. Do you want to save them?`,
+                {
+                    title: 'Unsaved External File',
+                    showCancel: true,
+                    yesText: 'Save',
+                    noText: 'Discard',
+                    cancelText: 'Cancel'
+                }
+            );
+
+            if (result === true) {
+                await this.saveFile();
+                return true;
+            } else if (result === false) {
+                // Discarding
+                runInAction(() => {
+                    this._dirty = false;
+                });
+                return true;
+            } else {
+                // Cancel
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    @action
+    async openExternalFile() {
+        // It is expected that the user will use this to open external files.
+        // But if it is used to open a file that is already a file node in the sidebar, that should be handled gracefully too.
+
+        const handle = await pickSingleFile();
+        if (!handle) {
+            return;
+        }
+        // We call confirmUnsavedChanges after the user has picked a file.
+        // If the user cancels the file pick operation, there is no reason to prompt.
+        if (!await this.confirmUnsavedChanges()) return;
+
+        // Check if this file is already in our workspace
+        const existingNode = await this.findNodeByHandle(handle);
+        if (existingNode && existingNode.kind === 'file') {
+            // It's in the workspace, just select it
+            this.selectNode(existingNode, { loadContent: 'focus' });
+            return;
+        }
+
+        // External file
+        const externalModel = new ExternalFileModel(handle, handle.name);
+        await this.openFileInEditor(externalModel, { focusNode: false, updateHighlight: true });
+    }
+
+    @action
+    async closeExternalFile() {
+        if (!await this.confirmUnsavedChanges()) return;
+
+        // Clearing selection
+        await this.clearSelection();
+    }
+
     get allFiles(): FileSystemNodeModel[] {
         const result: FileSystemNodeModel[] = [];
         const traverse = (nodes: FileSystemNodeModel[]) => {
@@ -653,22 +250,26 @@ class FileSystemStore extends EffectAwareModel {
 
     @action.bound
     async openDirectory() {
-        try {
-            const handle = await window.showDirectoryPicker();
-            runInAction(() => {
-                this._rootNode = new DirectoryNodeModel({
-                    name: handle.name,
-                    path: '',
-                    kind: 'directory',
-                    handle: handle,
-                    children: []
-                }, null);
-            });
-            await this.pushDbOperation(setDbValue('directoryHandle', handle), 'Failed to persist directory handle:');
-            await this.refresh();
-        } catch (error) {
-            console.error('Error opening directory:', error);
+        const handle = await pickDirectory();
+        if (!handle) {
+            return;
         }
+        // We call confirmUnsavedChanges after the user has picked a directory.
+        // If the user cancels the directory pick operation, there is no reason to prompt.
+        if (!await this.confirmUnsavedChanges()) {
+            return;
+        }
+        runInAction(() => {
+            this._rootNode = new DirectoryNodeModel({
+                name: handle.name,
+                path: '',
+                kind: 'directory',
+                handle: handle,
+                children: []
+            }, null);
+        });
+        await this.pushDbOperation(setDbValue('directoryHandle', handle), 'Failed to persist directory handle:');
+        await this.refresh();
     }
 
     @action
@@ -691,7 +292,12 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    selectNode(node: FileSystemNodeModelBase, loadContent: 'focus' | 'show' | 'delay') {
+    async selectNode(node: FileSystemNodeModelBase, { loadContent, checkExternalUnsaved = false }: { loadContent: 'focus' | 'show' | 'delay'; checkExternalUnsaved?: boolean; }) {
+        if (node.kind === 'file' && checkExternalUnsaved) {
+            // Guard against losing external file changes only if intended target is a file
+            // Selecting a directory is safe
+            if (!await this.confirmUnsavedChanges()) return;
+        }
         this._highlightedPath = node.path;
 
         if (loadContent !== 'focus') {
@@ -707,10 +313,10 @@ class FileSystemStore extends EffectAwareModel {
             if (loadContent === 'delay') {
                 // Debounce load
                 this.loadTimeout = window.setTimeout(() => {
-                    this.openFileInEditor(node, false);
+                    this.openFileInEditor(node, { focusNode: false, updateHighlight: true });
                 }, 750);
             } else {
-                this.openFileInEditor(node, false).then(() => {
+                this.openFileInEditor(node, { focusNode: false, updateHighlight: true }).then(() => {
                     if (loadContent === 'focus') {
                         editorStore.focusEditor();
                     }
@@ -719,9 +325,6 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    // Handlers moved to Node models
-
-
     @action
     navigate(direction: 'up' | 'down' | 'left' | 'right') {
         const visible = this.visibleNodes;
@@ -729,7 +332,7 @@ class FileSystemStore extends EffectAwareModel {
 
         // If nothing selected, select first
         if (currentIndex === -1 && visible.length > 0) {
-            this.selectNode(visible[0], 'delay');
+            this.selectNode(visible[0], { loadContent: 'delay', checkExternalUnsaved: true });
             return;
         }
 
@@ -739,11 +342,11 @@ class FileSystemStore extends EffectAwareModel {
 
         if (direction === 'up') {
             if (currentIndex > 0) {
-                this.selectNode(visible[currentIndex - 1], 'delay');
+                this.selectNode(visible[currentIndex - 1], { loadContent: 'delay', checkExternalUnsaved: true });
             }
         } else if (direction === 'down') {
             if (currentIndex < visible.length - 1) {
-                this.selectNode(visible[currentIndex + 1], 'delay');
+                this.selectNode(visible[currentIndex + 1], { loadContent: 'delay', checkExternalUnsaved: true });
             }
         } else if (direction === 'left') {
             if (currentNode.kind === 'directory' && !this.isCollapsed(currentNode.path)) {
@@ -756,13 +359,13 @@ class FileSystemStore extends EffectAwareModel {
                     const parentPath = currentNode.path.substring(0, lastSlash);
                     const parentNode = visible.find(n => n.path === parentPath);
                     if (parentNode) {
-                        this.selectNode(parentNode, 'delay');
+                        this.selectNode(parentNode, { loadContent: 'delay' });
                     }
                 } else {
                     // Use parent logic if no slash? It implies it's a child of root (since path = name)
                     // Or if parent is root
                     if (currentNode.parent && currentNode.parent.isRoot) {
-                        this.selectNode(currentNode.parent, 'delay');
+                        this.selectNode(currentNode.parent, { loadContent: 'delay' });
                     }
                 }
             }
@@ -775,7 +378,7 @@ class FileSystemStore extends EffectAwareModel {
                     if (currentIndex < visible.length - 1) {
                         // Verify next one is actually a child?
                         // If expanded, next visible IS first child.
-                        this.selectNode(visible[currentIndex + 1], 'delay');
+                        this.selectNode(visible[currentIndex + 1], { loadContent: 'delay', checkExternalUnsaved: true });
                     }
                 }
             }
@@ -786,6 +389,8 @@ class FileSystemStore extends EffectAwareModel {
     async focusCurrentFileInSidebar() {
         const node = this.currentFileNode;
         if (!node) return;
+
+        if (node instanceof ExternalFileModel) return; // Cannot focus external file in sidebar
 
         // Expand all parents
         const parts = node.path.split('/');
@@ -810,8 +415,16 @@ class FileSystemStore extends EffectAwareModel {
         await this.pushDbOperation(setDbValue('collapsedPaths', Array.from(this._collapsedPaths)), 'Failed to persist collapsed paths:');
     }
 
+    @action.bound
+    async showHelp() {
+        if (!await this.confirmUnsavedChanges()) {
+            return;
+        }
+        await this.clearSelection();
+    }
+
     async clearSelection() {
-        if (this.currentFileHandle && this.dirty) {
+        if (this.currentFileNode?.kind === 'file' && this.dirty) {
             await this.saveFile();
         }
 
@@ -821,7 +434,10 @@ class FileSystemStore extends EffectAwareModel {
         runInAction(() => {
             this._currentFileNode = null;
             this._dirty = false;
+            this._highlightedPath = null;
         });
+
+        editorStore.showHelp();
 
         if (this.saveInterval) {
             clearInterval(this.saveInterval);
@@ -831,6 +447,9 @@ class FileSystemStore extends EffectAwareModel {
 
     async saveFile() {
         if (!this.currentFileHandle) return;
+
+        // For external files, we might not have permission persisted? 
+        // FileSystemAccessAPI typically grants permission on open.
 
         try {
             const writable = await this.currentFileHandle.createWritable();
@@ -851,6 +470,9 @@ class FileSystemStore extends EffectAwareModel {
         }
         this.saveInterval = window.setInterval(async () => {
             if ((window as any).__TEST_DISABLE_AUTO_SAVE) return;
+
+            // Disable auto-save for external files
+            if (this.currentFileNode instanceof ExternalFileModel) return;
 
             if (this.dirty) {
                 await this.saveFile();
@@ -873,7 +495,10 @@ class FileSystemStore extends EffectAwareModel {
         return `${this.rootNode.name}/${relativeDir}`;
     }
     @action
-    async createDefaultIgnoreFile(directory: DirectoryNodeModel) {
+    async editIgnoreFile(directory: DirectoryNodeModel) {
+        if (!await this.confirmUnsavedChanges()) {
+            return;
+        }
         try {
             // Check/Create .adoc-editor folder
             let configDir;
@@ -910,12 +535,15 @@ class FileSystemStore extends EffectAwareModel {
             await dialog.alert('Please open a directory first.');
             return;
         }
+        if (!await this.confirmUnsavedChanges()) {
+            return;
+        }
 
         // 1. Determine target directory
         let targetNode: DirectoryNodeModel | null = parentNode || null;
 
         if (!targetNode) {
-            if (this.currentFileNode && this.currentFileNode.parent) {
+            if (this.currentFileNode instanceof FileNodeModel && this.currentFileNode.parent) {
                 targetNode = this.currentFileNode.parent;
             } else if (this.rootNode) {
                 targetNode = this.rootNode;
@@ -1090,7 +718,7 @@ class FileSystemStore extends EffectAwareModel {
         if (!targetNode) {
             // If we are selecting a directory, create inside it (if permitted?)
             if (this.currentFileNode) {
-                if (this.currentFileNode.parent) {
+                if (this.currentFileNode instanceof FileNodeModel && this.currentFileNode.parent) {
                     targetNode = this.currentFileNode.parent;
                 }
             } else if (this.highlightedPath) {
@@ -1205,7 +833,7 @@ class FileSystemStore extends EffectAwareModel {
                 // If deleted node is file and matches
                 if (node === this.currentFileNode) {
                     await this.clearSelection();
-                } else if (node.kind === 'directory') {
+                } else if (node.kind === 'directory' && !(this.currentFileNode instanceof ExternalFileModel)) {
                     // Check if current file is child of deleted directory
                     // We can check path prefix?
                     if (this.highlightedPath && this.highlightedPath.startsWith(node.path + '/')) {
@@ -1226,6 +854,10 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     async handleF5() {
+        // If an external file is open, a file node in the sidebar cannot be currently highlighted
+        // It is possible for a directory to be highlighted though.
+        // Refreshing any directory without opening an internal file will not lead to a loss of data in an unsaved external file
+        // So there is no need to prompt with confirmUnsavedChanges.
         if (this.highlightedPath) {
             const nodes = this.visibleNodes;
             const highlighted = nodes.find(n => n.path === this.highlightedPath);
@@ -1284,8 +916,8 @@ class FileSystemStore extends EffectAwareModel {
 
             if (openFile && nodeToFocus.kind === 'file') {
                 // Only focus tree item if specifically requested for sidebar
-                const focusTree = focusTarget === 'sidebar';
-                await this.openFileInEditor(nodeToFocus, focusTree);
+                const focusNode = focusTarget === 'sidebar';
+                await this.openFileInEditor(nodeToFocus, { focusNode, updateHighlight: true });
 
                 if (focusTarget === 'editor') {
                     editorStore.focusEditor();
@@ -1293,7 +925,7 @@ class FileSystemStore extends EffectAwareModel {
             } else if (focusTarget === 'editor' && nodeToFocus.kind === 'file') {
                 // Ensure editor is focused even if not 'opening' (already open?)
                 // Pass false to focusNode because we handle editor focus explicitly
-                await this.openFileInEditor(nodeToFocus, false);
+                await this.openFileInEditor(nodeToFocus, { focusNode: false, updateHighlight: true });
                 editorStore.focusEditor();
             }
         }
@@ -1314,7 +946,7 @@ class FileSystemStore extends EffectAwareModel {
                         }
                     });
                     // Always reload content but DON'T override highlight if we are focusing a specific path (e.g. directory refresh)
-                    await this.openFileInEditor(fileNode, false, !focusPath);
+                    await this.openFileInEditor(fileNode as FileNodeModel, { focusNode: false, updateHighlight: !focusPath });
                 }
             }
         }
@@ -1322,6 +954,9 @@ class FileSystemStore extends EffectAwareModel {
 
     @action
     async toggleDirectory(path: string) {
+        // Toggling doesn't change file, but if it did... 
+        // Actually, toggleDirectory is just expand/collapse. It doesn't select.
+        // So this is safe. 
         if (this._collapsedPaths.has(path)) {
             this._collapsedPaths.delete(path);
         } else {
@@ -1364,7 +999,9 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    handleSearchResultClick(item: FileSystemNodeModel) {
+    async handleSearchResultClick(item: FileSystemNodeModel) {
+        if (!await this.confirmUnsavedChanges()) return;
+
         // 1. Expand all parents
         let parent = item.parent;
         while (parent && !parent.isRoot) {
@@ -1380,9 +1017,11 @@ class FileSystemStore extends EffectAwareModel {
             item.treeItemRef.current?.scrollIntoView({ block: 'nearest' });
         });
 
-        this.openFileInEditor(item, false).then(() => {
-            editorStore.focusEditor();
-        });
+        if (item.kind === 'file') {
+            this.openFileInEditor(item, { focusNode: false, updateHighlight: true }).then(() => {
+                editorStore.focusEditor();
+            });
+        }
         this.closeSearch();
     }
 
@@ -1604,17 +1243,19 @@ class FileSystemStore extends EffectAwareModel {
         });
     }
 
-    private async openFileInEditor(node: FileSystemNodeModel, focusNode: boolean, updateHighlight: boolean = true) {
-        if (node.kind !== 'file') return;
-        // Auto-save previous file if dirty
-        if (this.currentFileHandle && this.dirty) {
+    private async openFileInEditor(node: FileModel, { focusNode, updateHighlight }: { focusNode: boolean; updateHighlight: boolean }) {
+        if (node.kind !== 'file' && node.kind !== 'external_file') return;
+        // Auto-save previous file if dirty (Internal only)
+        if (this.currentFileHandle && this.dirty && !(this.currentFileNode instanceof ExternalFileModel)) {
             await this.saveFile();
         }
 
         const fileHandle = node.handle;
 
-        // Persist file handle
-        await this.pushDbOperation(setDbValue('lastOpenFile', fileHandle), 'Failed to persist file handle:');
+        // Persist file handle only if internal
+        if (node instanceof FileNodeModel) {
+            await this.pushDbOperation(setDbValue('lastOpenFile', fileHandle), 'Failed to persist file handle:');
+        }
 
         let content = '';
         try {
@@ -1656,17 +1297,21 @@ class FileSystemStore extends EffectAwareModel {
 
         // Update Store State
         this.loadFileInEditor(node, content, updateHighlight);
-        if (focusNode) {
+        if (focusNode && node instanceof FileNodeModel) {
             node.scheduleFocusTreeItem();
         }
         this.startAutoSave();
     }
 
     @action
-    private loadFileInEditor(node: FileNodeModel, content: string, updateHighlight: boolean = true) {
+    private loadFileInEditor(node: FileModel, content: string, updateHighlight: boolean = true) {
         this._currentFileNode = node;
         if (updateHighlight) {
-            this._highlightedPath = node.path;
+            if (node instanceof FileNodeModel) {
+                this._highlightedPath = node.path;
+            } else {
+                this._highlightedPath = null;
+            }
         }
         this._isLoading = true;
         editorStore.setContent(content);
@@ -1765,6 +1410,32 @@ class FileSystemStore extends EffectAwareModel {
             e.stopPropagation();
             this.toggleSearch();
         }
+    }
+}
+
+async function pickDirectory() {
+    try {
+        const handle = await window.showDirectoryPicker();
+        return handle;
+    }
+    catch (e) {
+        if ((e as any).name !== 'AbortError') {
+            console.error('Error opening directory:', e);
+        }
+        return null;
+    }
+}
+
+async function pickSingleFile() {
+    try {
+        const [handle] = await window.showOpenFilePicker();
+        return handle;
+    }
+    catch (e) {
+        if ((e as any).name !== 'AbortError') {
+            console.error('Error opening file:', e);
+        }
+        return null;
     }
 }
 

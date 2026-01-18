@@ -13,7 +13,8 @@ declare global {
         __TEST_dialog: Dialog;
         __TEST_DISABLE_AUTO_SAVE?: boolean;
         __TEST_hydrateHandle?: (handle: any) => any;
-        __TEST_mockPickerConfig?: { name: string; path: string };
+        __TEST_mockDirPickerDirName?: string;
+        __TEST_mockFilePickerFilePath?: string;
     }
 
 }

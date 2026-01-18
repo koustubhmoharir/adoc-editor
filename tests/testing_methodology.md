@@ -97,7 +97,10 @@ Always import `test` and `expect` from `./fixtures.ts` (or `../fixtures.ts` depe
 import { test, expect, helpers } from './fixtures';
 ```
 
-#### 2. File System Setup
+#### 2. Usage of describe
+Avoid using describe blocks as they create an additional level of nesting that usually adds no value. Organize tests by files directly. Do not create a test file with just one describe block.
+
+#### 3. File System Setup
 Use `fsSetup` in `test.beforeEach` to define the initial state of the virtual file system for your test.
 ```typescript
 test.beforeEach(async ({ fsSetup }) => {
@@ -106,7 +109,7 @@ test.beforeEach(async ({ fsSetup }) => {
 });
 ```
 
-#### 3. Initialization
+#### 4. Initialization
 Most tests should start by loading a directory to get the app into a state where the mocked directory created in beforeEach is loaded in the sidebar. Ensure that you specify the same directory name as the one used to create mock files in beforeEach.
 ```typescript
 import { loadInitialDirectory } from './helpers/sidebar_helpers';
@@ -118,22 +121,22 @@ test('My Test', async ({ page }) => {
 });
 ```
 
-#### 4. Clean State Policy
+#### 5. Clean State Policy
 Tests must clean up their UI state before finishing. Close any open dialogs, menus, or context menus, and complete or cancel any file renames.
 - **Why?** We reuse the browser context/page between tests for performance. If a test leaves some unclean state that the fixture is not able to detect, the next test might fail.
 - **Enforcement**: If a test fails or marks the worker as "dirty" based on attempts to detect unclean state, the test runner will discard the context and create a fresh one for the next test. Note that there is a significant performance penalty to this as the cost of loading the page is usually much more than the cost of running the test steps.
 
-#### 5. Mock Clock Caveat
+#### 6. Mock Clock Caveat
 If you use `page.clock.install()` (to test debouncing or timeouts), **DO NOT** use `page.keyboard.type()` or `helpers.replaceEditorContentByTyping()`. Also, **DO NOT** use the shared page. Let the test take a browser object and create a new context. Close the context in a finally block.
 - **Reason**: Monaco Editor uses internal async workers and timers that may stall or behave unpredictably when the system time is frozen/mocked.
 - **Solution**: Use `helpers.setEditorContentDirect(page, content)` to update the model immediately without relying on typing events.
 
-#### 6. Error Handling
+#### 7. Error Handling
 Any unhandled exception in the application will automatically **FAIL** the test. This logic is baked into `enableTestLogging` that is called to setup a page. Ensure that the application code handles expected errors gracefully.
 
 If the application code calls console.error or console.warn, these are reflected in the test output but do not fail the test itself.
 
-#### 7. Locators
+#### 8. Locators
 - **Avoid `hasText`**: Do not use text-based locators (`:has-text(...)` or `getByText`) for dynamic content like file items or editor content. They are brittle.
 - **Use Data Attributes**: Prefer `data-testid`, `data-file-path`, or `data-dir-path`. Add specific data attributes in the application code wherever required for robust testing.
   ```typescript
@@ -144,7 +147,7 @@ If the application code calls console.error or console.warn, these are reflected
   page.locator('[data-testid="file-item"][data-file-path="my-file.adoc"]');
   ```
 
-#### 8. Dialog Handling
+#### 9. Dialog Handling
 Use the `handleNextDialog` pattern to test native/custom dialogs robustly.
 
 ```typescript

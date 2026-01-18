@@ -148,10 +148,19 @@ class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
 }
 
 window.showDirectoryPicker = async () => {
-    const config = window.__TEST_mockPickerConfig;
-    if (!config) throw new Error("Call setMockPickerConfig first");
-    const { name, path } = config;
-    return new MockFileSystemDirectoryHandle(name, path);
+    const dirName = window.__TEST_mockDirPickerDirName;
+    if (!dirName) throw new Error("Call setDirectoryPickerChoice first");
+    return new MockFileSystemDirectoryHandle(dirName, dirName);
+};
+
+window.showOpenFilePicker = async () => {
+    const filePath = window.__TEST_mockFilePickerFilePath;
+    if (!filePath) throw new Error("Call setFilePickerChoice first");
+    // extract file name from filePath
+    const parts = filePath.split(/[/\\]/);
+    const name = parts[parts.length - 1];
+    // Return array as per spec
+    return [new MockFileSystemFileHandle(name, filePath)];
 };
 
 // Hydration helper for tests

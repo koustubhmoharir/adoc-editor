@@ -1,9 +1,10 @@
 import { observer } from 'mobx-react-lite';
-import { DirectoryNodeModel, fileSystemStore } from '../store/FileSystemStore';
+import { fileSystemStore } from '../store/FileSystemStore';
 // Using inline styles for now as vanilla-extract issues with newer CSS properties like anchor-name/position-anchor inside keyframes or complex selectors might arise, 
 // and typescript support for them is cutting edge. But we can put basic styles in CSS and positioning in style tag.
 import * as styles from './Sidebar.css';
 import { closeOnClick, useUpDownFocusNavigationInPopover } from '../hooks/useUpDownFocusNavigation';
+import { DirectoryNodeModel } from '../store/FileSystemModels';
 
 
 // @ts-ignore
@@ -30,7 +31,7 @@ export const SidebarContextMenu = observer(() => {
             {targetNode?.kind === 'file' && (
                 <>
                     <button className={styles.contextMenuItem} onClick={() => {
-                        fileSystemStore.selectNode(targetNode, 'focus');
+                        fileSystemStore.selectNode(targetNode, { loadContent: 'focus' });
                     }} data-testid="ctx-open">
                         <i className={`fas fa-external-link-alt ${styles.contextMenuIcon}`} />
                         Open
@@ -93,7 +94,7 @@ export const SidebarContextMenu = observer(() => {
                         </>
                     )}
                     <button className={styles.contextMenuItem} onClick={() => {
-                        fileSystemStore.createDefaultIgnoreFile(targetNode as DirectoryNodeModel);
+                        fileSystemStore.editIgnoreFile(targetNode as DirectoryNodeModel);
                     }} data-testid="ctx-edit-ignore">
                         <i className={`fas fa-cog ${styles.contextMenuIcon}`} />
                         Edit ignore.toml

@@ -19,9 +19,9 @@ export const leftSection = style({
 });
 
 export const centerSection = style({
+    display: 'flex',
+    alignItems: 'center',
     fontWeight: 'bold',
-    flex: 1,
-    textAlign: 'center'
 });
 
 export const rightSection = style({
@@ -37,6 +37,9 @@ export const title = style({
 
 export const fileName = style({
     fontSize: '14px',
+});
+
+export const fileNameClickable = style({
     cursor: 'pointer',
     ':hover': {
         textDecoration: 'underline'
@@ -82,6 +85,26 @@ export const newFileButton = style([button, {
 
 export const pickDirButton = style([button, {
     color: vars.color.folderIcon,
+}]);
+
+export const pickButton = style([button, {
+    color: vars.color.folderIcon,
+}]);
+
+export const warningIcon = style({
+    marginRight: '8px',
+    color: '#ef4444',
+    fontSize: '14px',
+    display: 'flex',
+    alignItems: 'center',
+});
+
+export const actionButton = style([button, {
+    fontSize: '14px',
+    padding: '4px 8px',
+    marginLeft: '8px',
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: '4px',
 }]);
 
 export const searchFilesButton = style([button, {

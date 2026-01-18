@@ -173,7 +173,7 @@ class TokensStore {
     private async loadExpectations() {
         const fileNode = fileSystemStore.currentFileNode;
         const handle = fileNode?.handle;
-        if (!fileNode || !handle) {
+        if (!fileNode || !handle || fileNode.kind === 'external_file') {
             runInAction(() => this._expectations = null);
             return;
         }
@@ -183,7 +183,7 @@ class TokensStore {
             runInAction(() => this._expectations = null);
             return;
         }
-        
+
         const jsonName = name.replace(/\.adoc$/, '.json');
         const jsonHandle = await fileSystemStore.findSiblingFile(fileNode, jsonName);
 

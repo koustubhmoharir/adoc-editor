@@ -1,10 +1,11 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
-import { fileSystemStore, FileSystemNodeModel } from '../store/FileSystemStore';
+import { fileSystemStore } from '../store/FileSystemStore';
 import * as styles from './Sidebar.css';
 import { useScheduledEffects } from '../hooks/useScheduledEffects';
 
 import { SidebarContextMenu } from './SidebarContextMenu';
+import { FileSystemNodeModel } from '../store/FileSystemModels';
 
 const RenameControl: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }) => {
     return (
@@ -156,7 +157,6 @@ const SidebarSearchResults: React.FC = observer(() => {
                         ref={model.ref}
                         className={`${styles.searchResultItem} ${model.isHighlighted ? styles.highlighted : ''}`}
                         onClick={() => fileSystemStore.handleSearchResultClick(item)}
-                        onContextMenu={item.handleContextMenu}
                         data-testid="search-result-item"
                         data-file-path={item.path}
                         data-highlighted={model.isHighlighted}

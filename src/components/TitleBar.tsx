@@ -2,14 +2,19 @@ import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { fileSystemStore } from '../store/FileSystemStore';
 import { themeStore, appName } from '../store/ThemeStore';
-import { editorStore } from '../store/EditorStore';
 
 import * as styles from './TitleBar.css';
 
 export const TitleBar: React.FC = observer(() => {
     const fileName = fileSystemStore.currentFileNode?.name || '';
-    let filePath: string | undefined = fileSystemStore.currentFileNode?.path || '';
-    if (fileName === filePath) filePath = undefined;
+    const isExternal = fileSystemStore.currentFileNode?.kind === 'external_file';
+    let fileTooltip: string | undefined = fileSystemStore.currentFileNode?.path || '';
+    if (fileName === fileTooltip) fileTooltip = undefined;
+
+    // Check if external - path might be just name
+    if (isExternal) {
+        fileTooltip = "External file - Auto-save disabled";
+    }
 
     return (
         <header className={styles.header} data-testid="title-bar">
@@ -24,7 +29,18 @@ export const TitleBar: React.FC = observer(() => {
                     title="Open Directory"
                     data-testid="open-directory-button"
                 >
-                    <i className="fas fa-folder-open" />
+                    <i className="fas fa-folder-tree" />
+                </button>
+                <button
+                    className={styles.pickButton}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        fileSystemStore.openExternalFile();
+                    }}
+                    title="Open File"
+                    data-testid="open-file-button"
+                >
+                    <i className="fa-solid fa-folder-open" />
                 </button>
                 <button
                     className={styles.searchFilesButton}
@@ -48,15 +64,52 @@ export const TitleBar: React.FC = observer(() => {
             </div>
 
             <div className={styles.centerSection}>
+                {isExternal && (
+                    <span
+                        className={styles.warningIcon}
+                        title="External file - Auto-save disabled"
+                        data-testid="external-file-warning"
+                    >
+                        <i className="fa-solid fa-triangle-exclamation"></i>
+                    </span>
+                )}
                 <span
-                    className={styles.fileName}
+                    className={`${styles.fileName} ${isExternal ? styles.fileNameClickable : ''}`}
                     data-testid="current-filename"
-                    title={filePath}
-                    onClick={fileSystemStore.focusCurrentFileInSidebar}
+                    title={fileTooltip}
+                    onClick={isExternal ? undefined : fileSystemStore.focusCurrentFileInSidebar}
+                    style={{ cursor: isExternal ? 'default' : 'pointer' }}
                 >
                     {fileName}
                 </span>
                 {fileSystemStore.dirty && <span className={styles.dirtyIndicator} data-testid="dirty-indicator">*</span>}
+
+                {isExternal && (
+                    <>
+                        <button
+                            className={styles.actionButton}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                fileSystemStore.saveFile();
+                            }}
+                            title="Save"
+                            data-testid="external-save-button"
+                        >
+                            <i className="fa-solid fa-floppy-disk"></i>
+                        </button>
+                        <button
+                            className={styles.actionButton}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                fileSystemStore.closeExternalFile();
+                            }}
+                            title="Close"
+                            data-testid="external-close-button"
+                        >
+                            <i className="fa-solid fa-xmark"></i>
+                        </button>
+                    </>
+                )}
             </div>
 
             <div className={styles.rightSection}>
@@ -69,10 +122,7 @@ export const TitleBar: React.FC = observer(() => {
                 </button>
                 <button
                     className={styles.helpButton}
-                    onClick={async () => {
-                        await fileSystemStore.clearSelection();
-                        editorStore.showHelp();
-                    }}
+                    onClick={fileSystemStore.showHelp}
                     title="Help"
                     data-testid="help-button"
                 >
