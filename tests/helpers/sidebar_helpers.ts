@@ -88,3 +88,9 @@ export async function expectMonacoEditorToBeFocused(page: Page) {
     await expect(monaco.locator(':focus')).toHaveCount(1);
     return monaco;
 }
+
+export async function expectMonacoEditorNotToBeFocused(page: Page) {
+    const monaco = page.locator('.monaco-editor');
+    await expect(monaco.locator(':focus')).toHaveCount(0);
+    return monaco;
+}

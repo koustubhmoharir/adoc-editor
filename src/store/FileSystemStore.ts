@@ -6,7 +6,7 @@ import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
 import { parse } from 'smol-toml';
-import { DEFAULT_SETTINGS, mergeSettings, shouldIgnoreDirectory, shouldIgnoreFile, generateDefaultIgnoreFileContent } from '../file_system/IgnoreSettings';
+import { DEFAULT_COMPILED_SETTINGS, mergeSettings, shouldIgnoreDirectory, shouldIgnoreFile, generateDefaultIgnoreFileContent, resetPatternCache } from '../file_system/IgnoreSettings';
 import { DirectoryNodeModel, ExternalFileModel, FileModel, FileNodeModel, FileSystemNodeModel, FileSystemNodeModelBase, SearchResultItemModel } from "./FileSystemModels";
 
 class FileSystemStore extends EffectAwareModel {
@@ -284,6 +284,7 @@ class FileSystemStore extends EffectAwareModel {
             }, null);
         });
         await this.pushDbOperation(setDbValue('directoryHandle', handle), 'Failed to persist directory handle:');
+        resetPatternCache();
         await this.refresh();
     }
 
@@ -291,6 +292,7 @@ class FileSystemStore extends EffectAwareModel {
     async clearDirectory() {
         this._rootNode = null;
         this._currentFileNode = null;
+        resetPatternCache();
         this._dirty = false;
         this._isLoading = false;
         this._collapsedPaths = new Set();
@@ -1113,6 +1115,7 @@ class FileSystemStore extends EffectAwareModel {
                 // rootNode is definitely set above
                 const perm = await this.rootNode!.handle.queryPermission({ mode: 'read' });
                 if (perm === 'granted') {
+                    resetPatternCache();
                     await this.refresh();
                     await this.restoreCollapsedPaths();
                     await this.restoreLastFile();
@@ -1207,8 +1210,7 @@ class FileSystemStore extends EffectAwareModel {
         const parentPath = parent.isRoot ? '' : parent.path;
 
         // 1. Calculate Settings
-        let settings = parent.isRoot ? DEFAULT_SETTINGS : (parent.parent?.effectiveSettings || DEFAULT_SETTINGS);
-
+        let inheritedSettings = parent.isRoot ? DEFAULT_COMPILED_SETTINGS : (parent.parent?.effectiveSettings || DEFAULT_COMPILED_SETTINGS);
 
         try {
             const configDir = await dirHandle.getDirectoryHandle('.adoc-editor');
@@ -1216,18 +1218,18 @@ class FileSystemStore extends EffectAwareModel {
             const file = await configFile.getFile();
             const text = await file.text();
             const localSettings = parse(text);
-            settings = mergeSettings(settings, localSettings as any);
+            inheritedSettings = mergeSettings(inheritedSettings, localSettings as any);
         } catch (e) {
             // Ignore missing config
         }
 
-        parent.effectiveSettings = settings;
+        parent.effectiveSettings = inheritedSettings;
 
         for await (const entry of dirHandle.values()) {
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
 
             if (entry.kind === 'file') {
-                if (shouldIgnoreFile(entry.name, settings)) continue;
+                if (shouldIgnoreFile(entry.name, inheritedSettings)) continue;
                 // ...
 
 
@@ -1238,7 +1240,7 @@ class FileSystemStore extends EffectAwareModel {
                     handle: entry
                 }, parent));
             } else if (entry.kind === 'directory') {
-                if (shouldIgnoreDirectory(entry.name, settings)) continue;
+                if (shouldIgnoreDirectory(entry.name, inheritedSettings)) continue;
 
                 // Create directory model first
                 const dirModel = new DirectoryNodeModel({

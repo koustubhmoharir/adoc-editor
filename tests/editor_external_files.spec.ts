@@ -1,4 +1,5 @@
 import { test, expect, helpers } from './fixtures';
+import { expectMonacoEditorNotToBeFocused } from './helpers/sidebar_helpers';
 
 test.beforeEach(async ({ fsSetup, page }) => {
     // Create some internal files for context
@@ -51,9 +52,7 @@ test('should handle unsaved changes when navigating away from external file', as
     await expect(page.getByTestId('dirty-indicator')).toBeVisible();
 
     // Helper to perform an action, expect dialog, verify cancel, and verify we are still on external file
-    const verifyCancel = async (scenarioName: string, triggerAction: () => Promise<void>, prepareMocks?: () => Promise<void>) => {
-        console.log(`Testing scenario: ${scenarioName}`);
-
+    const verifyCancel = async (_scenarioName: string, triggerAction: () => Promise<void>, prepareMocks?: () => Promise<void>) => {
         if (prepareMocks) await prepareMocks();
 
         // Prepare dialog handler for Cancel (return null)
@@ -306,7 +305,9 @@ test('should save external file with Ctrl+S shortcut when focus is not in editor
     await expect(page.getByTestId('dirty-indicator')).toBeVisible();
 
     // 3. Click title bar to shift focus out of editor
-    await page.getByTestId('current-filename').click();
+    await page.getByTestId('external-file-warning').click();
+
+    await expectMonacoEditorNotToBeFocused(page)
 
     // 4. Press Ctrl+S
     await page.keyboard.press('Control+s');

@@ -1,4 +1,3 @@
-
 export interface IgnoreSettings {
     unignored_directories: string[];
     ignore_dot_directories: boolean;
@@ -8,6 +7,11 @@ export interface IgnoreSettings {
     ignore_dot_files: boolean;
     ignore_extensionless_files: boolean;
     ignored_extensions: string[];
+}
+
+export interface CompiledIgnoreSettings extends IgnoreSettings {
+    ignored_directories_compiled_: (string | RegExp)[];
+    unignored_directories_compiled_: (string | RegExp)[];
 }
 
 export const DEFAULT_SETTINGS: IgnoreSettings = {
@@ -26,6 +30,7 @@ export const DEFAULT_SETTINGS: IgnoreSettings = {
         '.mypy_cache',
         '.pytest_cache',
         'target', // Rust/Maven
+        'artifacts', // .NET
         'bin',    // General binary output
         'obj',    // C# / C++
         'out',    // Java/Kotlin
@@ -43,30 +48,71 @@ export const DEFAULT_SETTINGS: IgnoreSettings = {
     ],
 };
 
-export function mergeSettings(parent: IgnoreSettings, child: Partial<IgnoreSettings>): IgnoreSettings {
-    return {
-        ignored_directories: [...parent.ignored_directories, ...(child.ignored_directories || [])],
-        unignored_directories: [...parent.unignored_directories, ...(child.unignored_directories || [])],
-        ignore_dot_directories: child.ignore_dot_directories ?? parent.ignore_dot_directories,
-        ignore_underscore_directories: child.ignore_underscore_directories ?? parent.ignore_underscore_directories,
-        ignored_extensions: [...parent.ignored_extensions, ...(child.ignored_extensions || [])],
-        unignored_extensions: [...parent.unignored_extensions, ...(child.unignored_extensions || [])],
-        ignore_dot_files: child.ignore_dot_files ?? parent.ignore_dot_files,
-        ignore_extensionless_files: child.ignore_extensionless_files ?? parent.ignore_extensionless_files,
-    };
-}
+// Module-level cache for regex patterns
+const patternCache = new Map<string, string | RegExp>();
 
-function matchesPattern(name: string, pattern: string): boolean {
+function createPattern(pattern: string): string | RegExp {
+    let result = patternCache.get(pattern);
+    if (result != null) {
+        return result;
+    }
+
+    result = pattern;
+
     // Check for regex format: /pattern/
     if (pattern.startsWith('/') && pattern.endsWith('/') && pattern.length > 2) {
         try {
             const regexBody = pattern.slice(1, -1);
-            const regex = new RegExp(regexBody);
-            return regex.test(name);
+            result = new RegExp(regexBody);
         } catch (e) {
             console.warn(`Invalid regex pattern in ignore settings: ${pattern}`, e);
-            return false;
+            // Fallback to exact match of the raw string if regex fails? Or just return the string.
         }
+    }
+
+    patternCache.set(pattern, result);
+    return result;
+}
+
+function uniquePatters(patterns: string[]) {
+    return Array.from(new Set(patterns).values()).map(createPattern);
+}
+
+export function compileSettings(settings: IgnoreSettings): CompiledIgnoreSettings {
+    return {
+        ...settings,
+        ignored_directories_compiled_: uniquePatters(settings.ignored_directories),
+        unignored_directories_compiled_: uniquePatters(settings.unignored_directories),
+    };
+}
+
+export const DEFAULT_COMPILED_SETTINGS = compileSettings(DEFAULT_SETTINGS);
+
+export function resetPatternCache() {
+    patternCache.clear();
+}
+
+export function combineArrays(base: string[], child?: string[]) {
+    const combined = child?.length ? base.concat(child) : base;
+    return Array.from(new Set(combined).values());
+}
+
+export function mergeSettings(parent: CompiledIgnoreSettings, child: Partial<IgnoreSettings>): CompiledIgnoreSettings {
+    // Child is partial raw settings.
+    const merged: CompiledIgnoreSettings = {
+        ...parent,
+        ...child, // Overrides booleans
+        ignored_directories: combineArrays(parent.ignored_directories, child.ignored_directories),
+        unignored_directories: combineArrays(parent.unignored_directories, child.unignored_directories),
+    };
+    merged.ignored_directories_compiled_ = merged.ignored_directories.map(createPattern);
+    merged.unignored_directories_compiled_ = merged.unignored_directories.map(createPattern);
+    return merged;
+}
+
+function matchesPattern(name: string, pattern: string | RegExp): boolean {
+    if (pattern instanceof RegExp) {
+        return pattern.test(name);
     }
     // Exact match
     return name === pattern;
@@ -91,7 +137,7 @@ function matchesExtension(name: string, extensionPattern: string): boolean {
     return name.endsWith('.' + extensionPattern);
 }
 
-export function shouldIgnoreDirectory(name: string, settings: IgnoreSettings): boolean {
+export function shouldIgnoreDirectory(name: string, settings: CompiledIgnoreSettings): boolean {
     // 1. Unignore list (Explicit Keep)
     if (settings.unignored_directories.some(pattern => matchesPattern(name, pattern))) {
         return false;
@@ -109,7 +155,7 @@ export function shouldIgnoreDirectory(name: string, settings: IgnoreSettings): b
     return false;
 }
 
-export function shouldIgnoreFile(name: string, settings: IgnoreSettings): boolean {
+export function shouldIgnoreFile(name: string, settings: CompiledIgnoreSettings): boolean {
     // 1. Unignore list
     if (settings.unignored_extensions.some(pattern => matchesExtension(name, pattern))) {
         return false;

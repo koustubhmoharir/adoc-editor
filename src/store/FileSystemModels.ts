@@ -2,7 +2,7 @@ import { observable, action, runInAction } from "mobx";
 import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
-import { IgnoreSettings, DEFAULT_SETTINGS } from '../file_system/IgnoreSettings';
+import { CompiledIgnoreSettings, DEFAULT_COMPILED_SETTINGS } from '../file_system/IgnoreSettings';
 import { fileSystemStore } from "./FileSystemStore";
 
 interface FSHandleTypes {
@@ -230,7 +230,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
             if (!this.isRoot && fileSystemStore.highlightedPath !== this.path) {
                 fileSystemStore.selectNode(this, { loadContent: 'show' });
             }
-            
+
             fileSystemStore.openContextMenu(this);
         });
     }
@@ -466,7 +466,7 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
         this.children = data.children;
     }
     @observable accessor children: FileSystemNodeModel[] | undefined;
-    effectiveSettings: IgnoreSettings = DEFAULT_SETTINGS;
+    effectiveSettings: CompiledIgnoreSettings = DEFAULT_COMPILED_SETTINGS;
 
     @action
     handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
