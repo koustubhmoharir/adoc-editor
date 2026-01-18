@@ -3,7 +3,7 @@ import { fileSystemStore } from '../store/FileSystemStore';
 // Using inline styles for now as vanilla-extract issues with newer CSS properties like anchor-name/position-anchor inside keyframes or complex selectors might arise, 
 // and typescript support for them is cutting edge. But we can put basic styles in CSS and positioning in style tag.
 import * as styles from './Sidebar.css';
-import { closeOnClick, useUpDownFocusNavigationInPopover } from '../hooks/useUpDownFocusNavigation';
+import { closeOnClick, useUpDownFocusNavigationInPopover } from '../hooks/useFocusNavigation';
 import { DirectoryNodeModel } from '../store/FileSystemModels';
 
 

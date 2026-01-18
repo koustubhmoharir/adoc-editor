@@ -55,7 +55,7 @@ export const confirmIcon = style({ color: vars.color.text }); // Default text co
 export const footer = style({
     padding: `${vars.space.small} ${vars.space.medium}`,
     display: 'flex',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     gap: vars.space.small,
     borderTop: `1px solid ${vars.color.border}`,
     backgroundColor: vars.color.background

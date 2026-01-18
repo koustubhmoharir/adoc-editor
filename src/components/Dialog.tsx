@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import * as styles from './Dialog.css';
 import { observable, action } from "mobx";
 import { appName } from "../store/ThemeStore";
+import { useLeftRightFocusNavigation } from '../hooks/useFocusNavigation';
 
 type DialogType = 'alert' | 'confirm';
 
@@ -188,6 +189,9 @@ export const NativeDialog: React.FC = observer(() => {
 
     const iconColorClass = type === 'alert' && alertIcon ? iconColorMap[alertIcon] : styles.confirmIcon;
 
+    const btnsContainer = useRef<HTMLDivElement>(null);
+    useLeftRightFocusNavigation(btnsContainer);
+    
     return (
         <dialog
             ref={dialogStore.dialogRef}
@@ -209,16 +213,15 @@ export const NativeDialog: React.FC = observer(() => {
                     )}
                     <span className={styles.messageText} data-testid="dialog-message">{message}</span>
                 </div>
-                <div className={styles.footer}>
-                    {type === 'confirm' && showCancel && (
-                        <button key="null"
-                            className={styles.button}
-                            onClick={dialogStore.handleCancel}
-                            data-testid="dialog-result-null"
-                        >
-                            {cancelText}
-                        </button>
-                    )}
+                <div className={styles.footer} ref={btnsContainer}>
+                    <button key="true"
+                        className={styles.primaryButton}
+                        onClick={dialogStore.handleConfirm}
+                        ref={dialogStore.confirmButtonRef}
+                        data-testid="dialog-result-true"
+                    >
+                        {type === 'alert' ? okText : yesText}
+                    </button>
                     {type === 'confirm' && (
                         <button key="false"
                             className={styles.button}
@@ -228,14 +231,15 @@ export const NativeDialog: React.FC = observer(() => {
                             {noText}
                         </button>
                     )}
-                    <button key="true"
-                        className={styles.primaryButton}
-                        onClick={dialogStore.handleConfirm}
-                        ref={dialogStore.confirmButtonRef}
-                        data-testid="dialog-result-true"
-                    >
-                        {type === 'alert' ? okText : yesText}
-                    </button>
+                    {type === 'confirm' && showCancel && (
+                        <button key="null"
+                            className={styles.button}
+                            onClick={dialogStore.handleCancel}
+                            data-testid="dialog-result-null"
+                        >
+                            {cancelText}
+                        </button>
+                    )}
                 </div>
             </div>
         </dialog>
