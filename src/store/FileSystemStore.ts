@@ -159,11 +159,27 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    async openExternalFile() {
+    async handleFileNameClick() {
+        if (!this.currentFileNode) return;
+        if (this.currentFileNode.kind === 'external_file') {
+            await this.openExternalFile({ revealCurrent: true });
+        }
+        else {
+            await this.focusCurrentFileInSidebar();
+        }
+    }
+
+    @action
+    async openExternalFile(options?: { revealCurrent?: boolean }) {
         // It is expected that the user will use this to open external files.
         // But if it is used to open a file that is already a file node in the sidebar, that should be handled gracefully too.
 
-        const handle = await pickSingleFile();
+        const pickerOptions: OpenFilePickerOptions = {};
+        if (options?.revealCurrent && this.currentFileHandle) {
+            pickerOptions.startIn = this.currentFileHandle;
+        }
+
+        const handle = await pickSingleFile(pickerOptions);
         if (!handle) {
             return;
         }
@@ -1430,9 +1446,9 @@ async function pickDirectory() {
     }
 }
 
-async function pickSingleFile() {
+async function pickSingleFile(options?: OpenFilePickerOptions) {
     try {
-        const [handle] = await window.showOpenFilePicker();
+        const [handle] = await window.showOpenFilePicker(options);
         return handle;
     }
     catch (e) {

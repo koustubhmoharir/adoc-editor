@@ -77,8 +77,8 @@ export const TitleBar: React.FC = observer(() => {
                     className={`${styles.fileName} ${isExternal ? styles.fileNameClickable : ''}`}
                     data-testid="current-filename"
                     title={fileTooltip}
-                    onClick={isExternal ? undefined : fileSystemStore.focusCurrentFileInSidebar}
-                    style={{ cursor: isExternal ? 'default' : 'pointer' }}
+                    onClick={(e) => { e.stopPropagation(); fileSystemStore.handleFileNameClick(); }}
+                    style={{ cursor: 'pointer' }}
                 >
                     {fileName}
                 </span>

@@ -14,7 +14,8 @@ declare global {
         __TEST_DISABLE_AUTO_SAVE?: boolean;
         __TEST_hydrateHandle?: (handle: any) => any;
         __TEST_mockDirPickerDirName?: string;
-        __TEST_mockFilePickerFilePath?: string;
+        __TEST_mockFilePickerLastCallOptions?: OpenFilePickerOptions | null;
+        __TEST_mockFilePickerFilePath?: string | null;
     }
 
 }

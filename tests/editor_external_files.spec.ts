@@ -255,3 +255,23 @@ test('should open ignore.toml as external file from context menu', async ({ page
     const content = await helpers.getEditorContent(page);
     expect(content).toContain('# File and Directory Ignore Settings');
 });
+
+test('should reveal external file location on title click', async ({ page }) => {
+    // 1. Open External File
+    await helpers.setFilePickerChoice(page, '/external.adoc');
+    await page.getByTestId('open-file-button').click();
+
+    // 2. Click title
+
+    // Let's configure it to return null (cancel) to simulate "User looks and cancels"
+    await helpers.setFilePickerChoice(page, null); // Null means cancel/no file picked
+    await page.getByTestId('current-filename').click();
+
+    const wasCalledWithStartIn = await page.evaluate(async () => {
+        const startIn = window.__TEST_mockFilePickerLastCallOptions?.startIn;
+        const currentHandle = window.__TEST_fileSystemStore.currentFileHandle;
+        return startIn === currentHandle;
+    });
+
+    expect(wasCalledWithStartIn).toBe(true);
+});

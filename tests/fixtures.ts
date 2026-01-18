@@ -261,11 +261,11 @@ export const helpers = {
      * When the application calls showOpenFilePicker, it will receive a handle to this file.
      * 
      * @param page - The Playwright Page object.
-     * @param filePath - The full path (relative to mock FS root) of the file.
+     * @param filePath - The full path (relative to mock FS root) of the file. Or null to simulate proper cancellation.
      * For a file in a directory, it should be dirName/relativePath
      * For an external file, it should be /fileName
      */
-    async setFilePickerChoice(page: Page, filePath: string): Promise<void> {
+    async setFilePickerChoice(page: Page, filePath: string | null): Promise<void> {
         await page.evaluate((filePath) => {
             window.__TEST_mockFilePickerFilePath = filePath;
         }, filePath);

@@ -153,9 +153,15 @@ window.showDirectoryPicker = async () => {
     return new MockFileSystemDirectoryHandle(dirName, dirName);
 };
 
-window.showOpenFilePicker = async () => {
+window.showOpenFilePicker = async (options) => {
+    window.__TEST_mockFilePickerLastCallOptions = options || null;
     const filePath = window.__TEST_mockFilePickerFilePath;
-    if (!filePath) throw new Error("Call setFilePickerChoice first");
+    if (filePath === undefined) throw new Error("Call setFilePickerChoice first");
+    if (filePath === null) {
+        const error = new Error("Cancelled");
+        error.name = 'AbortError';
+        throw error;
+    }
     // extract file name from filePath
     const parts = filePath.split(/[/\\]/);
     const name = parts[parts.length - 1];
