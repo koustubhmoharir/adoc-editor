@@ -1151,6 +1151,10 @@ class FileSystemStore extends EffectAwareModel {
                             this._currentFileNode = node as FileNodeModel;
                         });
                         this.loadFileInEditor(node, content);
+
+                        // Detect and set language
+                        const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                        editorStore.setLanguage(ext);
                     }
                     this.startAutoSave();
                 }

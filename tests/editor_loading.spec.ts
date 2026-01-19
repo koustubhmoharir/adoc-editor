@@ -171,24 +171,33 @@ test('If changes are made and page is refreshed, changes are saved', async ({ pa
     expect(content).toBe('Modified content before refresh.');
 });
 
-test('Refreshing the page retains the selection', async ({ page }) => {
+test('Refreshing the page retains the selection and infers language', async ({ page, fsSetup }) => {
+    // Create a JS file to check language inference (default is asciidoc)
+    fsSetup.createFile('dir1', 'script.js', 'console.log("hello");');
+
     await loadInitialDirectory(page, 'dir1');
-    await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');
-    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc');
+    await page.click('[data-testid="file-item"][data-file-path="script.js"]');
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('script.js');
 
     // Reload without skip_restore to test retention
     await helpers.reloadPage(page, { skipRestore: false });
     await helpers.setDirectoryPickerChoice(page, 'dir1');
 
     // Wait for restoration
-    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('file1.adoc'); // Filename should appear
+    await expect(page.locator('[data-testid="current-filename"]')).toHaveText('script.js'); // Filename should appear
 
     // Content should match
     await expect(async () => {
         const editorContent = await helpers.getEditorContent(page);
         // Should be original content if no edits
-        expect(editorContent).toBe('== File 1\nContent of file 1.');
+        expect(editorContent).toBe('console.log("hello");');
     }).toPass();
+
+    // Verify language is javascript
+    const languageId = await page.evaluate(() => {
+        return (window as any).__TEST_editorStore.editor.getModel().getLanguageId();
+    });
+    expect(languageId).toBe('javascript');
 });
 
 test('Nested directory states are persisted correctly', async ({ page, fsSetup }) => {
