@@ -7,6 +7,7 @@ import type { Dialog } from '../components/Dialog';
 declare global {
     interface Window {
         __TEST_ENABLE_GLOBALS?: boolean;
+        __TEST_ENABLE_TRACE_LOGGING?: boolean;
         __TEST_editorStore: EditorStore;
         __TEST_fileSystemStore: FileSystemStore;
         __TEST_monaco?: typeof monaco;

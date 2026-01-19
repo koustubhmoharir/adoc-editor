@@ -8,6 +8,7 @@ import { dialog } from "../components/Dialog";
 import { parse } from 'smol-toml';
 import { DEFAULT_COMPILED_SETTINGS, mergeSettings, shouldIgnoreDirectory, shouldIgnoreFile, generateDefaultIgnoreFileContent, resetPatternCache } from '../file_system/IgnoreSettings';
 import { DirectoryNodeModel, ExternalFileModel, FileModel, FileNodeModel, FileSystemNodeModel, FileSystemNodeModelBase, SearchResultItemModel } from "./FileSystemModels";
+import { traceLog } from "../utils/trace";
 
 class FileSystemStore extends EffectAwareModel {
 
@@ -475,7 +476,7 @@ class FileSystemStore extends EffectAwareModel {
             runInAction(() => {
                 this._dirty = false;
             });
-            // console.log('Saved file:', this.currentFileHandle.name);
+            traceLog('Saved file:', this.currentFileHandle.name);
         } catch (err) {
             console.error('Failed to save file:', err);
         }
@@ -1090,7 +1091,7 @@ class FileSystemStore extends EffectAwareModel {
             // Check for skip_restore parameter
             const params = new URLSearchParams(window.location.search);
             if (params.get('skip_restore') === 'true') {
-                // console.log('Skipping directory restoration due to skip_restore flag');
+                traceLog('Skipping directory restoration due to skip_restore flag');
                 return;
             }
 

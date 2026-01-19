@@ -46,6 +46,7 @@ async function build() {
         outdir: 'dist',
         sourcemap: true,
         sourcesContent: isWatch || isWatchDirty,
+        pure: isServe ? undefined : ['traceLog'],
         minify: !isWatch, // Only minify in non-dev mode
         target: 'es2020',
         loader: {

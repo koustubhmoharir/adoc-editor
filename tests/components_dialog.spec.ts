@@ -55,6 +55,8 @@ test('alert(message, options) should render correctly and resolve on OK', async 
     await page.getByTestId('dialog-result-true').click();
     await alertPromise;
     await expect(page.getByTestId('dialog-overlay')).not.toBeVisible();
+
+    throw new Error('failed deliberately');
 });
 
 test('confirm(message, options) should render correctly and resolve true/false', async ({ page }) => {

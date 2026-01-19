@@ -4,6 +4,7 @@ import * as styles from './Dialog.css';
 import { observable, action } from "mobx";
 import { appName } from "../store/ThemeStore";
 import { useLeftRightFocusNavigation } from '../hooks/useFocusNavigation';
+import { traceLog } from '../utils/trace';
 
 type DialogType = 'alert' | 'confirm';
 
@@ -52,7 +53,7 @@ class DialogStore implements Dialog {
 
     @action
     private show(type: DialogType, message: string, options: AlertOptions | ConfirmOptions = {}): Promise<any> {
-        //console.log('DialogStore.show', { type, message, options });
+        traceLog('DialogStore.show', { type, message, options });
         this.type = type;
         this.message = message;
         this.title = options.title || appName;
@@ -85,7 +86,7 @@ class DialogStore implements Dialog {
 
     @action
     private close() {
-        //console.log('DialogStore.close');
+        traceLog('DialogStore.close');
         if (this.dialogRef.current && this.dialogRef.current.open) {
             this.dialogRef.current.close();
         }
@@ -93,19 +94,19 @@ class DialogStore implements Dialog {
 
     @action
     alert(message: string, options?: AlertOptions): Promise<void> {
-        //console.log('DialogStore.alert', message);
+        traceLog('DialogStore.alert', message);
         return this.show('alert', message, options);
     }
 
     @action
     confirm(message: string, options?: ConfirmOptions): Promise<boolean | null> {
-        //console.log('DialogStore.confirm', message);
+        traceLog('DialogStore.confirm', message);
         return this.show('confirm', message, options);
     }
 
     @action
     handleConfirm = () => {
-        //console.log('DialogStore.handleConfirm');
+        traceLog('DialogStore.handleConfirm');
         this.pendingResult = true;
         this.close();
     }
@@ -143,7 +144,7 @@ class DialogStore implements Dialog {
     }
 
     onClosed = () => {
-        //console.log('DialogStore.onClosed', { pendingResult: this.pendingResult });
+        traceLog('DialogStore.onClosed', { pendingResult: this.pendingResult });
         if (this.resolvePromise) {
             this.resolvePromise(this.pendingResult);
             this.resolvePromise = null;

@@ -17,7 +17,7 @@ npm run test -- [options]
 
 This command wraps a custom test runner script (`scripts/test_debug.ts`) that handles:
 1.  **Environment Setup**: Automatically sets correct ports and environment variables.
-2.  **Auto-Debug**: If a test fails, it **automatically** re-runs the *first* failed test in debug mode with detailed logging enabled.
+2.  **Auto-Debug**: If a test fails, it **automatically** re-runs the *first* failed test in debug mode with detailed logging enabled including information provided in calls to `traceLog`.
 3.  **Reporting**: Uses appropriate reporters for the context (concise for verification, detailed/JSON for debugging).
 
 > [!CRITICAL]
@@ -44,9 +44,11 @@ When a test fails, the runner automatically switches to debug mode for that spec
 
 ### Log Output Format in Debug Mode
 
--   **`BROWSER: ...`**: Custom app logs (`console.log`, `console.warn`, `console.error`).
--   **`DIALOG: [type] "message"`**: Logs usage of `dialog.alert` or `dialog.confirm`.
+-   **`BROWSER: ...`**: Custom app logs (`traceLog`, `console.log`, `console.warn`, `console.error`).
+-   **`DIALOG: [type] "message"`**: These messages indicate direct usage of `window.alert` or `window.confirm` that need to be replaced with `dialog.alert` or `dialog.confirm`.
 -   **`ERROR: ...`**: Unhandled exceptions.
+
+[!IMPORTANT]: If you do not see sufficient information to diagnose, use the `traceLog` function in the application source liberally to output additional information. This is only logged when running a test in debug mode, and it is stripped out of production builds, so it is safe and even desirable to keep traceLog calls around permanently, as long as they provide accurate information.
 
 ### Common Failure Reasons (Project Specific)
 

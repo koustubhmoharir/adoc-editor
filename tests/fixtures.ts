@@ -380,13 +380,14 @@ async function prepareWorkerForTest(browser: Browser, workerState: WorkerState):
         // Reset state before each test
         workerState.page.setViewportSize(workerState.viewport);
         // Reset file system state
-        await workerState.page.evaluate(async () => {
+        await workerState.page.evaluate(async ({enableTraceLogging}) => {
             window.localStorage.clear();
             if (window.__TEST_fileSystemStore) {
                 await window.__TEST_fileSystemStore.clearDirectory();
             }
             window.__TEST_DISABLE_AUTO_SAVE = false;
-        });
+            window.__TEST_ENABLE_TRACE_LOGGING = enableTraceLogging;
+        }, { enableTraceLogging: !!process.env.DEBUG_TESTS });
     }
 }
 
