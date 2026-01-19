@@ -58,17 +58,23 @@ See `tests/testing_methodology.md` for full details.
 ### Test Scripts
 | Command | Description |
 | :--- | :--- |
-| `npm test` | Runs all Playwright tests. |
-| `npm run test:syntax` | Runs only syntax highlighting verification (`tests/syntax_verification.spec.ts`). |
-| `npm run test:editor` | Runs editor functionality tests (`tests/editor_*.spec.ts`). |
-| `npm run test:components` | Runs tests for UI components or test helpers (`tests/components_*.spec.ts`). |
+| `npm run test` | Runs all tests using Playwright. Supports auto-debug on first failure. |
 
 > [!IMPORTANT]
-> The test environment runs on **Port 8001**. All `npm` scripts in `package.json` are pre-configured with `cross-env PORT=8001`.
-> **If you run `npx playwright test` directly, you MUST set the port manually:**
-> `cross-env PORT=8001 npx playwright test ...`
+> [!IMPORTANT]
+> The test environment runs on **Port 8001** and handles this configuration automatically.
+> **DO NOT run `npx playwright test` directly.** It will lack the necessary environment configuration (ports, reporters, debug flags) and will produce misleading results or hang. Always use `npm run test -- [args]`.
 
-Use test-debug instead of test in the commands above for increasing the level of logging.
+To debug a specific test or run a specific file, pass arguments after `--`:
+```bash
+# Run specific test file
+npm run test -- tests/editor_filesystem.spec.ts
+
+# Run specific test case by title
+npm run test -- -g "rename directory"
+```
+
+If a test fails, the command will automatically re-run the *first* failure in debug mode with detailed logging.
 
 ## 6. Build System
 - We use **esbuild** directly (via `scripts/build.ts`) instead of Vite or Webpack.

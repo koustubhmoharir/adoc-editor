@@ -5,7 +5,8 @@ trigger: always_on
 * Read @../../DEVELOPER_GUIDE.md if you have questions about how specific features are implemented.
 * Read @../../ARCHITECTURE.md if you have questions about the tech stack and libraries used
 * You **MUST** read the "editor-test" skill before creating any test cases. Read @../../tests/testing_methodology.md if you have more questions.
-* You **MUST** read the "run-and-debug-tests" skill to understand which commands you are allowed to use for running and debugging tests. **DO NOT** run playwright commands directly.
+* You **MUST** use the "npm run test" command for running tests. It automatically provides detailed debug information in json format for the first failing test, if any. **DO NOT** run playwright commands directly as it will not provide sufficient information.
+* Read the "run-and-debug-tests" skill for common reasons for test failures.
 * When in planning mode, always create an implementation plan before starting the implementation unless it is very clear that I want you to skip the plan and implement directly.
 * **ALWAYS** run `npx tsc --noEmit` and fix type-checking errors if any *before* you run any tests.
 * **ALWAYS** prefer using the commands in @../../package.json to creating your own commands or using the underlying commands directly.

@@ -64,7 +64,10 @@ These helpers are available via the `helpers` object:
 
 - **Existing Files**: Add new tests to existing `tests/editor_*.spec.ts` files if they fit the category (e.g. `editor_filesystem_ops.spec.ts` for file operations).
 - **New Files**: If creating a new file is necessary, it **MUST** start with the prefix `editor_` (e.g. `tests/editor_my_new_feature.spec.ts`).
-    - **Reason**: The `npm run test:editor` command is configured to run only files matching `tests/editor_*.spec.ts`.
+    - **Reason**: The project convention uses this prefix to group editor functional tests. They can be run collectively via:
+    ```bash
+    npm run test -- "tests/editor_*.spec.ts"
+    ```
 - Within a spec file, do not add a `describe` block unless there is a strong need to do so. A spec file with a single describe block adds no value.
 
 ## 3. Test Structure Patterns

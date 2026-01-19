@@ -1,74 +1,79 @@
 ---
 name: run-and-debug-tests
-description: Guide for running and debugging tests, including filtering and interpreting logs.
+description: Guide for running and debugging tests, including common failure reasons and how to interpret logs.
 ---
 
 # Run and Debug Tests
 
-This skill outlines how to run the project's Playwright test suite, ranging from full suite execution to targeted debugging of individual tests.
+This skill outlines how to run the project's Playwright test suite and debug failures effectively.
 
-Note the very important difference between running tests for verification and running specific tests for debugging failures. The `npm test` commands are for verification and the `npm run test-debug` command is for debugging. The `npm test` commands produce minimal outputs and should only be used to identify which tests are failing. The `npm run test-debug` command produces detailed outputs and should be used to debug failing tests one test at a time.
+## 1. The One Command to Rule Them All
 
-**IMPORTANT**: Do not repeat `npm test` commands when debugging as they will not produce sufficiently useful logging information.
+**ALWAYS** use the following command to run, verify, and debug tests:
 
-**IMPORTANT**: Do not run `npx playwright` directly. Use the `npm run test` or `npm run test-debug` commands instead with appropriate arguments and options for playwright provided after a `--`, for example `npm run test-debug -- -g "test name"`.
-
-## 1. Running Tests for Verification
-
-Use these standard commands to run one or more suite of tests together.
-
-| Scope | Command | Description |
-| :--- | :--- | :--- |
-| **All Tests** | `npm test` | Runs all tests in standard mode. |
-| **Syntax Only** | `npm run test:syntax` | Runs only `tests/syntax_verification.spec.ts`. |
-| **Editor Only** | `npm run test:editor` | Runs all `tests/editor_*.spec.ts`. |
-| **Components** | `npm run test:components` | Runs all `tests/components_*.spec.ts`. |
-
-**Note**: All commands automatically set `PORT=8001`.
-
-Run multiple spec files with a single command as in the example below:
 ```bash
-npm run test -- tests/editor_filesystem_ops.spec.ts tests/editor_filesystem_ops.spec.ts
-```
-This runs faster than running them separately by reusing the browser context and page.
-
-## 2. Debugging Failing Tests
-
-Use the `test-debug` commands to enable detailed browser and dialog logging. This command also turns off colors and uses the json reporter for maximum readability for tools.
-
-> [!CAUTION]
-> **Avoid massive log output.**
-> Debug commands generate significant output. **ALWAYS** filter to a specific test case using the `-g` (grep) argument.
-
-### Usage Examples
-
-**Target a specific test case (Recommended):**
-```bash
-# Debug only the test named "rename directory"
-npm run test-debug -- -g "rename directory"
+npm run test -- [options]
 ```
 
-### Log Output Format
+This command wraps a custom test runner script (`scripts/test_debug.ts`) that handles:
+1.  **Environment Setup**: Automatically sets correct ports and environment variables.
+2.  **Auto-Debug**: If a test fails, it **automatically** re-runs the *first* failed test in debug mode with detailed logging enabled.
+3.  **Reporting**: Uses appropriate reporters for the context (concise for verification, detailed/JSON for debugging).
 
-When running in debug mode (`DEBUG_TESTS=1`), the following prefixes appear in the console output:
+> [!CRITICAL]
+> **NEVER** run `npx playwright test` directly.
+> Doing so bypasses the environment setup, detailed logging, and auto-debug logic.
 
-- **`BROWSER: ...`**
-    - Captures `console.log`, `console.warn`, and `console.error` from the browser context.
-    - Useful for tracing application state, MobX reactions, or errors thrown inside the app.
+## 2. Running Specific Tests
 
-- **`DIALOG: [type] "message"`**
-    - Logs whenever a native dialog (`alert` or `confirm`) is triggered.
-    - **Note**: The application should use `dialog.alert` and `dialog.confirm` and **never** use the native dialogs. Seeing this log indicates a need to change the application code. Native dialogs are always auto-dismissed to prevent hangs which may not be the desired behavior for `confirm`.
+Pass arguments to Playwright by placing them after the `--` separator.
 
-- **Errors**
-    - Any unhandled exception or `console.error` in the browser will be re-thrown by `enableTestLogging` and **fail the test immediately**.
+| Goal | Command |
+| :--- | :--- |
+| **Run All Tests** | `npm run test` |
+| **Run Specific File** | `npm run test -- tests/editor_filesystem.spec.ts` |
+| **Filter by Title** | `npm run test -- -g "rename directory"` |
+| **Headed Mode** | `npm run test -- --headed` |
 
-## 3. Best Practices
+## 3. Debugging Failures
 
-1. **Focus First**: Don't run `npm run test-debug` without arguments. It will take a long time and bury the relevant logs.
-2. **Watch Mode**: For interactive debugging, you can use Playwright's UI mode:
-   `cross-env PORT=8001 npx playwright test --ui`
-3. **Clean State Check**: If a test fails mysteriously, ensure:
-    - It uses `test.beforeEach` to set up `fsSetup`.
-    - It cleans up dialogs/menus before finishing.
-4. **Input Stability**: To avoid flakiness due to timing issues when sending keyboard events, make sure that the element that is expected to handle it is visible and / or focused before sending the key presses. For example, verify a context menu is visible *before* sending ArrowDown key presses to navigate it.
+When a test fails, the runner automatically switches to debug mode for that specific test. You will see output like:
+
+> Test failure detected. Switching to debug mode for the first failing test...
+> Running ... with args ...
+
+### Log Output Format in Debug Mode
+
+-   **`BROWSER: ...`**: Custom app logs (`console.log`, `console.warn`, `console.error`).
+-   **`DIALOG: [type] "message"`**: Logs usage of `dialog.alert` or `dialog.confirm`.
+-   **`ERROR: ...`**: Unhandled exceptions.
+
+### Common Failure Reasons (Project Specific)
+
+If a test fails, check these common pitfalls first:
+
+1.  **Timing / Race Conditions**:
+    -   *Symptom*: Element not found or action has no effect.
+    -   *Cause*: Sending keyboard input (e.g., `ArrowDown`) before the target UI (e.g., Context Menu) is fully visible and focused.
+    -   *Fix*: Assert visibility *before* interaction. `await expect(page.locator('...')).toBeVisible(); await page.keyboard.press('ArrowDown');`
+
+2.  **Unclean State**:
+    -   *Symptom*: Test fails because a file already exists or a dialog is unexpectedly open.
+    -   *Cause*: Previous test didn't clean up (didn't close a dialog, didn't finish a rename).
+    -   *Fix*: Ensure every test cleans up its UI actions. Use `helpers.handleNextDialog` for predictable dialog handling.
+
+3.  **Focus Loss**:
+    -   *Symptom*: Keyboard shortcuts (like F2 or Ctrl+S) don't work.
+    -   *Cause*: Focus was not on the correct element (Sidebar Node vs Editor).
+    -   *Fix*: Explicitly focus the target area before sending shortcuts.
+
+4.  **Native Dialog Blocking**:
+    -   *Symptom*: Browser hangs or test times out.
+    -   *Cause*: Code used `window.confirm` instead of `dialog.confirm`.
+    -   *Fix*: Refactor application code to use the custom `dialog` module.
+
+## 4. Best Practices
+
+1.  **Filter First**: Don't run the full suite repeatedly to debug one failure. Use `-g` to focus on the failing case.
+2.  **One Command**: Don't try to construct complex `npx playwright` commands manually. Trust `npm run test`.
+3.  **Read the Logs**: The auto-debug run provides rich information. Look for `BROWSER:` logs to understand the app's internal state at the time of failure.

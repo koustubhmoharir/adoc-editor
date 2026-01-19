@@ -36,25 +36,23 @@ These tests cover the core verification of the editor's features.
 ## General Testing Utilities
 
 ### Debugging Tests
-Detailed logging (browser console, errors, dialogs) is available via the `test-debug` command.
+Detailed logging (browser console, errors, dialogs) is automatically enabled when a test fails. The `npm run test` command will detect the failure and re-run the *first* failed test in debug mode with full logging.
 
--   **Debug a specific test**: `npm run test-debug -- -g "full name of test"`
+To manually run a specific test with arguments (and trigger the auto-debug on failure), pass arguments after `--`:
+
+```bash
+# Run a specific test case
+npm run test -- -g "full name of test"
+```
 
 ### Manual Test Execution
-**IMPORTANT:** The test environment runs on **Port 8001**.
-If you run `npx playwright test` manually (bypassing `npm test`), you **MUST** set the port:
+**IMPORTANT:** The test environment runs on **Port 8001** and requires specific environment variables.
+**DO NOT run `npx playwright test` directly.** It will lack the necessary environment configuration and will not produce useful debug output.
 
+Always use:
 ```bash
-cross-env PORT=8001 npx playwright test ...
+npm run test -- [playwright_args]
 ```
-
-**Debug Logging:**
-To enable debug logging, set `DEBUG_TESTS=1`:
-```bash
-cross-env DEBUG_TESTS=1 PORT=8001 npx playwright test -g "name of test"
-```
-> [!NOTE]
-> Do not set the environment variable at session scope as it will remain set and defeat the purpose of enabling logging only when needed.
 
 ### File System Mocking
 Tests involving file operations use `FsTestSetup` (from `tests/helpers/fs_test_setup.ts`) to create isolated test environments.

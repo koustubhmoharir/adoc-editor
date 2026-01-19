@@ -36,3 +36,4 @@ yarn-error.log*
 # Test fixtures generated files
 tests/fixtures/*-tokens.json
 tests/fixtures/*-analysis.json
+/.first_failure
