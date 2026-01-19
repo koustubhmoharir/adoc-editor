@@ -1,4 +1,4 @@
-import { observable, action } from "mobx";
+import { observable, action, runInAction } from "mobx";
 import * as monaco from 'monaco-editor';
 import { registerAsciiDoc } from '../languages/asciidoc';
 import { registerToml } from '../languages/toml';
@@ -33,6 +33,10 @@ export class EditorStore {
 
     private _disposers: (() => void)[] = [];
 
+    // Language state
+    @observable private accessor _currentLanguage: string = 'plaintext';
+    get currentLanguage() { return this._currentLanguage; }
+
     @action
     setContent(newContent: string) {
         if (this._content !== newContent) {
@@ -52,6 +56,19 @@ export class EditorStore {
     @action
     setTheme(theme: string) {
         monaco.editor.setTheme(theme);
+    }
+
+    @action
+    setLanguageId(langId: string) {
+        if (!this._editor) return;
+        const model = this._editor.getModel();
+        if (model) {
+            monaco.editor.setModelLanguage(model, langId);
+        }
+    }
+
+    get availableLanguages() {
+        return monaco.languages.getLanguages();
     }
 
     @action
@@ -100,10 +117,7 @@ export class EditorStore {
             }
         }
 
-        const model = this._editor.getModel();
-        if (model) {
-            monaco.editor.setModelLanguage(model, langId);
-        }
+        this.setLanguageId(langId);
     }
 
     @action
@@ -134,6 +148,19 @@ export class EditorStore {
                 }
             });
             this._disposers.push(() => contentDisposable.dispose());
+
+            // Sync language changes
+            const langDisposable = model.onDidChangeLanguage(() => {
+                runInAction(() => {
+                    this._currentLanguage = model.getLanguageId();
+                });
+            });
+            this._disposers.push(() => langDisposable.dispose());
+
+            // Initial sync
+            runInAction(() => {
+                this._currentLanguage = model.getLanguageId();
+            });
         }
 
         // Handle Escape to focus sidebar

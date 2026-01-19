@@ -15,11 +15,10 @@ export const container = style({
 export const workspace = style({
     display: 'flex',
     flex: 1,
-    overflow: 'hidden'
+    minHeight: '0'
 });
 
 export const main = style({
     flex: 1,
-    overflow: 'hidden',
     position: 'relative'
 });
