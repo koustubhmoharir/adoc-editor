@@ -20,5 +20,6 @@ export const workspace = style({
 
 export const main = style({
     flex: 1,
-    position: 'relative'
+    position: 'relative',
+    minWidth: '0'
 });

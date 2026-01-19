@@ -135,7 +135,8 @@ export class EditorStore {
             language: 'asciidoc',
             theme: initialTheme,
             automaticLayout: true,
-            minimap: { enabled: false }
+            minimap: { enabled: false },
+            wordWrap: 'on'
         });
 
         // Sync content changes
