@@ -37,3 +37,4 @@ yarn-error.log*
 tests/fixtures/*-tokens.json
 tests/fixtures/*-analysis.json
 /.first_failure
+/test_failure_debug.json

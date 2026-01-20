@@ -5,7 +5,7 @@ trigger: always_on
 * Read @../../DEVELOPER_GUIDE.md if you have questions about how specific features are implemented.
 * Read @../../ARCHITECTURE.md if you have questions about the tech stack and libraries used
 * You **MUST** read the "editor-test" skill before creating any test cases. Read @../../tests/testing_methodology.md if you have more questions.
-* You **MUST** use the "npm run test" command for running tests. It automatically provides detailed debug information in json format for the first failing test, if any. **DO NOT** run playwright commands directly as it will not provide sufficient information.
+* You **MUST** use the "npm run test" command for running tests. It automatically provides detailed debug information in json format for the first failing test (if any) in a test_failure_debug.txt file. **DO NOT** run playwright commands directly as it will not provide sufficient information.
 * Read the "run-and-debug-tests" skill for common reasons for test failures.
 * Use the `traceLog` function in the application source liberally to debug test failures. It is safe to retain this in the source as it is automatically removed in production builds.
 * When in planning mode, always create an implementation plan before starting the implementation unless it is very clear that I want you to skip the plan and implement directly.

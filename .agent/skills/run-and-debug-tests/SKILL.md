@@ -40,7 +40,9 @@ Pass arguments to Playwright by placing them after the `--` separator.
 When a test fails, the runner automatically switches to debug mode for that specific test. You will see output like:
 
 > Test failure detected. Switching to debug mode for the first failing test...
-> Running ... with args ...
+> Debug run completed. Make sure that you read the debug output from .../test_failure_debug.txt
+
+**You MUST read the contents of `test_failure_debug.txt` to analyze the failure.** The console output will only show the initial failure summary, not the detailed debug logs.
 
 ### Log Output Format in Debug Mode
 

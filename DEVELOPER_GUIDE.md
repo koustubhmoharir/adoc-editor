@@ -75,6 +75,7 @@ npm run test -- -g "rename directory"
 ```
 
 If a test fails, the command will automatically re-run the *first* failure in debug mode with detailed logging.
+The detailed debug output (including `traceLog` entries) will be redirected to `test_failure_debug.txt` in the root directory.
 
 ## 6. Build System
 - We use **esbuild** directly (via `scripts/build.ts`) instead of Vite or Webpack.

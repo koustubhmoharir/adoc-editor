@@ -7,10 +7,10 @@ const cwd = process.cwd();
 const failureFile = path.resolve(cwd, '.first_failure');
 
 // Helper to spawn a process
-function spawnCommand(cmd: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<number | null> {
+function spawnCommand(cmd: string, args: string[], env: NodeJS.ProcessEnv = {}, stdio: any = 'inherit'): Promise<number | null> {
     return new Promise((resolve, reject) => {
         const process = spawn(cmd, args, {
-            stdio: 'inherit',
+            stdio: stdio,
             cwd: cwd,
             shell: false,
             env: { ...global.process.env, ...env }
@@ -82,7 +82,7 @@ Examples:
         ...userArgs
     ];
 
-    console.log("Running", process.execPath, "with args", verifyArgs);
+    //console.log("Running", process.execPath, "with args", verifyArgs);
     const verifyExitCode = await spawnCommand(process.execPath, verifyArgs);
 
     if (verifyExitCode === 0) {
@@ -116,8 +116,16 @@ Examples:
                 ];
 
                 const env = { FORCE_COLOR: '0', DEBUG_TESTS: '1' };
-                console.log("Running", process.execPath, "with args", debugArgs, "and env", env);
-                const debugExitCode = await spawnCommand(process.execPath, debugArgs, env);
+                const debugLogPath = path.resolve(cwd, 'test_failure_debug.txt');
+                const logFd = fs.openSync(debugLogPath, 'w');
+
+                //console.log("Running", process.execPath, "with args", debugArgs, "and env", env);
+
+
+                const debugExitCode = await spawnCommand(process.execPath, debugArgs, env, ['inherit', logFd, 'inherit']);
+                fs.closeSync(logFd);
+
+                console.log(`\nDebug run completed. Make sure that you read the debug output from ${debugLogPath}`);
                 process.exit(debugExitCode ?? 1);
             }
         } catch (e) {
@@ -128,6 +136,7 @@ Examples:
     }
     process.exit(verifyExitCode ?? 1);
 }
+
 
 run().catch(err => {
     console.error('Smart test execution failed:', err);

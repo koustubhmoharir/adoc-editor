@@ -36,7 +36,7 @@ These tests cover the core verification of the editor's features.
 ## General Testing Utilities
 
 ### Debugging Tests
-Detailed logging (browser console, errors, dialogs) is automatically enabled when a test fails. The `npm run test` command will detect the failure and re-run the *first* failed test in debug mode with full logging.
+Detailed logging (browser console, errors, dialogs) is automatically enabled when a test fails. The `npm run test` command will detect the failure and re-run the *first* failed test in debug mode with full logging. The output of this debug run is saved to `test_failure_debug.txt` for analysis.
 
 To manually run a specific test with arguments (and trigger the auto-debug on failure), pass arguments after `--`:
 
