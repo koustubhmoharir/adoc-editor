@@ -56,7 +56,7 @@ test('alert(message, options) should render correctly and resolve on OK', async 
     await alertPromise;
     await expect(page.getByTestId('dialog-overlay')).not.toBeVisible();
 
-    throw new Error('failed deliberately');
+
 });
 
 test('confirm(message, options) should render correctly and resolve true/false', async ({ page }) => {
@@ -159,4 +159,56 @@ test('should handle multiple sequential dialogs', async ({ page }) => {
     expect(await handle2.getMessage()).toBe('Second Call');
     expect(await handle3.getMessage()).toBe('Third Call');
     expect(await handle4.getMessage()).toBe('Fourth Call');
+});
+
+function dialogInput(page: Page, fieldDefs: Record<string, { displayName: string, type: 'string' }>, options?: any) {
+    return page.evaluate(({ fieldDefs, options }) => {
+        return window.__TEST_dialog.input(fieldDefs, options);
+    }, { fieldDefs, options });
+}
+
+test('input(fieldDefs, options) should render form and resolve with values', async ({ page }) => {
+    // 1. Basic Input
+    const fieldDefs = {
+        name: { displayName: 'Name', type: 'string' as const },
+        email: { displayName: 'Email', type: 'string' as const }
+    };
+
+    let inputPromise = dialogInput(page, fieldDefs, { title: 'User Info' });
+
+    await expect(page.getByTestId('dialog-overlay')).toBeVisible();
+    await expect(page.getByTestId('dialog-title')).toHaveText('User Info');
+
+    // Check fields
+    await expect(page.getByLabel('Name')).toBeVisible();
+    await expect(page.getByLabel('Email')).toBeVisible();
+    await expect(page.getByTestId('dialog-input-name')).toHaveValue('');
+    await expect(page.getByTestId('dialog-input-email')).toHaveValue('');
+
+    // Fill values
+    await page.getByTestId('dialog-input-name').fill('John Doe');
+    await page.getByTestId('dialog-input-email').fill('john@example.com');
+
+    // Click OK
+    await page.getByTestId('dialog-result-true').click();
+
+    const result = await inputPromise;
+    expect(result).toEqual({
+        name: 'John Doe',
+        email: 'john@example.com'
+    });
+
+    await expect(page.getByTestId('dialog-overlay')).not.toBeVisible();
+
+    // 2. Input Cancel
+    const cancelPromise = dialogInput(page, { reason: { displayName: 'Reason', type: 'string' as const } }, { cancelText: 'Abort' });
+
+    await expect(page.getByTestId('dialog-overlay')).toBeVisible();
+    await expect(page.getByTestId('dialog-result-null')).toHaveText('Abort');
+
+    // Click Cancel
+    await page.getByTestId('dialog-result-null').click();
+
+    const cancelResult = await cancelPromise;
+    expect(cancelResult).toBeNull();
 });

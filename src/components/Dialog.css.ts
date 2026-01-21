@@ -83,3 +83,37 @@ export const primaryButton = style([button, {
         backgroundColor: '#0060df'
     }
 }]);
+
+export const inputContainer = style({
+    padding: `0 ${vars.space.medium} ${vars.space.medium} ${vars.space.medium}`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: vars.space.small
+});
+
+export const inputRow = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: vars.space.medium
+});
+
+export const inputLabel = style({
+    fontWeight: 'normal',
+    color: vars.color.text,
+    minWidth: '100px',
+    flexShrink: 0
+});
+
+export const inputField = style({
+    flex: 1,
+    padding: '6px 8px',
+    borderRadius: '4px',
+    border: `1px solid ${vars.color.border}`,
+    backgroundColor: vars.color.background,
+    color: vars.color.text,
+    fontSize: '0.9rem',
+    outline: 'none',
+    ':focus': {
+        borderColor: '#0070f3'
+    }
+});

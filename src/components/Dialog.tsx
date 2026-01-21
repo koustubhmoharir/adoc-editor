@@ -6,7 +6,7 @@ import { appName } from "../store/ThemeStore";
 import { useLeftRightFocusNavigation } from '../hooks/useFocusNavigation';
 import { traceLog } from '../utils/trace';
 
-type DialogType = 'alert' | 'confirm';
+type DialogType = 'alert' | 'confirm' | 'input';
 
 export interface AlertOptions {
     title?: string;
@@ -22,11 +22,23 @@ export interface ConfirmOptions {
     cancelText?: string;
 }
 
+export interface InputOptions {
+    title?: string;
+    okText?: string;
+    cancelText?: string;
+}
+
+export interface InputFieldDef {
+    displayName: string;
+    type: 'string';
+}
+
 export interface Dialog {
     readonly isOpen: boolean;
     readonly defaultTitle: string;
     alert(message: string, options?: AlertOptions): Promise<void>;
     confirm(message: string, options?: ConfirmOptions): Promise<boolean | null>;
+    input(fieldDefs: Record<string, InputFieldDef>, options?: InputOptions): Promise<Record<string, string> | null>;
 }
 
 class DialogStore implements Dialog {
@@ -45,6 +57,10 @@ class DialogStore implements Dialog {
     @observable accessor showCancel: boolean = false;
     @observable accessor cancelText: string = 'Cancel';
 
+    // Input specific
+    @observable accessor fieldDefs: Record<string, { displayName: string, type: 'string' }> = {};
+    @observable accessor inputValues: Record<string, string> = {};
+
     dialogRef: React.RefObject<HTMLDialogElement | null> = React.createRef();
     confirmButtonRef: React.RefObject<HTMLButtonElement | null> = React.createRef();
     private resolvePromise: ((value: any) => void) | null = null;
@@ -52,10 +68,23 @@ class DialogStore implements Dialog {
     get isOpen() { return this.dialogRef.current?.open ?? false; }
 
     @action
-    private show(type: DialogType, message: string, options: AlertOptions | ConfirmOptions = {}): Promise<any> {
-        traceLog('DialogStore.show', { type, message, options });
+    private show(type: DialogType, messageOrFields: string | Record<string, any>, options: AlertOptions | ConfirmOptions | InputOptions = {}): Promise<any> {
+        traceLog('DialogStore.show', { type, messageOrFields, options });
         this.type = type;
-        this.message = message;
+
+        if (type === 'input') {
+            this.fieldDefs = messageOrFields as Record<string, { displayName: string, type: 'string' }>;
+            this.inputValues = Object.keys(this.fieldDefs).reduce((acc, key) => {
+                acc[key] = ''; // Initialize with empty string
+                return acc;
+            }, {} as Record<string, string>);
+            this.message = ''; // No message for input usually, or pass in options?
+            // Requirement says: "dialog.input(fieldDefs, options)"
+            // So we don't have a message param for input.
+        } else {
+            this.message = messageOrFields as string;
+        }
+
         this.title = options.title || appName;
         this.pendingResult = undefined;
 
@@ -63,11 +92,15 @@ class DialogStore implements Dialog {
             const opts = options as AlertOptions;
             this.alertIcon = opts.icon;
             this.okText = opts.okText || 'OK';
-        } else {
+        } else if (type === 'confirm') {
             const opts = options as ConfirmOptions;
             this.yesText = opts.yesText || 'Yes';
             this.noText = opts.noText || 'No';
             this.showCancel = opts.showCancel || false;
+            this.cancelText = opts.cancelText || 'Cancel';
+        } else if (type === 'input') {
+            const opts = options as InputOptions;
+            this.okText = opts.okText || 'OK';
             this.cancelText = opts.cancelText || 'Cancel';
         }
 
@@ -105,9 +138,24 @@ class DialogStore implements Dialog {
     }
 
     @action
+    input(fieldDefs: Record<string, InputFieldDef>, options?: InputOptions): Promise<Record<string, string> | null> {
+        traceLog('DialogStore.input', fieldDefs);
+        return this.show('input', fieldDefs, options);
+    }
+
+    @action
+    handleInputChange = (key: string, value: string) => {
+        this.inputValues[key] = value;
+    }
+
+    @action
     handleConfirm = () => {
         traceLog('DialogStore.handleConfirm');
-        this.pendingResult = true;
+        if (this.type === 'input') {
+            this.pendingResult = { ...this.inputValues };
+        } else {
+            this.pendingResult = true;
+        }
         this.close();
     }
 
@@ -123,7 +171,7 @@ class DialogStore implements Dialog {
 
     @action
     handleCancel = () => {
-        if (this.type === 'confirm') {
+        if (this.type === 'confirm' || this.type === 'input') {
             this.pendingResult = null;
         } else {
             this.pendingResult = undefined;
@@ -136,7 +184,7 @@ class DialogStore implements Dialog {
         // It's important to prevent default if we want to control the close process? 
         // Or just let it close and set result.
         // Dialog 'close' event fires after this.
-        if (this.type === 'confirm') {
+        if (this.type === 'confirm' || this.type === 'input') {
             this.pendingResult = null; // Map Escape to null (Cancel)
         } else {
             this.pendingResult = undefined;
@@ -166,9 +214,9 @@ const dialogStore = new DialogStore();
 
 
 export const NativeDialog: React.FC = observer(() => {
-    const { type, message, title, alertIcon, okText, yesText, noText, showCancel, cancelText } = dialogStore;
+    const { type, message, title, alertIcon, okText, yesText, noText, showCancel, cancelText, fieldDefs, inputValues } = dialogStore;
 
-    const defaultTitle = type === 'alert' ? 'Notification' : 'Confirm';
+    const defaultTitle = type === 'alert' ? 'Notification' : (type === 'input' ? 'Input' : 'Confirm');
     const displayTitle = title || defaultTitle;
 
     let iconClass = '';
@@ -192,7 +240,7 @@ export const NativeDialog: React.FC = observer(() => {
 
     const btnsContainer = useRef<HTMLDivElement>(null);
     useLeftRightFocusNavigation(btnsContainer);
-    
+
     return (
         <dialog
             ref={dialogStore.dialogRef}
@@ -212,8 +260,25 @@ export const NativeDialog: React.FC = observer(() => {
                             data-testid="dialog-icon"
                         />
                     )}
-                    <span className={styles.messageText} data-testid="dialog-message">{message}</span>
+                    {type !== 'input' && <span className={styles.messageText} data-testid="dialog-message">{message}</span>}
                 </div>
+                {type === 'input' && (
+                    <div className={styles.inputContainer}>
+                        {Object.entries(fieldDefs).map(([key, def]) => (
+                            <div key={key} className={styles.inputRow}>
+                                <label className={styles.inputLabel} htmlFor={`dialog-input-${key}`}>{def.displayName}</label>
+                                <input
+                                    id={`dialog-input-${key}`}
+                                    type="text"
+                                    className={styles.inputField}
+                                    value={inputValues[key] || ''}
+                                    onChange={(e) => dialogStore.handleInputChange(key, e.target.value)}
+                                    data-testid={`dialog-input-${key}`}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                )}
                 <div className={styles.footer} ref={btnsContainer}>
                     <button key="true"
                         className={styles.primaryButton}
@@ -221,7 +286,7 @@ export const NativeDialog: React.FC = observer(() => {
                         ref={dialogStore.confirmButtonRef}
                         data-testid="dialog-result-true"
                     >
-                        {type === 'alert' ? okText : yesText}
+                        {type === 'alert' || type === 'input' ? okText : yesText}
                     </button>
                     {type === 'confirm' && (
                         <button key="false"
@@ -232,7 +297,7 @@ export const NativeDialog: React.FC = observer(() => {
                             {noText}
                         </button>
                     )}
-                    {type === 'confirm' && showCancel && (
+                    {((type === 'confirm' && showCancel) || type === 'input') && (
                         <button key="null"
                             className={styles.button}
                             onClick={dialogStore.handleCancel}
