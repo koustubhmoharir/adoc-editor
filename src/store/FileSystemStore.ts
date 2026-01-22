@@ -5,10 +5,10 @@ import { editorStore } from './EditorStore';
 import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
-import { parse } from 'smol-toml';
-import { DEFAULT_COMPILED_SETTINGS, mergeSettings, shouldIgnoreDirectory, shouldIgnoreFile, generateDefaultIgnoreFileContent, resetPatternCache } from '../file_system/IgnoreSettings';
+import { shouldIgnoreDirectory, shouldIgnoreFile, generateDefaultIgnoreFileContent, resetPatternCache } from '../file_system/IgnoreSettings';
 import { DirectoryNodeModel, ExternalFileModel, FileModel, FileNodeModel, FileSystemNodeModel, FileSystemNodeModelBase, SearchResultItemModel } from "./FileSystemModels";
 import { traceLog } from "../utils/trace";
+import { S3Store } from "./S3Store";
 
 class FileSystemStore extends EffectAwareModel {
 
@@ -98,6 +98,8 @@ class FileSystemStore extends EffectAwareModel {
     // Persistent root node
     @observable private accessor _rootNode: DirectoryNodeModel | null = null;
     get rootNode() { return this._rootNode; }
+
+    @observable accessor s3Stores: Map<string, S3Store> = new Map();
 
     private saveInterval: number | null = null;
 
@@ -266,26 +268,30 @@ class FileSystemStore extends EffectAwareModel {
 
     @action.bound
     async openDirectory() {
+        if (!await this.confirmUnsavedChanges()) {
+            return;
+        }
         const handle = await pickDirectory();
         if (!handle) {
             return;
         }
-        // We call confirmUnsavedChanges after the user has picked a directory.
-        // If the user cancels the directory pick operation, there is no reason to prompt.
-        if (!await this.confirmUnsavedChanges()) {
-            return;
-        }
-        runInAction(() => {
-            this._rootNode = new DirectoryNodeModel({
-                name: handle.name,
-                path: '',
-                kind: 'directory',
-                handle: handle,
-                children: []
-            }, null);
-        });
+
         await this.pushDbOperation(setDbValue('directoryHandle', handle), 'Failed to persist directory handle:');
-        resetPatternCache();
+        
+        const rootHandle = this._rootNode?.handle;
+        if (!rootHandle || !await rootHandle.isSameEntry(handle)) {
+            runInAction(() => {
+                resetPatternCache();
+                this._rootNode = new DirectoryNodeModel({
+                    name: handle.name,
+                    path: '',
+                    kind: 'directory',
+                    handle: handle,
+                    children: []
+                }, null);
+                this.cleanupS3Stores();
+            });
+        }
         await this.refresh();
     }
 
@@ -296,6 +302,7 @@ class FileSystemStore extends EffectAwareModel {
         resetPatternCache();
         this._dirty = false;
         this._isLoading = false;
+        this.cleanupS3Stores();
         this._collapsedPaths = new Set();
         this._searchQuery = '';
         this._isSearchVisible = false;
@@ -900,6 +907,7 @@ class FileSystemStore extends EffectAwareModel {
         // Verify permission if root (needed?) or simple check
         // For subdirectories, permission is inherited usually.
         const hasPerm = await this.verifyPermission(targetNode.handle);
+
         if (!hasPerm) return;
 
         const tree = await this.readDirectory(targetNode);
@@ -1209,43 +1217,27 @@ class FileSystemStore extends EffectAwareModel {
         return false;
     }
 
-    private async readDirectory(parent: DirectoryNodeModel): Promise<FileSystemNodeModel[]> {
+    private async readDirectory(dirNode: DirectoryNodeModel): Promise<FileSystemNodeModel[]> {
         const models: FileSystemNodeModel[] = [];
-        const dirHandle = parent.handle;
-        const parentPath = parent.isRoot ? '' : parent.path;
+        const parentPath = dirNode.isRoot ? '' : dirNode.path;
 
-        // 1. Calculate Settings
-        let inheritedSettings = parent.isRoot ? DEFAULT_COMPILED_SETTINGS : (parent.parent?.effectiveSettings || DEFAULT_COMPILED_SETTINGS);
+        
+        await dirNode.readSettings();
 
-        try {
-            const configDir = await dirHandle.getDirectoryHandle('.adoc-editor');
-            const configFile = await configDir.getFileHandle('ignore.toml');
-            const file = await configFile.getFile();
-            const text = await file.text();
-            const localSettings = parse(text);
-            inheritedSettings = mergeSettings(inheritedSettings, localSettings as any);
-        } catch (e) {
-            // Ignore missing config
-        }
-
-        parent.effectiveSettings = inheritedSettings;
-
-        for await (const entry of dirHandle.values()) {
+        for await (const entry of dirNode.handle.values()) {
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
 
             if (entry.kind === 'file') {
-                if (shouldIgnoreFile(entry.name, inheritedSettings)) continue;
-                // ...
-
+                if (shouldIgnoreFile(entry.name, dirNode.effIgnoreSettings)) continue;
 
                 models.push(new FileNodeModel({
                     name: entry.name,
                     path: currentPath,
                     kind: 'file',
                     handle: entry
-                }, parent));
+                }, dirNode));
             } else if (entry.kind === 'directory') {
-                if (shouldIgnoreDirectory(entry.name, inheritedSettings)) continue;
+                if (shouldIgnoreDirectory(entry.name, dirNode.effIgnoreSettings)) continue;
 
                 // Create directory model first
                 const dirModel = new DirectoryNodeModel({
@@ -1254,7 +1246,7 @@ class FileSystemStore extends EffectAwareModel {
                     kind: 'directory',
                     handle: entry,
                     children: [] // Will set children after
-                }, parent);
+                }, dirNode);
 
                 const children = await this.readDirectory(dirModel);
                 dirModel.children = children;
@@ -1269,7 +1261,7 @@ class FileSystemStore extends EffectAwareModel {
         });
     }
 
-    private async openFileInEditor(node: FileModel, { focusNode, updateHighlight }: { focusNode: boolean; updateHighlight: boolean }) {
+    async openFileInEditor(node: FileModel, { focusNode, updateHighlight }: { focusNode: boolean; updateHighlight: boolean }) {
         if (node.kind !== 'file' && node.kind !== 'external_file') return;
         // Auto-save previous file if dirty (Internal only)
         if (this.currentFileHandle && this.dirty && !(this.currentFileNode instanceof ExternalFileModel)) {
@@ -1443,6 +1435,12 @@ class FileSystemStore extends EffectAwareModel {
             e.stopPropagation();
             this.toggleSearch();
         }
+    }
+
+    @action
+    cleanupS3Stores() {
+        this.s3Stores.forEach(store => store.cleanup());
+        this.s3Stores.clear();
     }
 }
 

@@ -28,7 +28,7 @@ export const SidebarContextMenu = observer(() => {
             tabIndex={-1} // Allow focus
             onClick={closeOnClick}
         >
-            {targetNode?.kind === 'file' && (
+            {targetNode?.isFile() && (
                 <>
                     <button className={styles.contextMenuItem} onClick={() => {
                         fileSystemStore.selectNode(targetNode, { loadContent: 'focus' });
@@ -57,7 +57,7 @@ export const SidebarContextMenu = observer(() => {
                 </>
             )}
 
-            {targetNode?.kind === 'directory' && (
+            {targetNode?.isDirectory() && (
                 <>
                     <button className={styles.contextMenuItem} onClick={() => {
                         fileSystemStore.refresh(targetNode as DirectoryNodeModel, targetNode.path);
@@ -99,6 +99,16 @@ export const SidebarContextMenu = observer(() => {
                         <i className={`fas fa-cog ${styles.contextMenuIcon}`} />
                         Edit ignore.toml
                     </button>
+                    <button className={styles.contextMenuItem} onClick={targetNode.editS3SyncFile} data-testid="ctx-edit-s3sync">
+                        <i className={`fas fa-cloud ${styles.contextMenuIcon}`} />
+                        Edit s3sync.toml
+                    </button>
+                    {(targetNode as DirectoryNodeModel).hasS3SyncConfig && (
+                        <button className={styles.contextMenuItem} onClick={targetNode.syncDirectory} data-testid="ctx-s3-sync">
+                            <i className={`fas fa-sync ${styles.contextMenuIcon}`} />
+                            Sync with S3
+                        </button>
+                    )}
                 </>
             )}
         </div>

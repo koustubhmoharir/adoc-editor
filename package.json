@@ -15,6 +15,9 @@
     "author": "",
     "license": "ISC",
     "dependencies": {
+        "@aws-sdk/client-cognito-identity": "^3.971.0",
+        "@aws-sdk/client-s3": "^3.971.0",
+        "@aws-sdk/credential-provider-cognito-identity": "^3.971.0",
         "@fortawesome/fontawesome-free": "^7.1.0",
         "@vanilla-extract/esbuild-plugin": "^2.3.21",
         "fzf": "^0.5.2",
@@ -22,6 +25,7 @@
         "mobx": "^6.10.0",
         "mobx-react-lite": "^4.0.0",
         "monaco-editor": "^0.45.0",
+        "oidc-client-ts": "^3.4.1",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "smol-toml": "^1.6.0"

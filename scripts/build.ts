@@ -40,7 +40,8 @@ async function build() {
             'json.worker': 'monaco-editor/esm/vs/language/json/json.worker.js',
             'css.worker': 'monaco-editor/esm/vs/language/css/css.worker.js',
             'html.worker': 'monaco-editor/esm/vs/language/html/html.worker.js',
-            'ts.worker': 'monaco-editor/esm/vs/language/typescript/ts.worker.js'
+            'ts.worker': 'monaco-editor/esm/vs/language/typescript/ts.worker.js',
+            'callback': 'src/callback.ts'
         },
         bundle: true,
         outdir: 'dist',
@@ -75,6 +76,9 @@ async function build() {
                 fs.mkdirSync('dist');
             }
             fs.copyFileSync('src/index.html', 'dist/index.html');
+            if (fs.existsSync('src/callback.html')) {
+                fs.copyFileSync('src/callback.html', 'dist/callback.html');
+            }
             console.log(`[${new Date().toLocaleTimeString()}] Build done in ${Date.now() - start}ms`);
 
             // Notify clients

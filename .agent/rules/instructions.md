@@ -4,6 +4,7 @@ trigger: always_on
 
 * Read @../../DEVELOPER_GUIDE.md if you have questions about how specific features are implemented.
 * Read @../../ARCHITECTURE.md if you have questions about the tech stack and libraries used
+* You **MUST** read the ui-component skill before creating any React component or MobX store. Remember that useEffect is almost completely banned, and makeAutoObservable makes MobX crash in our setup using modern decorators with accessors.
 * You **MUST** read the "editor-test" skill before creating any test cases. Read @../../tests/testing_methodology.md if you have more questions.
 * You **MUST** use the "npm run test" command for running tests. It automatically provides detailed debug information in json format for the first failing test (if any) in a test_failure_debug.txt file. **DO NOT** run playwright commands directly as it will not provide sufficient information.
 * Read the "run-and-debug-tests" skill for common reasons for test failures.

@@ -102,6 +102,12 @@ export const fileIcon = style([icon, {
     marginRight: '4px',
 }]);
 
+export const syncIcon = style([icon, {
+    color: themeVars.color.textSecondary,
+    width: '14px',
+    marginLeft: '6px'
+}]);
+
 export const header = style({
     padding: '4px 4px 4px 8px',
     fontWeight: 'bold',

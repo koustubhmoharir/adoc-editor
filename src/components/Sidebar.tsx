@@ -1,11 +1,12 @@
 import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { fileSystemStore } from '../store/FileSystemStore';
+
 import * as styles from './Sidebar.css';
 import { useScheduledEffects } from '../hooks/useScheduledEffects';
 
 import { SidebarContextMenu } from './SidebarContextMenu';
-import { FileSystemNodeModel } from '../store/FileSystemModels';
+import { FileSystemNodeModel, DirectoryNodeModel } from '../store/FileSystemModels';
 
 const RenameControl: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }) => {
     return (
@@ -95,6 +96,9 @@ const FileTreeItem: React.FC<{ node: FileSystemNodeModel }> = observer(({ node }
                         <i className={`fas fa-file-lines ${styles.fileIcon}`} />
                     }
                     <span className={`${styles.itemText} ${isRoot ? styles.headerText : ''}`}>{node.name}</span>
+                    {isDirectory && (node as DirectoryNodeModel).hasS3SyncConfig && (
+                        <i className={`fas fa-cloud ${styles.syncIcon}`} title="S3 Sync Configured" style={{ marginLeft: '6px', fontSize: '0.8em' }} />
+                    )}
                 </>
             )}
         </div>
@@ -185,6 +189,8 @@ const SidebarEmptyState: React.FC = observer(() => {
     );
 });
 
+
+
 export const Sidebar: React.FC = observer(() => {
     // Consume store effects
     useScheduledEffects(fileSystemStore);
@@ -213,6 +219,8 @@ export const Sidebar: React.FC = observer(() => {
 
                     <SidebarEmptyState />
                 }
+
+
             </div>
             <div
                 className={styles.resizeHandle}

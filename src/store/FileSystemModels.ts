@@ -2,8 +2,12 @@ import { observable, action, runInAction } from "mobx";
 import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
-import { CompiledIgnoreSettings, DEFAULT_COMPILED_SETTINGS } from '../file_system/IgnoreSettings';
+import { CompiledIgnoreSettings, DEFAULT_COMPILED_SETTINGS, mergeSettings } from '../file_system/IgnoreSettings';
 import { fileSystemStore } from "./FileSystemStore";
+import { areSettingsEqual, defaultS3SyncContent, parseS3SyncSettings } from "../file_system/S3SyncSettings";
+import { parse as parseToml } from 'smol-toml';
+import { S3Store } from "./S3Store";
+import { traceLog } from "../utils/trace";
 
 interface FSHandleTypes {
     file: FileSystemFileHandle;
@@ -466,7 +470,8 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
         this.children = data.children;
     }
     @observable accessor children: FileSystemNodeModel[] | undefined;
-    effectiveSettings: CompiledIgnoreSettings = DEFAULT_COMPILED_SETTINGS;
+    effIgnoreSettings: CompiledIgnoreSettings = DEFAULT_COMPILED_SETTINGS;
+    @observable accessor hasS3SyncConfig: boolean = false;
 
     @action
     handleSpecificKey(e: React.KeyboardEvent | KeyboardEvent) {
@@ -485,6 +490,125 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
             fileSystemStore.selectNode(this, { loadContent: 'show' });
         }
         fileSystemStore.toggleDirectory(this.path);
+    }
+
+    @action.bound
+    async editS3SyncFile() {
+        if (!await fileSystemStore.confirmUnsavedChanges()) {
+            return;
+        }
+        try {
+            // Check/Create .adoc-editor folder
+            let configDir;
+            try {
+                // @ts-ignore
+                configDir = await this.handle.getDirectoryHandle('.adoc-editor');
+            } catch {
+                // @ts-ignore
+                configDir = await this.handle.getDirectoryHandle('.adoc-editor', { create: true });
+            }
+
+            let fileHandle;
+            try {
+                // @ts-ignore
+                fileHandle = await configDir.getFileHandle('s3sync.toml');
+            } catch {
+                // @ts-ignore
+                fileHandle = await configDir.getFileHandle('s3sync.toml', { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(defaultS3SyncContent());
+                await writable.close();
+            }
+
+            // Open as external file
+            const externalModel = new ExternalFileModel(fileHandle, 's3sync.toml');
+            await fileSystemStore.openFileInEditor(externalModel, { focusNode: false, updateHighlight: true });
+
+        } catch (error) {
+            console.error('Failed to edit s3sync.toml', error);
+            await dialog.alert(`Failed to edit s3sync.toml: ${error}`);
+        }
+    }
+
+    async readSettings() {
+        // 1. Calculate Settings
+        let ignoreSettings = this.isRoot ? DEFAULT_COMPILED_SETTINGS : (this.parent?.effIgnoreSettings || DEFAULT_COMPILED_SETTINGS);
+        
+        let configDir: FileSystemDirectoryHandle | undefined = undefined;
+        try {
+            configDir = await this.handle.getDirectoryHandle('.adoc-editor');
+        } catch (e) {
+            // Ignore missing config
+        }
+        if (configDir) {
+            ignoreSettings = await parseIgnoreSettings(configDir, ignoreSettings);
+            
+            const s3Stores = fileSystemStore.s3Stores;
+            await this.loadS3SyncSettings(configDir, s3Stores);
+        }
+        
+        this.effIgnoreSettings = ignoreSettings;
+    }
+
+    private async loadS3SyncSettings(configDir: FileSystemDirectoryHandle, s3Stores: Map<string, S3Store>) {
+        try {
+            const configFile = await configDir.getFileHandle('s3sync.toml');
+            const file = await configFile.getFile();
+            const content = await file.text();
+
+            const settings = parseS3SyncSettings(content);
+
+            runInAction(() => {
+                this.hasS3SyncConfig = true;
+
+                let existingStore = s3Stores.get(this.path);
+
+                // If store exists, check if settings changed
+                if (existingStore) {
+                    if (!areSettingsEqual(existingStore.settings, settings)) {
+                        existingStore.cleanup();
+                        const newStore = new S3Store(settings);
+                        s3Stores.set(this.path, newStore);
+                        traceLog(`Re-configured S3Store for ${this.path}`);
+                    }
+                } else {
+                    const newStore = new S3Store(settings);
+                    s3Stores.set(this.path, newStore);
+                    traceLog(`Created S3Store for ${this.path}`);
+                }
+            });
+
+        } catch (e) {
+            // No config found or error reading it
+            runInAction(() => {
+                this.hasS3SyncConfig = false;
+                if (s3Stores.has(this.path)) {
+                    s3Stores.get(this.path)?.cleanup();
+                    s3Stores.delete(this.path);
+                    console.log(`Removed S3Store for ${this.path}`);
+                }
+            });
+        }
+    }
+
+    @action.bound
+    async syncDirectory() {
+        let configDir: FileSystemDirectoryHandle | undefined = undefined;
+        try {
+            configDir = await this.handle.getDirectoryHandle('.adoc-editor');
+        } catch (e) {
+            return;
+        }
+        const s3Stores = fileSystemStore.s3Stores;
+        await this.loadS3SyncSettings(configDir, s3Stores);
+
+        const store = s3Stores.get(this.path);
+        if (!store) {
+            // Should not happen if hasS3SyncConfig is true
+            await dialog.alert("No valid S3 configuration found.");
+            return;
+        }
+        await store.sync();
     }
 }
 
@@ -514,3 +638,16 @@ export class ExternalFileModel {
 }
 
 export type FileModel = FileNodeModel | ExternalFileModel;
+
+async function parseIgnoreSettings(configDir: FileSystemDirectoryHandle, baseIgnoreSettings: CompiledIgnoreSettings) {
+    try {
+        const configFile = await configDir.getFileHandle('ignore.toml');
+        const file = await configFile.getFile();
+        const text = await file.text();
+        const localSettings = parseToml(text);
+        baseIgnoreSettings = mergeSettings(baseIgnoreSettings, localSettings as any);
+    } catch (e) {
+        // Ignore missing config
+    }
+    return baseIgnoreSettings;
+}
