@@ -244,13 +244,13 @@ export const NativeDialog: React.FC = observer(() => {
     return (
         <dialog
             ref={dialogStore.dialogRef}
-            className={styles.dialog}
+            className={styles.root}
             onCancel={dialogStore.onCancelled}
             onClose={dialogStore.onClosed}
             onKeyDown={dialogStore.onKeyDown}
             data-testid="dialog-overlay"
         >
-            <div className={styles.dialogContent}>
+            <div className={styles.content}>
                 <div className={styles.header} id="dialog-title" data-testid="dialog-title">{displayTitle}</div>
                 <div className={styles.body}>
                     {iconClass && (

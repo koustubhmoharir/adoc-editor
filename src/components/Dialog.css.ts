@@ -1,7 +1,7 @@
 import { style } from '@vanilla-extract/css';
 import { vars } from '../theme.css';
 
-export const dialog = style({
+export const root = style({
     backgroundColor: vars.color.background,
     border: `1px solid ${vars.color.border}`,
     borderRadius: '4px',
@@ -15,7 +15,7 @@ export const dialog = style({
     }
 });
 
-export const dialogContent = style({
+export const content = style({
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',

@@ -7,13 +7,14 @@ import { AuthStore } from "./AuthStore";
 import { S3SyncSettings } from "../file_system/S3SyncSettings";
 
 export class S3Store {
-    authStore: AuthStore;
 
-    constructor(public readonly settings: S3SyncSettings) {
-        // We need to initialize AuthStore
+    constructor(settings: S3SyncSettings) {
+        this.settings = settings;
         this.authStore = new AuthStore(settings.authority, settings.client_id);
 
     }
+    readonly settings: S3SyncSettings;
+    readonly authStore: AuthStore;
 
     @observable accessor connectionStatus: 'idle' | 'testing' | 'success' | 'error' = 'idle';
     @observable accessor logs: string[] = [];
@@ -36,11 +37,11 @@ export class S3Store {
 
         try {
             // Check Auth
-            if (!this.authStore.isAuthenticated) {
+            if (!this.authStore.user) {
                 this.addLog("User not authenticated. Initiating login...");
                 await this.authStore.login();
 
-                if (!this.authStore.isAuthenticated) {
+                if (!this.authStore.user) {
                     this.addLog("Login failed or cancelled.");
                     this.connectionStatus = 'error';
                     return;
