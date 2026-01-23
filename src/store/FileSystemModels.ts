@@ -533,7 +533,7 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
     async readSettings() {
         // 1. Calculate Settings
         let ignoreSettings = this.isRoot ? DEFAULT_COMPILED_SETTINGS : (this.parent?.effIgnoreSettings || DEFAULT_COMPILED_SETTINGS);
-        
+
         let configDir: FileSystemDirectoryHandle | undefined = undefined;
         try {
             configDir = await this.handle.getDirectoryHandle('.adoc-editor');
@@ -542,11 +542,11 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
         }
         if (configDir) {
             ignoreSettings = await parseIgnoreSettings(configDir, ignoreSettings);
-            
+
             const s3Stores = fileSystemStore.s3Stores;
             await this.loadS3SyncSettings(configDir, s3Stores);
         }
-        
+
         this.effIgnoreSettings = ignoreSettings;
     }
 
@@ -608,7 +608,9 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
             await dialog.alert("No valid S3 configuration found.");
             return;
         }
-        await store.sync();
+        // Refresh to ensure tree is up-to-date for scanning
+        await fileSystemStore.refresh(this);
+        await store.sync(this);
     }
 }
 

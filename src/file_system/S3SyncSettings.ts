@@ -7,6 +7,7 @@ export interface S3SyncSettings {
     identity_pool_id: string;
     authority: string;
     client_id: string;
+    prefix: string;
 }
 
 export function defaultS3SyncContent(): string {
@@ -27,7 +28,18 @@ authority = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_xxxxx"
 
 # The OIDC Client ID (Cognito App Client ID)
 client_id = "your_app_client_id"
+
+# Optional prefix for S3 keys
+# prefix = "my-project/"
 `;
+}
+
+function normalizePrefix(prefix: string) {
+    if (!prefix || prefix === '/') return '';
+    if (!prefix.endsWith('/')) {
+        prefix = prefix + '/';
+    }
+    return prefix;
 }
 
 export function parseS3SyncSettings(content: string): S3SyncSettings {
@@ -40,13 +52,15 @@ export function parseS3SyncSettings(content: string): S3SyncSettings {
         if (!parsed.identity_pool_id || typeof parsed.identity_pool_id !== 'string') throw new Error("Missing or invalid 'identity_pool_id'");
         if (!parsed.authority || typeof parsed.authority !== 'string') throw new Error("Missing or invalid 'authority'");
         if (!parsed.client_id || typeof parsed.client_id !== 'string') throw new Error("Missing or invalid 'client_id'");
+        if (parsed.prefix && typeof parsed.prefix !== 'string') throw new Error("Invalid 'prefix'");
 
         return {
             bucket: parsed.bucket,
             region: parsed.region,
             identity_pool_id: parsed.identity_pool_id,
             authority: parsed.authority,
-            client_id: parsed.client_id
+            client_id: parsed.client_id,
+            prefix: normalizePrefix(parsed.prefix)
         };
     } catch (e: any) {
         throw new Error(`Failed to parse s3sync.toml: ${e.message}`);
@@ -58,5 +72,6 @@ export function areSettingsEqual(a: S3SyncSettings, b: S3SyncSettings): boolean 
         a.region === b.region &&
         a.identity_pool_id === b.identity_pool_id &&
         a.authority === b.authority &&
-        a.client_id === b.client_id;
+        a.client_id === b.client_id &&
+        a.prefix === b.prefix;
 }
