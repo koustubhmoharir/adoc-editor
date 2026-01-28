@@ -8,6 +8,7 @@ export interface S3SyncSettings {
     authority: string;
     client_id: string;
     prefix: string;
+    device_name: string;
 }
 
 export function defaultS3SyncContent(): string {
@@ -27,10 +28,18 @@ identity_pool_id = "us-east-1:xxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 authority = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_xxxxx"
 
 # The OIDC Client ID (Cognito App Client ID)
-client_id = "your_app_client_id"
+client_id = "your-app-client-id"
 
 # Optional prefix for S3 keys
-# prefix = "my-project/"
+# prefix = "project/"
+
+# Whether to embed / associate a uuid to support robust renames / moves
+# Set it to true for directories that contain manually maintained content
+# Set it to false for directories that contain artifacts produced by some automated system
+track_renames_with_uuid = false
+
+# Optional device_name
+# device_name = "your-device-name"
 `;
 }
 
@@ -53,6 +62,7 @@ export function parseS3SyncSettings(content: string): S3SyncSettings {
         if (!parsed.authority || typeof parsed.authority !== 'string') throw new Error("Missing or invalid 'authority'");
         if (!parsed.client_id || typeof parsed.client_id !== 'string') throw new Error("Missing or invalid 'client_id'");
         if (parsed.prefix && typeof parsed.prefix !== 'string') throw new Error("Invalid 'prefix'");
+        if (parsed.device_name && typeof parsed.device_name !== 'string') throw new Error("Invalid 'device_name'");
 
         return {
             bucket: parsed.bucket,
@@ -60,7 +70,8 @@ export function parseS3SyncSettings(content: string): S3SyncSettings {
             identity_pool_id: parsed.identity_pool_id,
             authority: parsed.authority,
             client_id: parsed.client_id,
-            prefix: normalizePrefix(parsed.prefix)
+            prefix: normalizePrefix(parsed.prefix),
+            device_name: parsed.device_name || "",
         };
     } catch (e: any) {
         throw new Error(`Failed to parse s3sync.toml: ${e.message}`);
@@ -73,5 +84,7 @@ export function areSettingsEqual(a: S3SyncSettings, b: S3SyncSettings): boolean 
         a.identity_pool_id === b.identity_pool_id &&
         a.authority === b.authority &&
         a.client_id === b.client_id &&
-        a.prefix === b.prefix;
+        a.prefix === b.prefix && 
+        a.device_name === b.device_name
+        ;
 }
