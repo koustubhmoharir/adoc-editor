@@ -7,7 +7,6 @@ import { closeOnClick, useUpDownFocusNavigationInPopover } from '../hooks/useFoc
 import { DirectoryNodeModel } from '../store/FileSystemModels';
 
 
-// @ts-ignore
 export const SidebarContextMenu = observer(() => {
 
     const targetNode = fileSystemStore.contextMenuTarget;
@@ -20,8 +19,6 @@ export const SidebarContextMenu = observer(() => {
             ref={ref}
             // @ts-ignore
             popover="auto"
-            // @ts-ignore
-            //onToggle={handleToggle}
             className={styles.contextMenu}
             style={targetNode ? undefined : { display: 'none' }}
             data-testid="sidebar-contextmenu"

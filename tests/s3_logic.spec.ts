@@ -1,6 +1,6 @@
 
 import { test, expect } from '@playwright/test';
-import { scanAndCalculateStatus, SyncNodeLike, FileStatus, SyncAction } from '../src/store/S3SyncLogic';
+import { scanAndCalculateStatus, FileNodeLike, DirNodeLike, FileStatus, SyncAction } from '../src/store/S3SyncLogic';
 import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from './helpers/mock_fs_handles';
 import { S3Client, ListObjectVersionsCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 
@@ -42,8 +42,8 @@ class MockS3Client extends S3Client {
 }
 
 // Helper to convert MockFS to SyncNodeLike
-async function toSyncNodeLike(handle: MockFileSystemDirectoryHandle): Promise<SyncNodeLike> {
-    const children: SyncNodeLike[] = [];
+async function toSyncNodeLike(handle: MockFileSystemDirectoryHandle): Promise<DirNodeLike> {
+    const children: DirNodeLike['children'] = [];
     for await (const entry of handle.values()) {
         if (entry.kind === 'file') {
             children.push({
@@ -70,7 +70,7 @@ if (typeof globalThis !== 'undefined') {
 
 test.describe('S3 Sync Logic', () => {
     let rootHandle: MockFileSystemDirectoryHandle;
-    let rootNode: SyncNodeLike;
+    let rootNode: DirNodeLike;
     let s3Client: MockS3Client;
     const settings = {
         bucket: 'test-bucket',

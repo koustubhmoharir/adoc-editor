@@ -89,24 +89,29 @@ async function getOrCreateDirectory(dir: FileSystemDirectoryHandle, ...dirNames:
     return dir;
 }
 
-export interface SyncNodeLike {
+export interface FileNodeLike {
     name: string;
-    kind: 'file' | 'directory';
-    handle: FileSystemHandle;
-    children?: SyncNodeLike[];
+    kind: 'file';
+    handle: FileSystemFileHandle;
+}
+
+export interface DirNodeLike {
+    name: string;
+    kind: 'directory';
+    handle: FileSystemDirectoryHandle;
+    children: (DirNodeLike | FileNodeLike)[] | undefined;
     hasS3SyncConfig?: boolean;
 }
 
-async function scanLocalFiles(rootNode: SyncNodeLike, s3Prefix: string): Promise<Map<string, LocalFileRecord>> {
+async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<Map<string, LocalFileRecord>> {
     const filesByPath = new Map<string, LocalFileRecord>();
 
-    const scan = async (dirNode: SyncNodeLike, currentPath: string) => {
+    const scan = async (dirNode: DirNodeLike, currentPath: string) => {
         // map of file name to uuids
         // this is created with a null prototype to avoid surprises when accessing entries.
         const uuids: Record<string, string> = Object.create(null);
         try {
             // TODO: protect with lock
-            // @ts-ignore
             const s3Dir = await dirNode.handle.getDirectoryHandle('.s3');
             let count = 0;
             try {
@@ -129,7 +134,6 @@ async function scanLocalFiles(rootNode: SyncNodeLike, s3Prefix: string): Promise
         catch { }
         // 1. Unconditionally check for .adoc-editor/ignore.toml in this directory (on disk)
         try {
-            // @ts-ignore
             const configDir = await dirNode.handle.getDirectoryHandle('.adoc-editor');
             const ignoreFileHandle = await configDir.getFileHandle('ignore.toml');
             const ignoreFile = await ignoreFileHandle.getFile();
@@ -157,7 +161,6 @@ async function scanLocalFiles(rootNode: SyncNodeLike, s3Prefix: string): Promise
 
                 if (child.kind === 'file') {
                     try {
-                        // @ts-ignore
                         const file = await child.handle.getFile();
                         filesByPath.set(entryPath, {
                             uuid: uuids[child.name],
@@ -547,7 +550,7 @@ async function matchRecords(
     return statusItems;
 }
 
-export async function scanAndCalculateStatus(rootNode: SyncNodeLike, s3Client: S3Client, settings: S3SyncSettings) {
+export async function scanAndCalculateStatus(rootNode: DirNodeLike, s3Client: S3Client, settings: S3SyncSettings) {
     const s3Prefix = settings.prefix || '';
 
     // 1. Scan Local Files
@@ -558,11 +561,8 @@ export async function scanAndCalculateStatus(rootNode: SyncNodeLike, s3Client: S
     let baseMetaDir: FileSystemDirectoryHandle;
     let metaCacheDir: FileSystemDirectoryHandle;
     try {
-        // @ts-ignore
         s3Dir = await rootNode.handle.getDirectoryHandle('.s3', { create: true });
-        // @ts-ignore
         baseMetaDir = await s3Dir.getDirectoryHandle('m', { create: true });
-        // @ts-ignore
         metaCacheDir = await s3Dir.getDirectoryHandle('mc', { create: true });
     } catch (e) {
         traceLog("No existing base state found (or failed to read).");

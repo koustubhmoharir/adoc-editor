@@ -2,8 +2,7 @@ import { createRoot } from 'react-dom/client';
 import '@fortawesome/fontawesome-free/css/all.css';
 import App from './App';
 
-// @ts-ignore
-window.MonacoEnvironment = {
+(window as any).MonacoEnvironment = {
     getWorkerUrl: function (_moduleId: any, label: string) {
         if (label === 'json') {
             return './json.worker.js';

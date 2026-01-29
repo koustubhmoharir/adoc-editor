@@ -501,19 +501,15 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
             // Check/Create .adoc-editor folder
             let configDir;
             try {
-                // @ts-ignore
                 configDir = await this.handle.getDirectoryHandle('.adoc-editor');
             } catch {
-                // @ts-ignore
                 configDir = await this.handle.getDirectoryHandle('.adoc-editor', { create: true });
             }
 
             let fileHandle;
             try {
-                // @ts-ignore
                 fileHandle = await configDir.getFileHandle('s3sync.toml');
             } catch {
-                // @ts-ignore
                 fileHandle = await configDir.getFileHandle('s3sync.toml', { create: true });
                 const writable = await fileHandle.createWritable();
                 await writable.write(defaultS3SyncContent());

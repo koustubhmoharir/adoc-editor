@@ -1,32 +1,38 @@
+type IsMatch<K1 extends 'file' | 'directory', K2 extends 'file' | 'directory'> = K1 extends K2 ? K2 extends K1 ? true : false : false;
 
-export class MockFileSystemHandle implements FileSystemHandle {
-    constructor(public kind: 'file' | 'directory', public name: string) { }
+export class MockFileSystemHandle<K extends 'file' | 'directory'> implements FileSystemHandle {
+    constructor(kind: K, name: string) { 
+        this.kind = kind;
+        this.name = name;
+    }
+    readonly kind: K;
+    readonly name: string;
 
-    get isFile() { return this.kind === 'file'; }
-    get isDirectory() { return this.kind === 'directory'; }
+    get isFile(): IsMatch<K, 'file'> { return (this.kind === 'file') as any; }
+    get isDirectory(): IsMatch<K, 'directory'> { return (this.kind === 'directory') as any; }
 
     async isSameEntry(other: FileSystemHandle): Promise<boolean> {
         return this === other;
     }
 
-    async queryPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState> {
+    async queryPermission(_descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState> {
         return 'granted';
     }
 
-    async requestPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState> {
+    async requestPermission(_descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState> {
         return 'granted';
     }
 }
 
-export class MockFileSystemFileHandle extends MockFileSystemHandle implements FileSystemFileHandle {
-    private content: string;
-    private lastModified: number;
+export class MockFileSystemFileHandle extends MockFileSystemHandle<'file'> implements FileSystemFileHandle {
 
     constructor(name: string, content: string = '', lastModified: number = Date.now()) {
         super('file', name);
         this.content = content;
         this.lastModified = lastModified;
     }
+    private content: string;
+    private lastModified: number;
 
     async getFile(): Promise<File> {
         const content = this.content;
@@ -35,7 +41,7 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle implements Fi
             lastModified: this.lastModified,
             size: content.length,
             type: 'text/plain',
-            slice: (start, end) => new Blob([content.slice(start, end)]), // This might still fail if Blob missing
+            slice: (start: number, end: number) => new Blob([content.slice(start, end)]), // This might still fail if Blob missing
             text: async () => content,
             arrayBuffer: async () => new TextEncoder().encode(content).buffer,
             stream: () => {
@@ -51,9 +57,8 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle implements Fi
         } as unknown as File;
     }
 
-    async createWritable(options?: FileSystemCreateWritableOptions): Promise<FileSystemWritableFileStream> {
+    async createWritable(_options?: FileSystemCreateWritableOptions): Promise<FileSystemWritableFileStream> {
         const self = this;
-        // @ts-ignore
         return {
             async write(data: any) {
                 if (typeof data === 'string') {
@@ -68,22 +73,27 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle implements Fi
                 }
             },
             async close() { },
-            async seek(position: number) { },
+            async seek(_position: number) { },
             async truncate(size: number) {
                 self.content = self.content.substring(0, size);
             },
             locked: false,
+            getWriter(): WritableStreamDefaultWriter { throw new Error('NotImplemented'); },
             async abort() { }
         };
     }
 }
 
-export class MockFileSystemDirectoryHandle extends MockFileSystemHandle implements FileSystemDirectoryHandle {
-    private _entries = new Map<string, MockFileSystemHandle>();
+export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directory'> implements FileSystemDirectoryHandle {
+    private _entries = new Map<string, MockFileSystemHandle<'file' | 'directory'>>();
 
     constructor(name: string) {
         super('directory', name);
     }
+
+    getFile(): Promise<FileSystemFileHandle> { throw new Error('Deprecated'); }
+    getDirectory(): Promise<FileSystemDirectoryHandle> { throw new Error('Deprecated'); }
+    getEntries(): AsyncIterableIterator<FileSystemFileHandle | FileSystemDirectoryHandle> { throw new Error('Deprecated'); }
 
     // Helper for tests to access entries synchronously
     getEntry(name: string) {
@@ -122,14 +132,14 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle implemen
         return entry as FileSystemFileHandle;
     }
 
-    async removeEntry(name: string, options?: FileSystemRemoveOptions): Promise<void> {
+    async removeEntry(name: string, _options?: FileSystemRemoveOptions): Promise<void> {
         if (!this._entries.has(name)) {
             throw new Error(`Entry not found: ${name}`);
         }
         this._entries.delete(name);
     }
 
-    async resolve(possibleDescendant: FileSystemHandle): Promise<string[] | null> {
+    async resolve(_possibleDescendant: FileSystemHandle): Promise<string[] | null> {
         return null; // Not implemented for now
     }
 

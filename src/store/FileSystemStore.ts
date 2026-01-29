@@ -528,21 +528,17 @@ class FileSystemStore extends EffectAwareModel {
             // Check/Create .adoc-editor folder
             let configDir;
             try {
-                // @ts-ignore
                 configDir = await directory.handle.getDirectoryHandle('.adoc-editor');
             } catch {
-                // @ts-ignore
                 configDir = await directory.handle.getDirectoryHandle('.adoc-editor', { create: true });
             }
 
             let fileHandle;
             // Check if ignore.toml exists
             try {
-                // @ts-ignore
                 fileHandle = await configDir.getFileHandle('ignore.toml');
             } catch {
                 // Ignore doesn't exist, create it
-                // @ts-ignore
                 fileHandle = await configDir.getFileHandle('ignore.toml', { create: true });
                 const writable = await fileHandle.createWritable();
                 await writable.write(generateDefaultIgnoreFileContent());

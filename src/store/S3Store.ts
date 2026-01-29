@@ -44,11 +44,10 @@ export class S3Store {
 
     private async createClient(user: User) {
         traceLog(`Configuring AWS credentials for region: ${this.settings.region}`);
-        const logins = {};
+        const logins: Record<string, string> = {};
         let loginKey = this.settings.authority.replace('https://', '');
         if (loginKey.endsWith('/')) loginKey = loginKey.slice(0, -1);
-        // @ts-ignore
-        logins[loginKey] = user.id_token;
+        logins[loginKey] = user.id_token || '';
 
         const credentialProvider = fromCognitoIdentityPool({
             client: new CognitoIdentityClient({ region: this.settings.region }),
@@ -73,7 +72,6 @@ export class S3Store {
         const s3Client = await this.createClient(user);
 
         try {
-            // @ts-ignore - explicitly handling casting if needed, but checking type structure earlier confirmed compatibility
             const statusItems = await scanAndCalculateStatus(rootNode, s3Client, this.settings);
 
             runInAction(() => {
