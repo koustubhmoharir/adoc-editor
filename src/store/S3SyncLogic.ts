@@ -641,6 +641,50 @@ export class FileSyncStatus {
         return fullPath.startsWith(prefix) ? fullPath.substring(prefix.length) : fullPath;
     }
 
+    /**
+     * Returns just the filename portion of the relative path.
+     */
+    fileName(prefix: string): string {
+        const relPath = this.relativePath(prefix);
+        const lastSlash = relPath.lastIndexOf('/');
+        return lastSlash >= 0 ? relPath.substring(lastSlash + 1) : relPath;
+    }
+
+    /**
+     * Returns the directory portion of the relative path (without filename).
+     * Returns empty string if the file is at the root.
+     */
+    directoryPath(prefix: string): string {
+        const relPath = this.relativePath(prefix);
+        const lastSlash = relPath.lastIndexOf('/');
+        return lastSlash >= 0 ? relPath.substring(0, lastSlash) : '';
+    }
+
+    /**
+     * Returns available diff view options based on which records exist.
+     */
+    get availableDiffViews(): string[] {
+        const views: string[] = [];
+        const hasBase = this.base !== null;
+        const hasLocal = this.local !== null;
+        const hasRemote = this.remote !== null;
+
+        // Single views
+        if (hasBase && !hasLocal && !hasRemote) views.push('single-base');
+        if (hasLocal && !hasBase && !hasRemote) views.push('single-local');
+        if (hasRemote && !hasBase && !hasLocal) views.push('single-remote');
+
+        // Two-way diffs
+        if (hasBase && hasLocal) views.push('base-local');
+        if (hasBase && hasRemote) views.push('base-remote');
+        if (hasRemote && hasLocal) views.push('remote-local');
+
+        // Three-way
+        if (hasBase && hasLocal && hasRemote) views.push('3way');
+
+        return views;
+    }
+
     private async calculateStatus() {
         // Remote Status
         if (this.base && this.remote) {

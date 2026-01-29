@@ -31,7 +31,7 @@ export const item = style({
     cursor: 'pointer',
     padding: '8px 12px',
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: '8px',
     color: vars.color.text,
     ':hover': {
@@ -45,6 +45,30 @@ export const itemSelected = style({
     ':hover': {
         backgroundColor: vars.color.selectionBackground,
     }
+});
+
+export const itemContent = style({
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+});
+
+export const itemFileName = style({
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontWeight: 500,
+});
+
+export const itemDirectory = style({
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '12px',
+    color: vars.color.textSecondary,
+    opacity: 0.8,
 });
 
 export const itemPath = style({

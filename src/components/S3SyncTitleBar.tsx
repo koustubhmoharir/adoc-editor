@@ -6,11 +6,13 @@ import * as styles from './S3SyncTitleBar.css';
 
 export const S3SyncTitleBar: React.FC = observer(() => {
     const syncStore = appStore.activeSyncStore;
-    const directoryNode = appStore.activeSyncDirectoryNode;
+    const directoryNode = syncStore?.directoryNode;
+    const s3Store = syncStore?.s3Store;
 
     const directoryPath = directoryNode?.name || '';
-    const bucket = syncStore?.settings.bucket || '';
-    const prefix = syncStore?.settings.prefix || '';
+    const bucket = s3Store?.settings.bucket || '';
+    const prefix = s3Store?.settings.prefix || '';
+
 
     return (
         <header className={styles.header} data-testid="s3sync-title-bar">

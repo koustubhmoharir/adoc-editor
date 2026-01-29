@@ -1,6 +1,5 @@
-
-import { action, observable, runInAction } from "mobx";
-import { S3Client } from "@aws-sdk/client-s3";
+import { observable, action, runInAction } from "mobx";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { CognitoIdentityClient } from "@aws-sdk/client-cognito-identity";
 import { fromCognitoIdentityPool } from "@aws-sdk/credential-provider-cognito-identity";
 import { AuthStore } from "./AuthStore";
@@ -20,16 +19,27 @@ export class S3Store {
     readonly settings: S3SyncSettings;
     readonly authStore: AuthStore;
 
+    // Retained S3 client after first sync
+    private _s3Client: S3Client | null = null;
+    get s3Client() { return this._s3Client; }
+
     @observable accessor _syncStatusItems: FileSyncStatus[] | undefined = undefined;
     get syncStatusItems() { return this._syncStatusItems; }
+
+    @observable accessor selectedItem: FileSyncStatus | null = null;
+
+    @action.bound
+    setSelectedItem(item: FileSyncStatus | null) {
+        this.selectedItem = item;
+    }
 
     @action
     cleanup() {
         this.authStore.cleanup();
+        this._s3Client = null;
     }
 
     private async ensureLoggedIn() {
-        // 1. Check Auth logic
         if (!this.authStore.user) {
             traceLog("User not authenticated. Initiating login...");
             await this.authStore.login();
@@ -61,22 +71,48 @@ export class S3Store {
         });
     }
 
+    async ensureClient(): Promise<S3Client | null> {
+        if (this._s3Client) return this._s3Client;
+
+        const user = await this.ensureLoggedIn();
+        if (!user) return null;
+
+        this._s3Client = await this.createClient(user);
+        return this._s3Client;
+    }
+
+    async getObjectContent(key: string): Promise<string | null> {
+        const client = await this.ensureClient();
+        if (!client) return null;
+
+        try {
+            const response = await client.send(new GetObjectCommand({
+                Bucket: this.settings.bucket,
+                Key: key,
+            }));
+
+            if (response.Body) {
+                return await response.Body.transformToString();
+            }
+            return null;
+        } catch (e) {
+            console.error(`Failed to get object ${key}`, e);
+            return null;
+        }
+    }
+
     @action
     async sync(rootNode: DirectoryNodeModel) {
         traceLog("Starting S3 Sync scan...");
 
-        // 2. Setup AWS Client
-        const user = await this.ensureLoggedIn();
-        if (!user) return;
-
-        const s3Client = await this.createClient(user);
+        const s3Client = await this.ensureClient();
+        if (!s3Client) return;
 
         try {
             const statusItems = await scanAndCalculateStatus(rootNode, s3Client, this.settings);
             const prefix = this.settings.prefix || '';
 
             runInAction(() => {
-                // Sort by relative path (local -> base -> remote fallback)
                 statusItems.sort((a, b) => a.relativePath(prefix).localeCompare(b.relativePath(prefix)));
                 this._syncStatusItems = statusItems;
                 traceLog(`Sync status calculation complete. Found ${statusItems.length} items.`);

@@ -2,6 +2,7 @@ import React from 'react';
 import { observer } from 'mobx-react-lite';
 import { appStore } from '../store/AppStore';
 import { FileSyncStatus, FileStatus, SyncAction } from '../store/S3SyncLogic';
+import { S3SyncStore } from '../store/S3SyncStore';
 import * as styles from './S3SyncSidebar.css';
 
 function getStatusIcon(item: FileSyncStatus): { icon: string; className: string; title: string } {
@@ -60,10 +61,17 @@ function getActionLabel(item: FileSyncStatus): string | null {
     return null;
 }
 
+function handleItemClick(item: FileSyncStatus, syncStore: S3SyncStore) {
+    syncStore.s3Store.setSelectedItem(item);
+    syncStore.diffStore.loadContent(item);
+}
+
 export const S3SyncSidebar: React.FC = observer(() => {
     const syncStore = appStore.activeSyncStore;
-    const statusItems = syncStore?.syncStatusItems;
-    const prefix = syncStore?.settings.prefix || '';
+    const s3Store = syncStore?.s3Store;
+    const statusItems = s3Store?.syncStatusItems;
+    const selectedItem = s3Store?.selectedItem;
+    const prefix = s3Store?.settings.prefix || '';
 
     return (
         <div className={styles.sidebar} data-testid="s3sync-sidebar">
@@ -82,21 +90,30 @@ export const S3SyncSidebar: React.FC = observer(() => {
                         All files are in sync
                     </div>
                 )}
-                {(statusItems || []).map((item, index) => {
-                    const relativePath = item.relativePath(prefix);
+                {syncStore && (statusItems || []).map((item, index) => {
+                    const fileName = item.fileName(prefix);
+                    const directoryPath = item.directoryPath(prefix);
                     const status = getStatusIcon(item);
                     const actionLabel = getActionLabel(item);
+                    const isSelected = item === selectedItem;
 
                     return (
                         <div
                             key={index}
-                            className={styles.item}
+                            className={`${styles.item} ${isSelected ? styles.itemSelected : ''}`}
+                            onClick={() => handleItemClick(item, syncStore)}
                             data-testid="s3sync-item"
-                            data-item-path={relativePath}
-                            title={relativePath}
+                            data-item-path={item.relativePath(prefix)}
+                            data-selected={isSelected}
+                            title={item.relativePath(prefix)}
                         >
                             <i className={`${status.icon} ${styles.statusIcon} ${status.className}`} title={status.title} />
-                            <span className={styles.itemPath}>{relativePath}</span>
+                            <div className={styles.itemContent}>
+                                <span className={styles.itemFileName}>{fileName}</span>
+                                {directoryPath && (
+                                    <span className={styles.itemDirectory}>{directoryPath}</span>
+                                )}
+                            </div>
                             {actionLabel && (
                                 <span className={styles.statusBadge}>{actionLabel}</span>
                             )}
