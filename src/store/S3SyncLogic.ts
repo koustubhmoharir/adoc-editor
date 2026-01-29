@@ -204,14 +204,14 @@ async function readRecords<T>(metaDir: FileSystemDirectoryHandle) {
         try {
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'directory') {
-                    scan(entry, `${currentPath}${entry.name}/`);
+                    await scan(entry, `${currentPath}${entry.name}/`);
                 }
             }
         }
         catch { }
     };
 
-    scan(metaDir, '');
+    await scan(metaDir, '');
 
     return recordsByPath;
 }
@@ -293,6 +293,7 @@ async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: 
                 const remotePath = remoteInfo.Key.substring(s3Prefix.length);
                 const baseRecord = baseRecordsByPath.get(remotePath);
                 const cachedRecord = cachedRemoteRecordsByPath.get(remotePath);
+
                 const copyFrom = baseRecord && baseRecord.version === remoteInfo.VersionId ? baseRecord : cachedRecord && cachedRecord.version === remoteInfo.VersionId ? cachedRecord : undefined;
                 if (copyFrom) {
                     remoteRecord.uuid = copyFrom.uuid;
@@ -321,6 +322,7 @@ async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: 
                         }
                         remoteRecord.deviceName = headResponse.Metadata?.['devicename'] || '';
                         remoteRecord.sha256 = headResponse.ChecksumSHA256;
+                        remoteRecord.contentLength = headResponse.ContentLength;
                         const [dir, name] = pathToDirAndFileName(remotePath);
                         let dirRecords = newRemoteRecordsByDir.get(dir);
                         if (!dirRecords) {
