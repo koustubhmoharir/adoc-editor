@@ -11,15 +11,3 @@ export const container = style({
     backgroundColor: vars.color.background,
     color: vars.color.text
 });
-
-export const workspace = style({
-    display: 'flex',
-    flex: 1,
-    minHeight: '0'
-});
-
-export const main = style({
-    flex: 1,
-    position: 'relative',
-    minWidth: '0'
-});

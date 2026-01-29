@@ -1,32 +1,20 @@
 import React from 'react';
-import Editor from './components/Editor';
-import { TitleBar } from './components/TitleBar';
-import { Sidebar } from './components/Sidebar';
-import { TokensSidebar } from './components/TokensSidebar';
 import { observer } from 'mobx-react-lite';
 import { themeStore } from './store/ThemeStore';
+import { appStore } from './store/AppStore';
 import { lightTheme, darkTheme } from './theme.css';
 import * as styles from './App.css';
 
+import { Workspace } from './components/Workspace';
+import { S3Sync } from './components/S3Sync';
 import { NativeDialog } from './components/Dialog';
-
-
 
 const App: React.FC = observer(() => {
     const themeClass = themeStore.theme === 'light' ? lightTheme : darkTheme;
 
-
-
     return (
         <div className={`${styles.container} ${themeClass}`}>
-            <TitleBar />
-            <div className={styles.workspace}>
-                <Sidebar />
-                <main className={styles.main}>
-                    <Editor theme={themeStore.theme === 'light' ? 'vs' : 'vs-dark'} />
-                </main>
-                <TokensSidebar />
-            </div>
+            {appStore.mode === 'editor' ? <Workspace /> : <S3Sync />}
             <NativeDialog />
         </div>
     );

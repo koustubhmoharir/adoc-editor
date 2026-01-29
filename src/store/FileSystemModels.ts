@@ -8,6 +8,7 @@ import { areSettingsEqual, defaultS3SyncContent, parseS3SyncSettings } from "../
 import { parse as parseToml } from 'smol-toml';
 import { S3Store } from "./S3Store";
 import { traceLog } from "../utils/trace";
+import { appStore } from "./AppStore";
 
 interface FSHandleTypes {
     file: FileSystemFileHandle;
@@ -604,9 +605,12 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
             await dialog.alert("No valid S3 configuration found.");
             return;
         }
-        // Refresh to ensure tree is up-to-date for scanning
+
+        // Refresh to ensure tree is up-to-date for scanning, then start async sync
         await fileSystemStore.refresh(this);
-        await store.sync(this);
+
+        // Enter sync mode immediately
+        appStore.enterS3SyncMode(this, store);
     }
 }
 

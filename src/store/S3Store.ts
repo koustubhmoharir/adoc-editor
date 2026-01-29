@@ -73,8 +73,11 @@ export class S3Store {
 
         try {
             const statusItems = await scanAndCalculateStatus(rootNode, s3Client, this.settings);
+            const prefix = this.settings.prefix || '';
 
             runInAction(() => {
+                // Sort by relative path (local -> base -> remote fallback)
+                statusItems.sort((a, b) => a.relativePath(prefix).localeCompare(b.relativePath(prefix)));
                 this._syncStatusItems = statusItems;
                 traceLog(`Sync status calculation complete. Found ${statusItems.length} items.`);
             });

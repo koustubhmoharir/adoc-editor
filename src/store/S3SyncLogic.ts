@@ -632,6 +632,15 @@ export class FileSyncStatus {
     isContentConflict: boolean = false;
     isWarning: boolean = false;
 
+    /**
+     * Returns the relative path for display, with prefix stripped.
+     * Priority: local path > base path > remote path
+     */
+    relativePath(prefix: string): string {
+        const fullPath = this.local?.key || this.base?.key || this.remote?.key || '';
+        return fullPath.startsWith(prefix) ? fullPath.substring(prefix.length) : fullPath;
+    }
+
     private async calculateStatus() {
         // Remote Status
         if (this.base && this.remote) {
