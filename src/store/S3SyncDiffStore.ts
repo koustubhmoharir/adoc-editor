@@ -1,6 +1,8 @@
-import { observable, action, computed, runInAction } from 'mobx';
+import { observable, action, computed, runInAction, reaction } from 'mobx';
+import * as monaco from 'monaco-editor';
 import { EffectAwareModel } from './EffectAwareModel';
 import { FileSyncStatus } from './S3SyncLogic';
+import { themeStore } from './ThemeStore';
 import type { S3SyncStore } from './S3SyncStore';
 
 export type DiffViewMode = 'base-local' | 'base-remote' | 'remote-local' | '3way' | 'single-base' | 'single-local' | 'single-remote';
@@ -27,6 +29,31 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
     // Pane sizes (percentage for 3-way view)
     @observable accessor singlePaneHeight: number = 50;
+
+    readonly singleEditorRef = (current: HTMLDivElement) => {
+        if (current) {
+            this.initializeSingleEditor(current);
+        }
+        else {
+            this._singleEditor?.dispose();
+            this._singleEditor = null;
+        }
+    };
+    readonly diffEditorRef = (current: HTMLDivElement) => {
+        if (current) {
+            this.initializeDiffEditor(current);
+        }
+        else {
+            this._diffEditor?.dispose();
+            this._diffEditor = null;
+        }
+    };
+
+    // Editor instances - managed by store
+    private _singleEditor: monaco.editor.IStandaloneCodeEditor | null = null;
+    private _diffEditor: monaco.editor.IDiffEditor | null = null;
+    private _monacoDisposables: monaco.IDisposable[] = [];
+    private _reactionDisposers: (() => void)[] = [];
 
     // Computed: whether to show single pane
     @computed
@@ -99,6 +126,109 @@ export class S3SyncDiffStore extends EffectAwareModel {
             this.currentView === '3way';
     }
 
+    private get monacoTheme(): string {
+        return themeStore.theme === 'light' ? 'vs' : 'vs-dark';
+    }
+
+    /**
+     * Initialize editors with container refs. Called from component.
+     */
+    @action.bound
+    initializeSingleEditor(container: HTMLDivElement) {
+        if (this._singleEditor) return;
+
+        this._singleEditor = monaco.editor.create(container, {
+            value: '',
+            theme: this.monacoTheme,
+            readOnly: true,
+            automaticLayout: true,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+        });
+
+        // React to content changes
+        this._reactionDisposers.push(
+            reaction(
+                () => this.singlePaneContent,
+                (content) => {
+                    if (this._singleEditor && this.showSinglePane) {
+                        this._singleEditor.setValue(content || '');
+                    }
+                },
+                { fireImmediately: true }
+            )
+        );
+
+        // React to theme changes
+        this._reactionDisposers.push(
+            reaction(
+                () => themeStore.theme,
+                () => monaco.editor.setTheme(this.monacoTheme)
+            )
+        );
+    }
+
+    @action.bound
+    initializeDiffEditor(container: HTMLDivElement) {
+        if (this._diffEditor) return;
+
+        this._diffEditor = monaco.editor.createDiffEditor(container, {
+            theme: this.monacoTheme,
+            automaticLayout: true,
+            readOnly: false,
+            renderSideBySide: true,
+            originalEditable: false,
+        });
+
+        // React to content changes
+        this._reactionDisposers.push(
+            reaction(
+                () => ({
+                    original: this.diffOriginalContent,
+                    modified: this.diffModifiedContent,
+                    editable: this.isDiffModifiedEditable,
+                    show: this.showDiffPane,
+                }),
+                ({ original, modified, editable, show }) => {
+                    if (this._diffEditor && show) {
+                        const originalModel = monaco.editor.createModel(original || '', 'plaintext');
+                        const modifiedModel = monaco.editor.createModel(modified || '', 'plaintext');
+
+                        this._diffEditor.setModel({
+                            original: originalModel,
+                            modified: modifiedModel,
+                        });
+
+                        const modifiedEditor = this._diffEditor.getModifiedEditor();
+                        modifiedEditor.updateOptions({ readOnly: !editable });
+
+                        // Listen for changes to sync back
+                        if (editable) {
+                            const disposable = modifiedEditor.onDidChangeModelContent(() => {
+                                this.updateLocalContent(modifiedEditor.getValue());
+                            });
+                            // Store for cleanup on next update
+                            this._monacoDisposables.push(disposable);
+                        }
+                    }
+                },
+                { fireImmediately: true }
+            )
+        );
+    }
+
+    @action.bound
+    dispose() {
+        this._reactionDisposers.forEach(d => d());
+        this._reactionDisposers = [];
+        this._monacoDisposables.forEach(d => d.dispose());
+        this._monacoDisposables = [];
+        this._singleEditor?.dispose();
+        this._singleEditor = null;
+        this._diffEditor?.dispose();
+        this._diffEditor = null;
+    }
+
     @action.bound
     setView(mode: DiffViewMode) {
         this.currentView = mode;
@@ -143,10 +273,10 @@ export class S3SyncDiffStore extends EffectAwareModel {
                 }
             }
 
-            // Load remote content from S3
+            // Load remote content from S3 (now passes full record for versioned fetch)
             if (item.remote) {
                 try {
-                    const remoteContent = await this._syncStore.s3Store.getObjectContent(item.remote.key);
+                    const remoteContent = await this._syncStore.s3Store.getObjectContent(item.remote);
                     runInAction(() => { this.remoteContent = remoteContent; });
                 } catch (e) {
                     console.error('Failed to load remote content', e);

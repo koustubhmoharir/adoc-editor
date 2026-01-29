@@ -7,7 +7,7 @@ import { S3SyncSettings } from "../file_system/S3SyncSettings";
 import { DirectoryNodeModel } from "./FileSystemModels";
 import { traceLog } from "../utils/trace";
 import { User } from "oidc-client-ts";
-import { FileSyncStatus, scanAndCalculateStatus } from "./S3SyncLogic";
+import { FileSyncStatus, scanAndCalculateStatus, S3VersionRecord } from "./S3SyncLogic";
 
 export class S3Store {
 
@@ -18,6 +18,13 @@ export class S3Store {
 
     readonly settings: S3SyncSettings;
     readonly authStore: AuthStore;
+
+    // Root directory handle for cache access - set by S3SyncStore
+    private _rootHandle: FileSystemDirectoryHandle | null = null;
+
+    setRootHandle(handle: FileSystemDirectoryHandle) {
+        this._rootHandle = handle;
+    }
 
     // Retained S3 client after first sync
     private _s3Client: S3Client | null = null;
@@ -37,6 +44,7 @@ export class S3Store {
     cleanup() {
         this.authStore.cleanup();
         this._s3Client = null;
+        this._rootHandle = null;
     }
 
     private async ensureLoggedIn() {
@@ -81,22 +89,113 @@ export class S3Store {
         return this._s3Client;
     }
 
-    async getObjectContent(key: string): Promise<string | null> {
+    /**
+     * Get object content with caching.
+     * First checks .adoc-editor/s3/r/<relativePath> for cached content.
+     * If not found, fetches from S3 and caches locally.
+     */
+    async getObjectContent(remote: S3VersionRecord): Promise<string | null> {
+        const prefix = this.settings.prefix || '';
+        const relativePath = remote.key.startsWith(prefix) ? remote.key.substring(prefix.length) : remote.key;
+
+        // Try to load from cache
+        const cached = await this.loadFromCache(relativePath);
+        if (cached !== null) {
+            traceLog(`Using cached remote content for ${relativePath}`);
+            return cached;
+        }
+
+        // Fetch from S3
         const client = await this.ensureClient();
         if (!client) return null;
 
         try {
             const response = await client.send(new GetObjectCommand({
                 Bucket: this.settings.bucket,
-                Key: key,
+                Key: remote.key,
+                VersionId: remote.version, // Fetch specific version
             }));
 
             if (response.Body) {
-                return await response.Body.transformToString();
+                const content = await response.Body.transformToString();
+                // Cache the content
+                await this.saveToCache(relativePath, content);
+                traceLog(`Fetched and cached remote content for ${relativePath}`);
+                return content;
             }
             return null;
         } catch (e) {
-            console.error(`Failed to get object ${key}`, e);
+            console.error(`Failed to get object ${remote.key} version ${remote.version}`, e);
+            return null;
+        }
+    }
+
+    private async loadFromCache(relativePath: string): Promise<string | null> {
+        if (!this._rootHandle) return null;
+
+        try {
+            const cachePath = `.adoc-editor/s3/r/${relativePath}`;
+            const handle = await this.getFileHandle(this._rootHandle, cachePath);
+            if (handle) {
+                const file = await handle.getFile();
+                return await file.text();
+            }
+        } catch {
+            // Cache miss
+        }
+        return null;
+    }
+
+    private async saveToCache(relativePath: string, content: string): Promise<void> {
+        if (!this._rootHandle) return;
+
+        try {
+            const cachePath = `.adoc-editor/s3/r/${relativePath}`;
+            const handle = await this.createFileHandle(this._rootHandle, cachePath);
+            if (handle) {
+                const writable = await handle.createWritable();
+                await writable.write(content);
+                await writable.close();
+            }
+        } catch (e) {
+            console.error(`Failed to cache remote content at ${relativePath}`, e);
+        }
+    }
+
+    private async getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
+        const parts = path.split('/').filter(p => p.length > 0);
+        let currentDir = rootHandle;
+
+        for (let i = 0; i < parts.length - 1; i++) {
+            try {
+                currentDir = await currentDir.getDirectoryHandle(parts[i]);
+            } catch {
+                return null;
+            }
+        }
+
+        try {
+            return await currentDir.getFileHandle(parts[parts.length - 1]);
+        } catch {
+            return null;
+        }
+    }
+
+    private async createFileHandle(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
+        const parts = path.split('/').filter(p => p.length > 0);
+        let currentDir = rootHandle;
+
+        for (let i = 0; i < parts.length - 1; i++) {
+            try {
+                currentDir = await currentDir.getDirectoryHandle(parts[i], { create: true });
+            } catch {
+                return null;
+            }
+        }
+
+        try {
+            return await currentDir.getFileHandle(parts[parts.length - 1], { create: true });
+        } catch {
             return null;
         }
     }
@@ -104,6 +203,9 @@ export class S3Store {
     @action
     async sync(rootNode: DirectoryNodeModel) {
         traceLog("Starting S3 Sync scan...");
+
+        // Store root handle for cache access
+        this._rootHandle = rootNode.handle;
 
         const s3Client = await this.ensureClient();
         if (!s3Client) return;

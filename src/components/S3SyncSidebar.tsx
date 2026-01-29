@@ -1,6 +1,4 @@
-import React from 'react';
 import { observer } from 'mobx-react-lite';
-import { appStore } from '../store/AppStore';
 import { FileSyncStatus, FileStatus, SyncAction } from '../store/S3SyncLogic';
 import { S3SyncStore } from '../store/S3SyncStore';
 import * as styles from './S3SyncSidebar.css';
@@ -66,12 +64,11 @@ function handleItemClick(item: FileSyncStatus, syncStore: S3SyncStore) {
     syncStore.diffStore.loadContent(item);
 }
 
-export const S3SyncSidebar: React.FC = observer(() => {
-    const syncStore = appStore.activeSyncStore;
-    const s3Store = syncStore?.s3Store;
-    const statusItems = s3Store?.syncStatusItems;
-    const selectedItem = s3Store?.selectedItem;
-    const prefix = s3Store?.settings.prefix || '';
+export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
+    const s3Store = store.s3Store;
+    const statusItems = s3Store.syncStatusItems;
+    const selectedItem = s3Store.selectedItem;
+    const prefix = s3Store.settings.prefix || '';
 
     return (
         <div className={styles.sidebar} data-testid="s3sync-sidebar">
@@ -90,7 +87,7 @@ export const S3SyncSidebar: React.FC = observer(() => {
                         All files are in sync
                     </div>
                 )}
-                {syncStore && (statusItems || []).map((item, index) => {
+                {(statusItems || []).map((item, index) => {
                     const fileName = item.fileName(prefix);
                     const directoryPath = item.directoryPath(prefix);
                     const status = getStatusIcon(item);
@@ -101,7 +98,7 @@ export const S3SyncSidebar: React.FC = observer(() => {
                         <div
                             key={index}
                             className={`${styles.item} ${isSelected ? styles.itemSelected : ''}`}
-                            onClick={() => handleItemClick(item, syncStore)}
+                            onClick={() => handleItemClick(item, store)}
                             data-testid="s3sync-item"
                             data-item-path={item.relativePath(prefix)}
                             data-selected={isSelected}

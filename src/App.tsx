@@ -14,7 +14,7 @@ const App: React.FC = observer(() => {
 
     return (
         <div className={`${styles.container} ${themeClass}`}>
-            {appStore.mode === 'editor' ? <Workspace /> : <S3Sync />}
+            {appStore.mode === 'editor' ? <Workspace /> : <S3Sync store={appStore.activeSyncStore!}/>}
             <NativeDialog />
         </div>
     );
