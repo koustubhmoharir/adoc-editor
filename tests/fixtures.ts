@@ -290,7 +290,7 @@ export const helpers = {
      * @returns The content of the editor.
      */
     async getEditorContent(page: Page): Promise<string> {
-        return await page.evaluate(() => window.__TEST_editorStore.content);
+        return await page.evaluate(() => window.__TEST_editorStore.getContent());
     },
 
     /**
@@ -319,7 +319,18 @@ export const helpers = {
      */
     async setEditorContentDirect(page: Page, content: string): Promise<void> {
         return page.evaluate(content => {
-            window.__TEST_editorStore.setContent(content);
+            const editor = window.__TEST_editorStore.editor;
+            const model = editor?.getModel();
+            if (!editor || !model) return;
+            editor.pushUndoStop();
+            editor.executeEdits("replace-all", [
+                {
+                    range: model.getFullModelRange(),
+                    text: content,
+                    forceMoveMarkers: true,
+                },
+            ]);
+            editor.pushUndoStop();
         }, content);
     },
 

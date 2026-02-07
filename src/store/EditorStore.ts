@@ -25,11 +25,13 @@ export class EditorStore {
 
     constructor() { }
 
-    @observable private accessor _content: string = WELCOME_CONTENT;
-    get content() { return this._content; }
-
     private _editor: monaco.editor.IStandaloneCodeEditor | null = null;
     get editor() { return this._editor; }
+
+    @observable private accessor _savedAltVersionId: number | undefined = undefined;
+    @observable private accessor _currentAltVersionId: number | undefined = undefined;
+
+    get dirty() { return this._savedAltVersionId !== this._currentAltVersionId; }
 
     private _disposers: (() => void)[] = [];
 
@@ -37,20 +39,38 @@ export class EditorStore {
     @observable private accessor _currentLanguage: string = 'plaintext';
     get currentLanguage() { return this._currentLanguage; }
 
+    getContent() { return this._editor?.getValue() ?? ''; }
+
+    async saveContent(writable: FileSystemWritableFileStream) {
+        if (!this._editor) return;
+        const model = this._editor.getModel();
+        if (!model) return;
+        const content = this._editor.getValue();
+        const altVerId = model.getAlternativeVersionId()
+        await writable.write(content);
+        await writable.close();
+        runInAction(() => {
+            this._savedAltVersionId = altVerId;
+        });
+    }
+
     @action
-    setContent(newContent: string) {
-        if (this._content !== newContent) {
-            this._content = newContent;
-            if (this._editor && this._editor.getValue() !== newContent) {
-                this._editor.setValue(newContent);
-            }
-            fileSystemStore.markDirty();
-        }
+    loadContent(newContent: string) {
+        if (!this._editor) return;
+        const model = this._editor.getModel();
+        if (!model) return;
+        this._editor.setValue(newContent);
+        this._savedAltVersionId = this._currentAltVersionId;
+    }
+
+    @action
+    markNotDirty() {
+        this._savedAltVersionId = this._currentAltVersionId;
     }
 
     @action
     showHelp() {
-        this.setContent(WELCOME_CONTENT);
+        this.loadContent(WELCOME_CONTENT);
     }
 
     @action
@@ -131,7 +151,7 @@ export class EditorStore {
         registerToml();
 
         this._editor = monaco.editor.create(container, {
-            value: this._content,
+            value: WELCOME_CONTENT,
             language: 'asciidoc',
             theme: initialTheme,
             automaticLayout: true,
@@ -142,12 +162,9 @@ export class EditorStore {
         // Sync content changes
         const model = this._editor.getModel();
         if (model) {
-            const contentDisposable = model.onDidChangeContent(() => {
-                const value = model.getValue();
-                if (value !== this._content) {
-                    this.setContent(value);
-                }
-            });
+            const contentDisposable = model.onDidChangeContent(action(() => {
+                this._currentAltVersionId = model.getAlternativeVersionId();
+            }));
             this._disposers.push(() => contentDisposable.dispose());
 
             // Sync language changes

@@ -34,22 +34,11 @@ class FileSystemStore extends EffectAwareModel {
         window.addEventListener('keydown', this.handleGlobalKeyDown);
     }
 
-    @action.bound
-    markDirty() {
-        if (!this.isLoading && this.currentFileHandle) {
-            this._dirty = true;
-        }
-    }
-
     @observable private accessor _currentFileNode: FileModel | null = null;
     get currentFileNode() { return this._currentFileNode; }
     get currentFileHandle() { return this._currentFileNode?.handle ?? null; }
 
-    @observable private accessor _dirty: boolean = false;
-    get dirty() { return this._dirty; }
-
-    @observable private accessor _isLoading: boolean = false;
-    get isLoading() { return this._isLoading; }
+    get dirty() { return this.currentFileHandle ? editorStore.dirty : false; }
 
     @observable private accessor _collapsedPaths: Set<string> = new Set();
     // No getter for collapsedPaths, use isCollapsed(path)
@@ -147,9 +136,7 @@ class FileSystemStore extends EffectAwareModel {
                 return true;
             } else if (result === false) {
                 // Discarding
-                runInAction(() => {
-                    this._dirty = false;
-                });
+                editorStore.markNotDirty();
                 return true;
             } else {
                 // Cancel
@@ -300,8 +287,6 @@ class FileSystemStore extends EffectAwareModel {
         this._rootNode = null;
         this._currentFileNode = null;
         resetPatternCache();
-        this._dirty = false;
-        this._isLoading = false;
         this.cleanupS3Stores();
         this._collapsedPaths = new Set();
         this._searchQuery = '';
@@ -458,11 +443,10 @@ class FileSystemStore extends EffectAwareModel {
 
         runInAction(() => {
             this._currentFileNode = null;
-            this._dirty = false;
             this._highlightedPath = null;
+            editorStore.showHelp();
         });
 
-        editorStore.showHelp();
 
         if (this.saveInterval) {
             clearInterval(this.saveInterval);
@@ -478,11 +462,7 @@ class FileSystemStore extends EffectAwareModel {
 
         try {
             const writable = await this.currentFileHandle.createWritable();
-            await writable.write(editorStore.content);
-            await writable.close();
-            runInAction(() => {
-                this._dirty = false;
-            });
+            await editorStore.saveContent(writable);
             traceLog('Saved file:', this.currentFileHandle.name);
         } catch (err) {
             console.error('Failed to save file:', err);
@@ -1327,10 +1307,7 @@ class FileSystemStore extends EffectAwareModel {
                 this._highlightedPath = null;
             }
         }
-        this._isLoading = true;
-        editorStore.setContent(content);
-        this._dirty = false;
-        this._isLoading = false;
+        editorStore.loadContent(content);
     }
 
     private async restoreCollapsedPaths() {
