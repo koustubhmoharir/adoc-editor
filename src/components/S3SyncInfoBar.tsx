@@ -1,8 +1,6 @@
-import React from 'react';
 import { observer } from 'mobx-react-lite';
-import { appStore } from '../store/AppStore';
-import { DiffViewMode } from '../store/S3SyncDiffStore';
-import { FileStatus } from '../store/S3SyncLogic';
+import { S3SyncDiffStore } from '../store/S3SyncDiffStore';
+import { DiffViewMode, FileStatus } from '../store/S3SyncLogic';
 import { ButtonMenu } from './Popovers';
 import * as styles from './S3SyncInfoBar.css';
 
@@ -29,35 +27,26 @@ function getViewLabel(view: DiffViewMode): string {
     }
 }
 
-export const S3SyncInfoBar: React.FC = observer(() => {
-    const syncStore = appStore.activeSyncStore;
-    const s3Store = syncStore?.s3Store;
-    const diffStore = syncStore?.diffStore;
-    const selectedItem = s3Store?.selectedItem;
-    const currentView = diffStore?.currentView;
+export const S3SyncInfoBar = observer(({ store }: { store: S3SyncDiffStore; }) => {
+    const currentView = store.currentView;
 
-    if (!selectedItem) {
-        return (
-            <div className={styles.container} data-testid="s3sync-infobar">
-                <span className={styles.emptyState}>Select a file to view details</span>
-            </div>
-        );
-    }
+    const syncItem = store.syncItem;
+    if (!syncItem) return null;
 
-    const availableViews = selectedItem.availableDiffViews as DiffViewMode[];
+    const availableViews = syncItem.availableDiffViews as DiffViewMode[];
 
     return (
         <div className={styles.container} data-testid="s3sync-infobar">
             <div className={styles.statusGroup}>
                 <span className={styles.statusLabel}>Local:</span>
-                <span className={styles.statusValue}>{getStatusLabel(selectedItem.localStatus)}</span>
+                <span className={styles.statusValue}>{getStatusLabel(syncItem.localStatus)}</span>
             </div>
             <div className={styles.statusGroup}>
                 <span className={styles.statusLabel}>Remote:</span>
-                <span className={styles.statusValue}>{getStatusLabel(selectedItem.remoteStatus)}</span>
+                <span className={styles.statusValue}>{getStatusLabel(syncItem.remoteStatus)}</span>
             </div>
             <div className={styles.spacer} />
-            {diffStore && availableViews.length > 0 && (
+            {availableViews.length > 0 && (
                 <button className={styles.viewButton} data-testid="diff-view-button">
                     <span>{currentView ? getViewLabel(currentView) : 'View'}</span>
                     <i className="fa-solid fa-chevron-down" />
@@ -67,7 +56,7 @@ export const S3SyncInfoBar: React.FC = observer(() => {
                                 <button
                                     key={view}
                                     className={`${styles.viewMenuItem} ${view === currentView ? styles.viewMenuItemActive : ''}`}
-                                    onClick={() => diffStore.setView(view)}
+                                    onClick={() => store.setView(view)}
                                     data-testid={`diff-view-option-${view}`}
                                 >
                                     {getViewLabel(view)}

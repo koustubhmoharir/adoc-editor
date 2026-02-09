@@ -89,6 +89,44 @@ async function getOrCreateDirectory(dir: FileSystemDirectoryHandle, ...dirNames:
     return dir;
 }
 
+export async function getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
+    const parts = path.split('/').filter(p => p.length > 0);
+    let currentDir = rootHandle;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+        try {
+            currentDir = await currentDir.getDirectoryHandle(parts[i]);
+        } catch {
+            return null;
+        }
+    }
+
+    try {
+        return await currentDir.getFileHandle(parts[parts.length - 1]);
+    } catch {
+        return null;
+    }
+}
+
+export async function createFileHandle(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
+    const parts = path.split('/').filter(p => p.length > 0);
+    let currentDir = rootHandle;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+        try {
+            currentDir = await currentDir.getDirectoryHandle(parts[i], { create: true });
+        } catch {
+            return null;
+        }
+    }
+
+    try {
+        return await currentDir.getFileHandle(parts[parts.length - 1], { create: true });
+    } catch {
+        return null;
+    }
+}
+
 export interface FileNodeLike {
     name: string;
     kind: 'file';
@@ -605,6 +643,8 @@ export enum SyncAction {
     DeleteLocal = "DeleteLocal",
 }
 
+export type DiffViewMode = 'base-local' | 'base-remote' | 'remote-local' | '3way' | 'single-base' | 'single-local' | 'single-remote';
+
 export class FileSyncStatus {
     private constructor(base: BaseVersionRecord | null, local: LocalFileRecord | null, remote: S3VersionRecord | null) {
         this.base = base;
@@ -625,6 +665,8 @@ export class FileSyncStatus {
     remoteStatus: FileStatus = FileStatus.Unknown;
     localMoved: boolean = false;
     remoteMoved: boolean = false;
+
+    availableDiffViews: DiffViewMode[] = [];
 
     recommendedPathAction: SyncAction = SyncAction.None;
     recommendedContentAction: SyncAction = SyncAction.None;
@@ -658,31 +700,6 @@ export class FileSyncStatus {
         const relPath = this.relativePath(prefix);
         const lastSlash = relPath.lastIndexOf('/');
         return lastSlash >= 0 ? relPath.substring(0, lastSlash) : '';
-    }
-
-    /**
-     * Returns available diff view options based on which records exist.
-     */
-    get availableDiffViews(): string[] {
-        const views: string[] = [];
-        const hasBase = this.base !== null;
-        const hasLocal = this.local !== null;
-        const hasRemote = this.remote !== null;
-
-        // Single views
-        if (hasBase && !hasLocal && !hasRemote) views.push('single-base');
-        if (hasLocal && !hasBase && !hasRemote) views.push('single-local');
-        if (hasRemote && !hasBase && !hasLocal) views.push('single-remote');
-
-        // Two-way diffs
-        if (hasBase && hasLocal) views.push('base-local');
-        if (hasBase && hasRemote) views.push('base-remote');
-        if (hasRemote && hasLocal) views.push('remote-local');
-
-        // Three-way
-        if (hasBase && hasLocal && hasRemote) views.push('3way');
-
-        return views;
     }
 
     private async calculateStatus() {
@@ -743,6 +760,23 @@ export class FileSyncStatus {
             this.localStatus = this.local.sha256 !== this.base?.sha256 ? FileStatus.Changed : FileStatus.Unchanged;
         }
 
+        const hasBase = this.base !== null;
+        const hasLocal = this.local !== null;
+        const hasRemote = this.remote !== null;
+
+        // Three-way
+        if (hasBase && hasLocal && hasRemote) this.availableDiffViews.push('3way');
+
+        // Two-way diffs
+        if (hasBase && hasLocal) this.availableDiffViews.push('base-local');
+        if (hasBase && hasRemote) this.availableDiffViews.push('base-remote');
+        if (hasRemote && hasLocal) this.availableDiffViews.push('remote-local');
+
+        // Single views
+        if (hasBase) this.availableDiffViews.push('single-base');
+        if (hasLocal) this.availableDiffViews.push('single-local');
+        if (hasRemote) this.availableDiffViews.push('single-remote');
+
         this.calculateAction();
     }
 
@@ -752,6 +786,8 @@ export class FileSyncStatus {
         this.isPathConflict = false;
         this.isContentConflict = false;
         this.isWarning = false;
+
+        let preferredView: DiffViewMode | undefined = undefined;
 
         // Path Actions Logic
         // "If exactly one of local status and remote status has the Moved suffix, the default Path Action will be to apply the Move."
@@ -768,57 +804,86 @@ export class FileSyncStatus {
         const ls = this.localStatus;
         const rs = this.remoteStatus;
 
-        if (this.base && this.local && this.remote) {
-            if (ls === FileStatus.Unchanged && rs === FileStatus.Unchanged) {
+        if (this.base) {
+            if (this.local) {
+                if (this.remote) {
+                    if (ls === FileStatus.Unchanged && rs === FileStatus.Unchanged) {
+                        this.recommendedContentAction = SyncAction.None;
+                        preferredView = 'single-local';
+                    } else if (ls === FileStatus.Unchanged && rs === FileStatus.Changed) {
+                        this.recommendedContentAction = SyncAction.CopyRemoteToLocal;
+                        preferredView = 'base-remote';
+                    } else if (ls === FileStatus.Changed && rs === FileStatus.Unchanged) {
+                        this.recommendedContentAction = SyncAction.CopyLocalToRemote;
+                        preferredView = 'base-local';
+                    } else if (ls === FileStatus.Unchanged && rs === FileStatus.Reverted) {
+                        this.recommendedContentAction = SyncAction.CopyRemoteToLocal;
+                        this.isWarning = true;
+                        preferredView = 'base-remote';
+                    } else if (ls === FileStatus.Unchanged && rs === FileStatus.Unknown) {
+                        this.isWarning = true;
+                        preferredView = 'base-remote';
+                    } else {
+                        this.isContentConflict = true;
+                        preferredView = '3way';
+                    }
+                }
+                else {
+                    // (base, local, null remote)
+                    if (ls === FileStatus.Unchanged) {
+                        // Remote: Deleted (implied). 
+                        // Doc: Use Local OR Use Remote (default), Warning.
+                        // "Use Remote" => Delete Local.
+                        this.recommendedContentAction = SyncAction.DeleteLocal;
+                        this.isWarning = true;
+                        preferredView = 'single-local';
+                    } else {
+                        // Local Changed, Remote Deleted
+                        this.isContentConflict = true;
+                        preferredView = 'base-local';
+                    }
+                }
+            }
+            else if (this.remote) {
+                // (base, null local, remote)
+                if (rs === FileStatus.Unchanged) {
+                    // Local: Deleted
+                    // Doc: Use Local (default) OR Use Remote, Warning
+                    // "Use Local" => Delete Remote.
+                    this.recommendedContentAction = SyncAction.DeleteRemote;
+                    this.isWarning = true;
+                    preferredView = 'single-base';
+                } else {
+                    // Remote Changed/Reverted, Local Deleted
+                    this.isContentConflict = true;
+                    preferredView = 'base-remote';
+                }
+            } else {
+                // (base, null local, null remote)
+                // Both deleted
                 this.recommendedContentAction = SyncAction.None;
-            } else if (ls === FileStatus.Unchanged && rs === FileStatus.Changed) {
-                this.recommendedContentAction = SyncAction.CopyRemoteToLocal;
-            } else if (ls === FileStatus.Changed && rs === FileStatus.Unchanged) {
+                preferredView = 'single-base';
+            }
+        } else if (this.local) {
+            if (this.remote) {
+                // Both New
+                this.isContentConflict = true;
+                preferredView = 'remote-local';
+            } else {
+                // New Local
                 this.recommendedContentAction = SyncAction.CopyLocalToRemote;
-            } else if (ls === FileStatus.Unchanged && rs === FileStatus.Reverted) {
-                this.recommendedContentAction = SyncAction.CopyRemoteToLocal;
-                this.isWarning = true;
-            } else if (ls === FileStatus.Unchanged && rs === FileStatus.Unknown) {
-                this.isWarning = true;
-            } else {
-                this.isContentConflict = true;
+                preferredView = 'single-local';
             }
-        } else if (this.base && this.local && !this.remote) {
-            // (base, local, null remote)
-            if (ls === FileStatus.Unchanged) {
-                // Remote: Deleted (implied). 
-                // Doc: Use Local OR Use Remote (default), Warning.
-                // "Use Remote" => Delete Local.
-                this.recommendedContentAction = SyncAction.DeleteLocal;
-                this.isWarning = true;
-            } else {
-                // Local Changed, Remote Deleted
-                this.isContentConflict = true;
-            }
-        } else if (this.base && !this.local && this.remote) {
-            // (base, null local, remote)
-            if (rs === FileStatus.Unchanged) {
-                // Local: Deleted
-                // Doc: Use Local (default) OR Use Remote, Warning
-                // "Use Local" => Delete Remote.
-                this.recommendedContentAction = SyncAction.DeleteRemote;
-                this.isWarning = true;
-            } else {
-                // Remote Changed/Reverted, Local Deleted
-                this.isContentConflict = true;
-            }
-        } else if (this.base && !this.local && !this.remote) {
-            // Both deleted
-            this.recommendedContentAction = SyncAction.None;
-        } else if (!this.base && this.local && !this.remote) {
-            // New Local
-            this.recommendedContentAction = SyncAction.CopyLocalToRemote;
-        } else if (!this.base && !this.local && this.remote) {
+        } else if (this.remote) {
             // New Remote
             this.recommendedContentAction = SyncAction.CopyRemoteToLocal;
-        } else if (!this.base && this.local && this.remote) {
-            // Both New
-            this.isContentConflict = true;
+            preferredView = 'single-remote';
+        }
+
+        if (preferredView) {
+            const i = this.availableDiffViews.indexOf(preferredView);
+            this.availableDiffViews.splice(i, 1);
+            this.availableDiffViews.unshift(preferredView);
         }
     }
 }

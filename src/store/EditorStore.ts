@@ -74,11 +74,6 @@ export class EditorStore {
     }
 
     @action
-    setTheme(theme: string) {
-        monaco.editor.setTheme(theme);
-    }
-
-    @action
     setLanguageId(langId: string) {
         if (!this._editor) return;
         const model = this._editor.getModel();
@@ -146,14 +141,13 @@ export class EditorStore {
     }
 
     @action
-    initialize(container: HTMLDivElement, initialTheme: string) {
+    initialize(container: HTMLDivElement) {
         registerAsciiDoc();
         registerToml();
 
         this._editor = monaco.editor.create(container, {
             value: WELCOME_CONTENT,
             language: 'asciidoc',
-            theme: initialTheme,
             automaticLayout: true,
             minimap: { enabled: false },
             wordWrap: 'on'

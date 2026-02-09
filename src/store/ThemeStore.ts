@@ -1,4 +1,5 @@
 import { observable, action } from "mobx";
+import * as monaco from 'monaco-editor';
 
 type Theme = 'light' | 'dark';
 
@@ -13,7 +14,12 @@ class ThemeStore {
 
     @observable private accessor _theme: Theme = 'light';
     get theme() { return this._theme; }
-    set theme(val: Theme) { this._theme = val; }
+    set theme(val: Theme) {
+        this._theme = val;
+        monaco.editor.setTheme(val === 'light' ? 'vs' : 'vs-dark');
+    }
+
+    get monacoTheme() { return this.theme; }
 
     @action.bound
     toggleTheme() {

@@ -11,7 +11,7 @@ export const S3Sync = observer(({ store }: { store: S3SyncStore }) => {
             <S3SyncTitleBar />
             <div className={styles.container}>
                 <S3SyncSidebar store={store} />
-                <S3SyncDiffEditor diffStore={store.diffStore} />
+                <S3SyncDiffEditor store={store.diffStore} />
             </div>
         </>
     );

@@ -128,6 +128,7 @@ Content Actions
         Display diff of base vs remote (not editable)
     - Local: Unchanged, Remote: Unknown ->  
         Use Local OR Use Remote, Warning (needs user input)
+        Display diff of base vs remote (not editable)
     - Other combinations ->  
         Use Local OR Use Remote, Conflict (needs user input)  
         Display 3 way diff with local editable
@@ -143,7 +144,7 @@ Content Actions
 - (base, null local, remote)
     - Local: Deleted, Remote: Unchanged ->  
         Use Local (default) OR Use Remote, Warning  
-        Display remote version (not editable)
+        Display base version (not editable)
     - Other combinations ->  
         Use Local OR Use Remote, Conflict (needs user input)  
         Display diff of base vs remote (not editable)

@@ -1,11 +1,8 @@
 import { observable, action, computed, runInAction, reaction } from 'mobx';
 import * as monaco from 'monaco-editor';
 import { EffectAwareModel } from './EffectAwareModel';
-import { FileSyncStatus } from './S3SyncLogic';
-import { themeStore } from './ThemeStore';
+import { DiffViewMode, FileSyncStatus } from './S3SyncLogic';
 import type { S3SyncStore } from './S3SyncStore';
-
-export type DiffViewMode = 'base-local' | 'base-remote' | 'remote-local' | '3way' | 'single-base' | 'single-local' | 'single-remote';
 
 export class S3SyncDiffStore extends EffectAwareModel {
 
@@ -15,6 +12,9 @@ export class S3SyncDiffStore extends EffectAwareModel {
     }
 
     private readonly _syncStore: S3SyncStore;
+
+    @observable private accessor _syncItem: FileSyncStatus | null = null;
+    get syncItem() { return this._syncItem; }
 
     // Content loaded from files
     @observable accessor baseContent: string | null = null;
@@ -126,8 +126,67 @@ export class S3SyncDiffStore extends EffectAwareModel {
             this.currentView === '3way';
     }
 
-    private get monacoTheme(): string {
-        return themeStore.theme === 'light' ? 'vs' : 'vs-dark';
+    @action
+    async loadContent(item: FileSyncStatus | null) {
+        this.isLoading = true;
+        this.baseContent = null;
+        this.localContent = null;
+        this.remoteContent = null;
+
+        try {
+            // Load local content
+            if (item.local) {
+                try {
+                    const file = await item.local.handle.getFile();
+                    const content = await file.text();
+                    runInAction(() => { this.localContent = content; });
+                } catch (e) {
+                    console.error('Failed to load local content', e);
+                }
+            }
+
+            // Load base content from .adoc-editor/s3/base directory
+            if (item.base) {
+                try {
+                    const baseContent = await this.loadBaseContent(item.base.key);
+                    runInAction(() => { this.baseContent = baseContent; });
+                } catch (e) {
+                    console.error('Failed to load base content', e);
+                }
+            }
+
+            // Load remote content from S3 (now passes full record for versioned fetch)
+            if (item.remote) {
+                try {
+                    const remoteContent = await this._syncStore.s3Store.getObjectContent(this._syncStore.directoryNode.handle, item.remote);
+                    runInAction(() => { this.remoteContent = remoteContent; });
+                } catch (e) {
+                    console.error('Failed to load remote content', e);
+                }
+            }
+
+            // Set default view based on available content
+            runInAction(() => {
+                const views = item.availableDiffViews;
+                if (views.length > 0) {
+                    if (views.includes('3way')) {
+                        this.currentView = '3way';
+                    } else if (views.includes('remote-local')) {
+                        this.currentView = 'remote-local';
+                    } else if (views.includes('base-local')) {
+                        this.currentView = 'base-local';
+                    } else if (views.includes('base-remote')) {
+                        this.currentView = 'base-remote';
+                    } else {
+                        this.currentView = views[0] as DiffViewMode;
+                    }
+                } else {
+                    this.currentView = null;
+                }
+            });
+        } finally {
+            runInAction(() => { this.isLoading = false; });
+        }
     }
 
     /**
@@ -139,7 +198,6 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
         this._singleEditor = monaco.editor.create(container, {
             value: '',
-            theme: this.monacoTheme,
             readOnly: true,
             automaticLayout: true,
             minimap: { enabled: false },
@@ -158,14 +216,6 @@ export class S3SyncDiffStore extends EffectAwareModel {
                 { fireImmediately: true }
             )
         );
-
-        // React to theme changes
-        this._reactionDisposers.push(
-            reaction(
-                () => themeStore.theme,
-                () => monaco.editor.setTheme(this.monacoTheme)
-            )
-        );
     }
 
     @action.bound
@@ -173,7 +223,6 @@ export class S3SyncDiffStore extends EffectAwareModel {
         if (this._diffEditor) return;
 
         this._diffEditor = monaco.editor.createDiffEditor(container, {
-            theme: this.monacoTheme,
             automaticLayout: true,
             readOnly: false,
             renderSideBySide: true,
@@ -242,69 +291,6 @@ export class S3SyncDiffStore extends EffectAwareModel {
     @action.bound
     updateLocalContent(content: string) {
         this.localContent = content;
-    }
-
-    @action
-    async loadContent(item: FileSyncStatus) {
-        this.isLoading = true;
-        this.baseContent = null;
-        this.localContent = null;
-        this.remoteContent = null;
-
-        try {
-            // Load local content
-            if (item.local) {
-                try {
-                    const file = await item.local.handle.getFile();
-                    const content = await file.text();
-                    runInAction(() => { this.localContent = content; });
-                } catch (e) {
-                    console.error('Failed to load local content', e);
-                }
-            }
-
-            // Load base content from .adoc-editor/s3/base directory
-            if (item.base) {
-                try {
-                    const baseContent = await this.loadBaseContent(item.base.key);
-                    runInAction(() => { this.baseContent = baseContent; });
-                } catch (e) {
-                    console.error('Failed to load base content', e);
-                }
-            }
-
-            // Load remote content from S3 (now passes full record for versioned fetch)
-            if (item.remote) {
-                try {
-                    const remoteContent = await this._syncStore.s3Store.getObjectContent(item.remote);
-                    runInAction(() => { this.remoteContent = remoteContent; });
-                } catch (e) {
-                    console.error('Failed to load remote content', e);
-                }
-            }
-
-            // Set default view based on available content
-            runInAction(() => {
-                const views = item.availableDiffViews;
-                if (views.length > 0) {
-                    if (views.includes('3way')) {
-                        this.currentView = '3way';
-                    } else if (views.includes('remote-local')) {
-                        this.currentView = 'remote-local';
-                    } else if (views.includes('base-local')) {
-                        this.currentView = 'base-local';
-                    } else if (views.includes('base-remote')) {
-                        this.currentView = 'base-remote';
-                    } else {
-                        this.currentView = views[0] as DiffViewMode;
-                    }
-                } else {
-                    this.currentView = null;
-                }
-            });
-        } finally {
-            runInAction(() => { this.isLoading = false; });
-        }
     }
 
     /**

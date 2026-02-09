@@ -4,7 +4,6 @@ import Editor from './Editor';
 import { TitleBar } from './TitleBar';
 import { Sidebar } from './Sidebar';
 import { TokensSidebar } from './TokensSidebar';
-import { themeStore } from '../store/ThemeStore';
 import * as styles from './Workspace.css';
 
 export const Workspace: React.FC = observer(() => {
@@ -14,7 +13,7 @@ export const Workspace: React.FC = observer(() => {
             <div className={styles.workspace}>
                 <Sidebar />
                 <main className={styles.main}>
-                    <Editor theme={themeStore.theme === 'light' ? 'vs' : 'vs-dark'} />
+                    <Editor />
                 </main>
                 <TokensSidebar />
             </div>

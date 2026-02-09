@@ -59,16 +59,10 @@ function getActionLabel(item: FileSyncStatus): string | null {
     return null;
 }
 
-function handleItemClick(item: FileSyncStatus, syncStore: S3SyncStore) {
-    syncStore.s3Store.setSelectedItem(item);
-    syncStore.diffStore.loadContent(item);
-}
-
 export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
-    const s3Store = store.s3Store;
-    const statusItems = s3Store.syncStatusItems;
-    const selectedItem = s3Store.selectedItem;
-    const prefix = s3Store.settings.prefix || '';
+    const statusItems = store.syncStatusItems;
+    const selectedItem = store.selectedItem;
+    const prefix = store.s3Store.settings.prefix || '';
 
     return (
         <div className={styles.sidebar} data-testid="s3sync-sidebar">
@@ -98,7 +92,7 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
                         <div
                             key={index}
                             className={`${styles.item} ${isSelected ? styles.itemSelected : ''}`}
-                            onClick={() => handleItemClick(item, store)}
+                            onClick={() => store.setSelectedItem(item)}
                             data-testid="s3sync-item"
                             data-item-path={item.relativePath(prefix)}
                             data-selected={isSelected}
