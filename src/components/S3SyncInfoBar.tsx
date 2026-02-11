@@ -20,9 +20,9 @@ function getViewLabel(view: DiffViewMode): string {
         case 'base-remote': return 'Base ↔ Remote';
         case 'remote-local': return 'Remote ↔ Local';
         case '3way': return '3-Way';
-        case 'single-base': return 'Base Only';
-        case 'single-local': return 'Local Only';
-        case 'single-remote': return 'Remote Only';
+        case 'single-base': return 'Base';
+        case 'single-local': return 'Local';
+        case 'single-remote': return 'Remote';
         default: return 'None';
     }
 }
@@ -31,41 +31,65 @@ export const S3SyncInfoBar = observer(({ store }: { store: S3SyncDiffStore; }) =
     const currentView = store.currentView;
 
     const syncItem = store.syncItem;
-    if (!syncItem) return null;
+    if (!syncItem || !currentView) return null;
 
-    const availableViews = syncItem.availableDiffViews as DiffViewMode[];
+    const availableViews = syncItem.availableDiffViews;
 
     return (
         <div className={styles.container} data-testid="s3sync-infobar">
-            <div className={styles.statusGroup}>
-                <span className={styles.statusLabel}>Local:</span>
-                <span className={styles.statusValue}>{getStatusLabel(syncItem.localStatus)}</span>
-            </div>
-            <div className={styles.statusGroup}>
-                <span className={styles.statusLabel}>Remote:</span>
-                <span className={styles.statusValue}>{getStatusLabel(syncItem.remoteStatus)}</span>
-            </div>
-            <div className={styles.spacer} />
-            {availableViews.length > 0 && (
-                <button className={styles.viewButton} data-testid="diff-view-button">
-                    <span>{currentView ? getViewLabel(currentView) : 'View'}</span>
-                    <i className="fa-solid fa-chevron-down" />
-                    <ButtonMenu testid="diff-view-menu">
-                        <div className={styles.viewMenu}>
-                            {availableViews.map((view) => (
-                                <button
-                                    key={view}
-                                    className={`${styles.viewMenuItem} ${view === currentView ? styles.viewMenuItemActive : ''}`}
-                                    onClick={() => store.setView(view)}
-                                    data-testid={`diff-view-option-${view}`}
-                                >
-                                    {getViewLabel(view)}
-                                </button>
-                            ))}
-                        </div>
-                    </ButtonMenu>
-                </button>
-            )}
+            <span>View</span>
+            <button className={styles.viewButton} data-testid="diff-view-button">
+                <span>{getViewLabel(currentView)}</span>
+                <i className="fa-solid fa-chevron-down" />
+                <ButtonMenu testid="diff-view-menu">
+                    <div className={styles.viewMenu}>
+                        {availableViews.map((view) => (
+                            <button
+                                key={view}
+                                className={`${styles.viewMenuItem} ${view === currentView ? styles.viewMenuItemActive : ''}`}
+                                onClick={() => store.setView(view)}
+                                data-testid={`diff-view-option-${view}`}
+                            >
+                                {getViewLabel(view)}
+                            </button>
+                        ))}
+                    </div>
+                </ButtonMenu>
+            </button>
+            {syncItem.localStatus !== FileStatus.None ?
+                <div className={styles.statusGroup}>
+                    <span className={styles.statusLabel}>Local:</span>
+                    <span className={styles.statusValue}>{getStatusLabel(syncItem.localStatus)}</span>
+                    {syncItem.localStatus === FileStatus.New ?
+                        <button>Delete</button> : null
+                    }
+                    {syncItem.localStatus === FileStatus.Deleted ?
+                        <button>Restore</button> : null
+                    }
+                    {syncItem.localStatus === FileStatus.Changed ?
+                        <button>Revert</button> : null
+                    }
+                    {syncItem.localMoved ?
+                        <>
+                            <span>{syncItem.localMoveDesc}</span>
+                            <button>Undo</button>
+                        </>
+                    : null
+                    }
+                </div>
+                : null
+            }
+            {syncItem.remoteStatus !== FileStatus.None ?
+                <div className={styles.statusGroup}>
+                    <span className={styles.statusLabel}>Remote:</span>
+                    <span className={styles.statusValue}>{getStatusLabel(syncItem.remoteStatus)}</span>
+                    {syncItem.remoteMoved?
+                        <span>{syncItem.remoteMoveDesc}</span>
+                        : null
+                    }
+                </div>
+                : null
+            }
         </div>
     );
 });

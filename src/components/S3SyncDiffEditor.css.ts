@@ -10,13 +10,6 @@ export const container = style({
     minHeight: 0,
 });
 
-export const editorPane = style({
-    flex: 1,
-    minHeight: 0,
-    overflow: 'hidden',
-    position: 'relative',
-});
-
 export const singlePane = style({
     overflow: 'hidden',
     position: 'relative',

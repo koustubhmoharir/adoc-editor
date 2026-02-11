@@ -6,7 +6,7 @@ import { AuthStore } from "./AuthStore";
 import { S3SyncSettings } from "../file_system/S3SyncSettings";
 import { traceLog } from "../utils/trace";
 import { User } from "oidc-client-ts";
-import { createFileHandle, getFileHandle, S3VersionRecord } from "./S3SyncLogic";
+import { getFileHandle, S3VersionRecord } from "./S3SyncLogic";
 
 export class S3Store {
 
@@ -75,7 +75,7 @@ export class S3Store {
      * First checks .adoc-editor/s3/r/<relativePath> for cached content.
      * If not found, fetches from S3 and caches locally.
      */
-    async getObjectContent(rootHandle: FileSystemDirectoryHandle, remote: S3VersionRecord): Promise<string | null> {
+    async getObjectContent(rootHandle: FileSystemDirectoryHandle, remote: S3VersionRecord, {cachedOnly}: {cachedOnly: boolean}): Promise<string | null> {
         const prefix = this.settings.prefix || '';
         const relativePath = remote.key.startsWith(prefix) ? remote.key.substring(prefix.length) : remote.key;
 
@@ -84,6 +84,9 @@ export class S3Store {
         if (cached !== null) {
             traceLog(`Using cached remote content for ${relativePath}`);
             return cached;
+        }
+        if (cachedOnly) {
+            return null;
         }
 
         // Fetch from S3
@@ -128,7 +131,7 @@ export class S3Store {
     private async saveToCache(rootHandle: FileSystemDirectoryHandle, relativePath: string, content: string): Promise<void> {
         try {
             const cachePath = `.adoc-editor/s3/r/${relativePath}`;
-            const handle = await createFileHandle(rootHandle, cachePath);
+            const handle = await getFileHandle(rootHandle, cachePath, { create: true });
             if (handle) {
                 const writable = await handle.createWritable();
                 await writable.write(content);

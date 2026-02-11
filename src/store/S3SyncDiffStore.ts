@@ -1,8 +1,10 @@
-import { observable, action, computed, runInAction, reaction } from 'mobx';
+import { observable, action, computed, runInAction } from 'mobx';
 import * as monaco from 'monaco-editor';
 import { EffectAwareModel } from './EffectAwareModel';
-import { DiffViewMode, FileSyncStatus } from './S3SyncLogic';
+import { DiffViewMode, FileSyncStatus, getFileHandle } from './S3SyncLogic';
 import type { S3SyncStore } from './S3SyncStore';
+import { createRef } from 'react';
+import { langIdFromFileName } from './EditorStore';
 
 export class S3SyncDiffStore extends EffectAwareModel {
 
@@ -12,65 +14,60 @@ export class S3SyncDiffStore extends EffectAwareModel {
     }
 
     private readonly _syncStore: S3SyncStore;
+    get prefix() { return this._syncStore.s3Store.settings.prefix; }
 
     @observable private accessor _syncItem: FileSyncStatus | null = null;
     get syncItem() { return this._syncItem; }
 
     // Content loaded from files
-    @observable accessor baseContent: string | null = null;
-    @observable accessor localContent: string | null = null;
-    @observable accessor remoteContent: string | null = null;
+    @observable private accessor _baseContent: string | null = null;
+    @observable private accessor _localContent: string | null = null;
+    @observable private accessor _remoteContent: string | null = null;
 
     // Current view mode
-    @observable accessor currentView: DiffViewMode | null = null;
+    @observable private accessor _currentView: DiffViewMode | null = null;
+    get currentView() { return this._currentView; }
+
+    @observable private accessor _showSinglePane = false;
+    get showSinglePane() { return this._showSinglePane; }
+
+    @observable private accessor _singlePaneLabel = '';
+    get singlePaneLabel() { return this._singlePaneLabel; }
+
+    @observable private accessor _showDiffPane = false;
+    get showDiffPane() { return this._showDiffPane; }
+
+    @observable private accessor _diffPaneLabel = '';
+    get diffPaneLabel() { return this._diffPaneLabel; }
 
     // Loading state
-    @observable accessor isLoading: boolean = false;
+    @observable private accessor _isLoading = false;
+    get isLoading() { return this._isLoading; }
 
     // Pane sizes (percentage for 3-way view)
     @observable accessor singlePaneHeight: number = 50;
 
-    readonly singleEditorRef = (current: HTMLDivElement) => {
-        if (current) {
-            this.initializeSingleEditor(current);
-        }
-        else {
-            this._singleEditor?.dispose();
-            this._singleEditor = null;
-        }
-    };
-    readonly diffEditorRef = (current: HTMLDivElement) => {
-        if (current) {
-            this.initializeDiffEditor(current);
-        }
-        else {
-            this._diffEditor?.dispose();
-            this._diffEditor = null;
-        }
-    };
+    readonly singleEditorRef = createRef<HTMLDivElement>();
+    readonly diffEditorRef = createRef<HTMLDivElement>();
 
     // Editor instances - managed by store
     private _singleEditor: monaco.editor.IStandaloneCodeEditor | null = null;
+    private _disposeSingleEditor() {
+        if (this._singleEditor) {
+            this._singleEditor.dispose();
+            this._singleEditor = null;
+        }
+    }
+    
     private _diffEditor: monaco.editor.IDiffEditor | null = null;
+    private _disposeDiffEditor() {
+        if (this._diffEditor) {
+            this._diffEditor.dispose();
+            this._diffEditor = null;
+        }
+    }
+    
     private _monacoDisposables: monaco.IDisposable[] = [];
-    private _reactionDisposers: (() => void)[] = [];
-
-    // Computed: whether to show single pane
-    @computed
-    get showSinglePane(): boolean {
-        if (!this.currentView) return false;
-        return this.currentView.startsWith('single-') || this.currentView === '3way';
-    }
-
-    // Computed: whether to show diff pane
-    @computed
-    get showDiffPane(): boolean {
-        if (!this.currentView) return false;
-        return this.currentView === 'base-local' ||
-            this.currentView === 'base-remote' ||
-            this.currentView === 'remote-local' ||
-            this.currentView === '3way';
-    }
 
     // Computed: content for single pane (read-only)
     @computed
@@ -78,11 +75,11 @@ export class S3SyncDiffStore extends EffectAwareModel {
         switch (this.currentView) {
             case 'single-base':
             case '3way':
-                return this.baseContent;
+                return this._baseContent;
             case 'single-local':
-                return this.localContent;
+                return this._localContent;
             case 'single-remote':
-                return this.remoteContent;
+                return this._remoteContent;
             default:
                 return null;
         }
@@ -94,10 +91,10 @@ export class S3SyncDiffStore extends EffectAwareModel {
         switch (this.currentView) {
             case 'base-local':
             case 'base-remote':
-                return this.baseContent;
+                return this._baseContent;
             case 'remote-local':
             case '3way':
-                return this.remoteContent;
+                return this._remoteContent;
             default:
                 return null;
         }
@@ -110,9 +107,9 @@ export class S3SyncDiffStore extends EffectAwareModel {
             case 'base-local':
             case 'remote-local':
             case '3way':
-                return this.localContent;
+                return this._localContent;
             case 'base-remote':
-                return this.remoteContent;
+                return this._remoteContent;
             default:
                 return null;
         }
@@ -128,159 +125,163 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
     @action
     async loadContent(item: FileSyncStatus | null) {
-        this.isLoading = true;
-        this.baseContent = null;
-        this.localContent = null;
-        this.remoteContent = null;
+        this._isLoading = true;
+        this._syncItem = item;
 
-        try {
-            // Load local content
-            if (item.local) {
-                try {
-                    const file = await item.local.handle.getFile();
-                    const content = await file.text();
-                    runInAction(() => { this.localContent = content; });
-                } catch (e) {
-                    console.error('Failed to load local content', e);
-                }
+        let baseContent: string | null = null;
+        let localContent: string | null = null;
+        let remoteContent: string | null = null;
+
+        if (item?.local) {
+            try {
+                const file = await item.local.handle.getFile();
+                localContent = await file.text();
+            } catch (e) {
+                console.error('Failed to load local content', e);
             }
-
-            // Load base content from .adoc-editor/s3/base directory
-            if (item.base) {
-                try {
-                    const baseContent = await this.loadBaseContent(item.base.key);
-                    runInAction(() => { this.baseContent = baseContent; });
-                } catch (e) {
-                    console.error('Failed to load base content', e);
-                }
-            }
-
-            // Load remote content from S3 (now passes full record for versioned fetch)
-            if (item.remote) {
-                try {
-                    const remoteContent = await this._syncStore.s3Store.getObjectContent(this._syncStore.directoryNode.handle, item.remote);
-                    runInAction(() => { this.remoteContent = remoteContent; });
-                } catch (e) {
-                    console.error('Failed to load remote content', e);
-                }
-            }
-
-            // Set default view based on available content
-            runInAction(() => {
-                const views = item.availableDiffViews;
-                if (views.length > 0) {
-                    if (views.includes('3way')) {
-                        this.currentView = '3way';
-                    } else if (views.includes('remote-local')) {
-                        this.currentView = 'remote-local';
-                    } else if (views.includes('base-local')) {
-                        this.currentView = 'base-local';
-                    } else if (views.includes('base-remote')) {
-                        this.currentView = 'base-remote';
-                    } else {
-                        this.currentView = views[0] as DiffViewMode;
-                    }
-                } else {
-                    this.currentView = null;
-                }
-            });
-        } finally {
-            runInAction(() => { this.isLoading = false; });
         }
+
+        if (item?.base) {
+            try {
+                baseContent = await this.loadBaseContent(item.base.key);
+            } catch (e) {
+                console.error('Failed to load base content', e);
+            }
+        }
+
+        if (item?.remote) {
+            try {
+                remoteContent = await this._syncStore.s3Store.getObjectContent(this._syncStore.directoryNode.handle, item.remote, { cachedOnly: true });
+            } catch (e) {
+                console.error('Failed to load remote content', e);
+            }
+        }
+
+        runInAction(() => {
+            this._baseContent = baseContent;
+            this._localContent = localContent;
+            this._remoteContent = remoteContent;
+            this._isLoading = false;
+            if (item) {
+                this.setView(item.availableDiffViews[0]);
+            }
+        });
     }
 
-    /**
-     * Initialize editors with container refs. Called from component.
-     */
     @action.bound
-    initializeSingleEditor(container: HTMLDivElement) {
-        if (this._singleEditor) return;
+    initializeSingleEditor() {
+        if (!this._syncItem || !this.singleEditorRef.current) return;
 
-        this._singleEditor = monaco.editor.create(container, {
-            value: '',
-            readOnly: true,
+        let value;
+        let langId;
+        if (this._currentView === '3way' || this._currentView === 'single-base') {
+            value = this._baseContent;
+            langId = langIdFromFileName(this._syncItem.base!.key);
+        }
+        else if (this._currentView === 'single-local') {
+            value = this._localContent;
+            langId = langIdFromFileName(this._syncItem.local!.key);
+        }
+        else if (this._currentView === 'single-remote') {
+            value = this._remoteContent;
+            langId = langIdFromFileName(this._syncItem.remote!.key);
+        }
+        else {
+            value = null;
+            langId = 'plaintext';
+        }
+        this._singleEditor = monaco.editor.create(this.singleEditorRef.current, {
+            value: value ?? '',
+            language: langId,
+            readOnly: this._currentView !== 'single-local',
             automaticLayout: true,
             minimap: { enabled: false },
-            scrollBeyondLastLine: false,
+            wordWrap: 'on'
         });
-
-        // React to content changes
-        this._reactionDisposers.push(
-            reaction(
-                () => this.singlePaneContent,
-                (content) => {
-                    if (this._singleEditor && this.showSinglePane) {
-                        this._singleEditor.setValue(content || '');
-                    }
-                },
-                { fireImmediately: true }
-            )
-        );
     }
 
     @action.bound
-    initializeDiffEditor(container: HTMLDivElement) {
-        if (this._diffEditor) return;
+    initializeDiffEditor() {
+        if (!this.syncItem || !this.diffEditorRef.current) return;
 
-        this._diffEditor = monaco.editor.createDiffEditor(container, {
+        let originalContent;
+        let modifiedContent;
+        let langId;
+        if (this._currentView === '3way' || this._currentView === 'remote-local') {
+            originalContent = this._remoteContent;
+            modifiedContent = this._localContent;
+            langId = langIdFromFileName(this.syncItem.local?.handle.name ?? '');
+        }
+        else if (this._currentView === 'base-local') {
+            originalContent = this._baseContent;
+            modifiedContent = this._localContent;
+            langId = langIdFromFileName(this.syncItem.local?.handle.name ?? '');
+        }
+        else if (this._currentView === 'base-remote') {
+            originalContent = this._baseContent;
+            modifiedContent = this._remoteContent;
+            langId = langIdFromFileName(this.syncItem.remote?.key ?? '');
+        }
+        else {
+            return;
+        }
+
+        const originalModel = monaco.editor.createModel(originalContent!, langId);
+        const modifiedModel = monaco.editor.createModel(modifiedContent!, langId);
+
+        this._diffEditor = monaco.editor.createDiffEditor(this.diffEditorRef.current, {
+            readOnly: this._currentView !== '3way' && !this._currentView?.endsWith('-local'),
             automaticLayout: true,
-            readOnly: false,
             renderSideBySide: true,
             originalEditable: false,
+            wordWrap: 'on'
         });
-
-        // React to content changes
-        this._reactionDisposers.push(
-            reaction(
-                () => ({
-                    original: this.diffOriginalContent,
-                    modified: this.diffModifiedContent,
-                    editable: this.isDiffModifiedEditable,
-                    show: this.showDiffPane,
-                }),
-                ({ original, modified, editable, show }) => {
-                    if (this._diffEditor && show) {
-                        const originalModel = monaco.editor.createModel(original || '', 'plaintext');
-                        const modifiedModel = monaco.editor.createModel(modified || '', 'plaintext');
-
-                        this._diffEditor.setModel({
-                            original: originalModel,
-                            modified: modifiedModel,
-                        });
-
-                        const modifiedEditor = this._diffEditor.getModifiedEditor();
-                        modifiedEditor.updateOptions({ readOnly: !editable });
-
-                        // Listen for changes to sync back
-                        if (editable) {
-                            const disposable = modifiedEditor.onDidChangeModelContent(() => {
-                                this.updateLocalContent(modifiedEditor.getValue());
-                            });
-                            // Store for cleanup on next update
-                            this._monacoDisposables.push(disposable);
-                        }
-                    }
-                },
-                { fireImmediately: true }
-            )
-        );
+        this._diffEditor.setModel({
+            original: originalModel,
+            modified: modifiedModel,
+        });
     }
 
     @action.bound
     dispose() {
-        this._reactionDisposers.forEach(d => d());
-        this._reactionDisposers = [];
         this._monacoDisposables.forEach(d => d.dispose());
         this._monacoDisposables = [];
-        this._singleEditor?.dispose();
-        this._singleEditor = null;
-        this._diffEditor?.dispose();
-        this._diffEditor = null;
+        this._disposeSingleEditor();
+        this._disposeDiffEditor();
     }
 
     @action.bound
     setView(mode: DiffViewMode) {
-        this.currentView = mode;
+        this._currentView = mode;
+        this._showSinglePane = mode.startsWith('single-') || mode === '3way';
+        if (mode.startsWith('single-')) {
+            this._showSinglePane = true;
+            this._showDiffPane = false;
+            this._singlePaneLabel = mode.substring('single-'.length);
+            this._diffPaneLabel = '';
+        }
+        else if (mode === '3way') {
+            this._showSinglePane = true;
+            this._showDiffPane = true;
+            this._singlePaneLabel = 'base';
+            this._diffPaneLabel = 'remote-local';
+        }
+        else {
+            this._showSinglePane = false;
+            this._showDiffPane = true;
+            this._singlePaneLabel = '';
+            this._diffPaneLabel = mode;
+        }
+        this.scheduleEffect(() => {
+            this._disposeSingleEditor();
+            this._disposeDiffEditor();
+            if (this.showSinglePane) {
+                this.initializeSingleEditor();
+            }
+            if (this.showDiffPane) {
+                this.initializeDiffEditor();
+            }
+        });
     }
 
     @action.bound
@@ -290,7 +291,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
     @action.bound
     updateLocalContent(content: string) {
-        this.localContent = content;
+        this._localContent = content;
     }
 
     /**
@@ -308,7 +309,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
         try {
             // Try to get the file handle from the root directory
-            const handle = await this.getFileHandle(rootNode.handle, basePath);
+            const handle = await getFileHandle(rootNode.handle, basePath);
             if (handle) {
                 const file = await handle.getFile();
                 return await file.text();
@@ -317,27 +318,5 @@ export class S3SyncDiffStore extends EffectAwareModel {
             console.error(`Failed to load base content for ${basePath}`, e);
         }
         return null;
-    }
-
-    /**
-     * Navigate to a file by path and get its handle
-     */
-    private async getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
-        const parts = path.split('/').filter(p => p.length > 0);
-        let currentDir = rootHandle;
-
-        for (let i = 0; i < parts.length - 1; i++) {
-            try {
-                currentDir = await currentDir.getDirectoryHandle(parts[i]);
-            } catch {
-                return null;
-            }
-        }
-
-        try {
-            return await currentDir.getFileHandle(parts[parts.length - 1]);
-        } catch {
-            return null;
-        }
     }
 }

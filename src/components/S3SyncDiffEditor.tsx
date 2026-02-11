@@ -4,6 +4,7 @@ import { S3SyncInfoBar } from './S3SyncInfoBar';
 import { ResizeHandle } from './ResizeHandle';
 import * as styles from './S3SyncDiffEditor.css';
 import { S3SyncDiffStore } from '../store/S3SyncDiffStore';
+import { useScheduledEffects } from '../hooks/useScheduledEffects';
 
 export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -16,18 +17,7 @@ export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }
     useEffect(() => {
         return () => store.dispose();
     }, [store]);
-
-    // No selection
-    if (!showSinglePane && !showDiffPane) {
-        return (
-            <div className={styles.container} data-testid="s3sync-diff-editor">
-                <div className={styles.placeholder}>
-                    <i className={`fa-solid fa-code-compare ${styles.placeholderIcon}`} />
-                    <span>Select a file to view diff</span>
-                </div>
-            </div>
-        );
-    }
+    useScheduledEffects(store);
 
     // Loading
     if (isLoading) {
@@ -36,6 +26,18 @@ export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }
                 <div className={styles.loadingState}>
                     <i className="fa-solid fa-spinner fa-spin" />
                     <span>Loading content...</span>
+                </div>
+            </div>
+        );
+    }
+
+    // No selection
+    if (!showSinglePane && !showDiffPane) {
+        return (
+            <div className={styles.container} data-testid="s3sync-diff-editor">
+                <div className={styles.placeholder}>
+                    <i className={`fa-solid fa-code-compare ${styles.placeholderIcon}`} />
+                    <span>Select a file to view diff</span>
                 </div>
             </div>
         );
@@ -55,9 +57,9 @@ export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }
             {showSinglePane &&
                 <div
                     className={styles.singlePane}
-                    style={{ height: `${store.singlePaneHeight}%`, flexShrink: 0 }}
+                    style={{ height: showDiffPane ? `${store.singlePaneHeight}%` : undefined, flexGrow: showDiffPane ? undefined : 1, flexShrink: 0 }}
                 >
-                    <span className={styles.paneLabel}>Base</span>
+                    <span className={styles.paneLabel}>{store.singlePaneLabel}</span>
                     <div ref={store.singleEditorRef} style={{ width: '100%', height: '100%' }} />
                 </div>
             }
@@ -66,7 +68,7 @@ export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }
             }
             {showDiffPane &&
                 <div className={styles.diffPane} style={{ flex: 1 }}>
-                    <span className={styles.paneLabel}>Remote ↔ Local</span>
+                    <span className={styles.paneLabel}>{store.diffPaneLabel}</span>
                     <div ref={store.diffEditorRef} style={{ width: '100%', height: '100%' }} />
                 </div>
             }

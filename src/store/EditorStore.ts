@@ -21,6 +21,54 @@ Click the "Help" icon in the title bar to see this message again.
 `;
 // MARKER: WELCOME_CONTENT_END
 
+// Basic mapping for common types
+const extToLanguage: Record<string, string> = {
+    '.js': 'javascript',
+    '.ts': 'typescript',
+    '.jsx': 'javascript',
+    '.tsx': 'typescript',
+    '.html': 'html',
+    '.css': 'css',
+    '.json': 'json',
+    '.md': 'markdown',
+    '.adoc': 'asciidoc',
+    '.xml': 'xml',
+    '.py': 'python',
+    '.java': 'java',
+    '.c': 'c',
+    '.cpp': 'cpp',
+    '.go': 'go',
+    '.rs': 'rust',
+    '.sql': 'sql',
+    '.sh': 'shell',
+    '.yaml': 'yaml',
+    '.yml': 'yaml',
+    '.toml': 'toml'
+};
+
+export function langIdFromFileName(filename: string) {
+    const di = filename.lastIndexOf('.');
+    const ext = di >= 0 ? filename.substring(di) : '';
+
+    // Monaco's setModelLanguage needs an ID.
+    let langId = extToLanguage[ext];
+
+    if (!langId) {
+        // Fallback: try to find in registered languages
+        const languages = monaco.languages.getLanguages();
+        for (const lang of languages) {
+            if (lang.extensions?.includes(ext)) {
+                langId = lang.id;
+                break;
+            }
+        }
+    }
+    if (!langId) {
+        langId = 'plaintext';
+    }
+    return langId;
+}
+
 export class EditorStore {
 
     constructor() { }
@@ -84,55 +132,6 @@ export class EditorStore {
 
     get availableLanguages() {
         return monaco.languages.getLanguages();
-    }
-
-    @action
-    setLanguage(extensionOrFilename: string) {
-        if (!this._editor) return;
-
-        // Monaco's setModelLanguage needs an ID.
-        let langId = 'plaintext';
-        const ext = extensionOrFilename.startsWith('.') ? extensionOrFilename : '.' + extensionOrFilename;
-
-        // Basic mapping for common types
-        const map: Record<string, string> = {
-            '.js': 'javascript',
-            '.ts': 'typescript',
-            '.jsx': 'javascript',
-            '.tsx': 'typescript',
-            '.html': 'html',
-            '.css': 'css',
-            '.json': 'json',
-            '.md': 'markdown',
-            '.adoc': 'asciidoc',
-            '.xml': 'xml',
-            '.py': 'python',
-            '.java': 'java',
-            '.c': 'c',
-            '.cpp': 'cpp',
-            '.go': 'go',
-            '.rs': 'rust',
-            '.sql': 'sql',
-            '.sh': 'shell',
-            '.yaml': 'yaml',
-            '.yml': 'yaml',
-            '.toml': 'toml'
-        };
-
-        if (map[ext]) {
-            langId = map[ext];
-        } else {
-            // Fallback: try to find in registered languages
-            const languages = monaco.languages.getLanguages();
-            for (const lang of languages) {
-                if (lang.extensions?.includes(ext)) {
-                    langId = lang.id;
-                    break;
-                }
-            }
-        }
-
-        this.setLanguageId(langId);
     }
 
     @action

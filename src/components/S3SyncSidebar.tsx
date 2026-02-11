@@ -1,5 +1,5 @@
 import { observer } from 'mobx-react-lite';
-import { FileSyncStatus, FileStatus, SyncAction } from '../store/S3SyncLogic';
+import { FileSyncStatus, FileStatus, SyncContentAction } from '../store/S3SyncLogic';
 import { S3SyncStore } from '../store/S3SyncStore';
 import * as styles from './S3SyncSidebar.css';
 
@@ -44,16 +44,16 @@ function getStatusIcon(item: FileSyncStatus): { icon: string; className: string;
 }
 
 function getActionLabel(item: FileSyncStatus): string | null {
-    if (item.recommendedContentAction === SyncAction.CopyLocalToRemote) {
+    if (item.recommendedContentAction === SyncContentAction.CopyLocalToRemote) {
         return '↑ Upload';
     }
-    if (item.recommendedContentAction === SyncAction.CopyRemoteToLocal) {
+    if (item.recommendedContentAction === SyncContentAction.CopyRemoteToLocal) {
         return '↓ Download';
     }
-    if (item.recommendedContentAction === SyncAction.DeleteLocal) {
+    if (item.recommendedContentAction === SyncContentAction.DeleteLocal) {
         return '× Delete Local';
     }
-    if (item.recommendedContentAction === SyncAction.DeleteRemote) {
+    if (item.recommendedContentAction === SyncContentAction.DeleteRemote) {
         return '× Delete Remote';
     }
     return null;

@@ -1,7 +1,7 @@
 import { observable, action, runInAction, computed } from "mobx";
 import { get as getDbValue, set as setDbValue, clear as clearAllDbValues } from 'idb-keyval';
 import { Fzf } from 'fzf';
-import { editorStore } from './EditorStore';
+import { editorStore, langIdFromFileName } from './EditorStore';
 import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
@@ -1138,8 +1138,7 @@ class FileSystemStore extends EffectAwareModel {
                         this.loadFileInEditor(node, content);
 
                         // Detect and set language
-                        const ext = file.name.split('.').pop()?.toLowerCase() || '';
-                        editorStore.setLanguage(ext);
+                        editorStore.setLanguageId(langIdFromFileName(file.name));
                     }
                     this.startAutoSave();
                 }
@@ -1280,8 +1279,7 @@ class FileSystemStore extends EffectAwareModel {
             content = await file.text();
 
             // Detect language
-            const ext = file.name.split('.').pop()?.toLowerCase() || '';
-            editorStore.setLanguage(ext);
+            editorStore.setLanguageId(langIdFromFileName(file.name));
 
         } catch (e) {
             console.error('Failed to read file:', e);

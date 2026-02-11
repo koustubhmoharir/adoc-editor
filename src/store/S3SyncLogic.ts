@@ -89,39 +89,20 @@ async function getOrCreateDirectory(dir: FileSystemDirectoryHandle, ...dirNames:
     return dir;
 }
 
-export async function getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
+export async function getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string, options?: {create?: boolean}): Promise<FileSystemFileHandle | null> {
     const parts = path.split('/').filter(p => p.length > 0);
     let currentDir = rootHandle;
-
+    const createOptions = { create: options?.create ?? false };
     for (let i = 0; i < parts.length - 1; i++) {
         try {
-            currentDir = await currentDir.getDirectoryHandle(parts[i]);
+            currentDir = await currentDir.getDirectoryHandle(parts[i], createOptions);
         } catch {
             return null;
         }
     }
 
     try {
-        return await currentDir.getFileHandle(parts[parts.length - 1]);
-    } catch {
-        return null;
-    }
-}
-
-export async function createFileHandle(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
-    const parts = path.split('/').filter(p => p.length > 0);
-    let currentDir = rootHandle;
-
-    for (let i = 0; i < parts.length - 1; i++) {
-        try {
-            currentDir = await currentDir.getDirectoryHandle(parts[i], { create: true });
-        } catch {
-            return null;
-        }
-    }
-
-    try {
-        return await currentDir.getFileHandle(parts[parts.length - 1], { create: true });
+        return await currentDir.getFileHandle(parts[parts.length - 1], createOptions);
     } catch {
         return null;
     }
@@ -570,21 +551,21 @@ async function matchRecords(
 
     // baseRemoteMap and baseLocalMap must have the same keys
     for (const baseRecord of baseRemoteMap.keys()) {
-        statusItems.push(await FileSyncStatus.create(baseRecord, baseLocalMap.get(baseRecord) ?? null, baseRemoteMap.get(baseRecord) ?? null));
+        statusItems.push(await FileSyncStatus.create(baseRecord, baseLocalMap.get(baseRecord) ?? null, baseRemoteMap.get(baseRecord) ?? null, s3Prefix));
     }
 
     const localOnlyByKey = new Map(localOnlyRecords.map(r => [r.key, r]));
     const remoteOnlyByKey = new Map(remoteOnlyRecords.map(r => [r.key, r]));
     for (const key of new Set(localOnlyByKey.keys()).intersection(remoteOnlyByKey)) {
-        statusItems.push(await FileSyncStatus.create(null, localOnlyByKey.get(key)!, remoteOnlyByKey.get(key)!));
+        statusItems.push(await FileSyncStatus.create(null, localOnlyByKey.get(key)!, remoteOnlyByKey.get(key)!, s3Prefix));
         localOnlyByKey.delete(key);
         remoteOnlyByKey.delete(key);
     }
     for (const r of localOnlyByKey.values()) {
-        statusItems.push(await FileSyncStatus.create(null, r, null));
+        statusItems.push(await FileSyncStatus.create(null, r, null, s3Prefix));
     }
     for (const r of remoteOnlyByKey.values()) {
-        statusItems.push(await FileSyncStatus.create(null, null, r));
+        statusItems.push(await FileSyncStatus.create(null, null, r, s3Prefix));
     }
 
     return statusItems;
@@ -627,6 +608,7 @@ export async function scanAndCalculateStatus(rootNode: DirNodeLike, s3Client: S3
 }
 
 export enum FileStatus {
+    None = "None",
     Unchanged = "Unchanged",
     Changed = "Changed",
     Reverted = "Reverted",
@@ -635,12 +617,28 @@ export enum FileStatus {
     Unknown = "Unknown"
 }
 
-export enum SyncAction {
+export enum SyncPathAction {
+    None = "None",
+    UseLocalPath = "UseLocalPath",
+    UseRemotePath = "UseRemotePath",
+}
+
+export enum SyncContentAction {
     None = "None",
     CopyLocalToRemote = "CopyLocalToRemote",
     CopyRemoteToLocal = "CopyRemoteToLocal",
     DeleteRemote = "DeleteRemote",
     DeleteLocal = "DeleteLocal",
+}
+
+function directoryPath(path: string): string {
+    const lastSlash = path.lastIndexOf('/');
+    return lastSlash >= 0 ? path.substring(0, lastSlash) : '';
+}
+
+function fileName(path: string): string {
+    const lastSlash = path.lastIndexOf('/');
+    return lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
 }
 
 export type DiffViewMode = 'base-local' | 'base-remote' | 'remote-local' | '3way' | 'single-base' | 'single-local' | 'single-remote';
@@ -651,9 +649,9 @@ export class FileSyncStatus {
         this.local = local;
         this.remote = remote;
     }
-    static async create(base: BaseVersionRecord | null, local: LocalFileRecord | null, remote: S3VersionRecord | null) {
+    static async create(base: BaseVersionRecord | null, local: LocalFileRecord | null, remote: S3VersionRecord | null, prefix: string) {
         const item = new FileSyncStatus(base, local, remote);
-        await item.calculateStatus();
+        await item.calculateStatus(prefix);
         return item;
     }
 
@@ -661,15 +659,21 @@ export class FileSyncStatus {
     readonly local: LocalFileRecord | null;
     readonly remote: S3VersionRecord | null;
 
-    localStatus: FileStatus = FileStatus.Unknown;
-    remoteStatus: FileStatus = FileStatus.Unknown;
-    localMoved: boolean = false;
-    remoteMoved: boolean = false;
+    localStatus: FileStatus = FileStatus.None;
+    remoteStatus: FileStatus = FileStatus.None;
+
+    private _localMoveDesc = '';
+    get localMoveDesc() { return this._localMoveDesc; }
+    get localMoved() { return !!this._localMoveDesc; }
+    
+    private _remoteMoveDesc = '';
+    get remoteMoveDesc() { return this._remoteMoveDesc; }
+    get remoteMoved() { return !!this._remoteMoveDesc; }
 
     availableDiffViews: DiffViewMode[] = [];
 
-    recommendedPathAction: SyncAction = SyncAction.None;
-    recommendedContentAction: SyncAction = SyncAction.None;
+    recommendedPathAction: SyncPathAction = SyncPathAction.None;
+    recommendedContentAction: SyncContentAction = SyncContentAction.None;
     isPathConflict: boolean = false;
     isContentConflict: boolean = false;
     isWarning: boolean = false;
@@ -688,8 +692,7 @@ export class FileSyncStatus {
      */
     fileName(prefix: string): string {
         const relPath = this.relativePath(prefix);
-        const lastSlash = relPath.lastIndexOf('/');
-        return lastSlash >= 0 ? relPath.substring(lastSlash + 1) : relPath;
+        return fileName(relPath);
     }
 
     /**
@@ -698,15 +701,28 @@ export class FileSyncStatus {
      */
     directoryPath(prefix: string): string {
         const relPath = this.relativePath(prefix);
-        const lastSlash = relPath.lastIndexOf('/');
-        return lastSlash >= 0 ? relPath.substring(0, lastSlash) : '';
+        return directoryPath(relPath);
     }
 
-    private async calculateStatus() {
+    private async calculateStatus(prefix: string) {
         // Remote Status
         if (this.base && this.remote) {
             if (this.base.key !== this.remote.key) {
-                this.remoteMoved = true;
+                const basePath = this.base.key.substring(prefix.length);
+                const remotePath = this.remote.key.substring(prefix.length);
+                const baseDirPath = directoryPath(basePath);
+                const remoteDirPath = directoryPath(remotePath);
+                const baseFileName = fileName(basePath);
+                const remoteFileName = fileName(remotePath);
+                if (baseDirPath === remoteDirPath) {
+                    this._remoteMoveDesc = `Renamed from ${baseFileName} to ${remoteFileName}`;
+                }
+                else if (baseFileName === remoteFileName) {
+                    this._remoteMoveDesc = `Moved from ${baseDirPath} to ${remoteDirPath}`;
+                }
+                else {
+                    this._remoteMoveDesc = `Moved from ${basePath} to ${remotePath}`;
+                }
             }
 
             const isShaMatch = this.base.sha256 && this.remote.sha256 && this.base.sha256 === this.remote.sha256;
@@ -733,7 +749,21 @@ export class FileSyncStatus {
         // Local Status
         if (this.base && this.local) {
             if (this.base.key !== this.local.key) {
-                this.localMoved = true;
+                const basePath = this.base.key.substring(prefix.length);
+                const localPath = this.local.key.substring(prefix.length);
+                const baseDirPath = directoryPath(basePath);
+                const localDirPath = directoryPath(localPath);
+                const baseFileName = fileName(basePath);
+                const localFileName = fileName(localPath);
+                if (baseDirPath === localDirPath) {
+                    this._localMoveDesc = `Renamed from ${baseFileName} to ${localFileName}`;
+                }
+                else if (baseFileName === localFileName) {
+                    this._localMoveDesc = `Moved from ${baseDirPath} to ${localDirPath}`;
+                }
+                else {
+                    this._localMoveDesc = `Moved from ${basePath} to ${localPath}`;
+                }
             }
             let changed: boolean;
             if (this.local.sha256) {
@@ -781,8 +811,8 @@ export class FileSyncStatus {
     }
 
     private calculateAction() {
-        this.recommendedPathAction = SyncAction.None;
-        this.recommendedContentAction = SyncAction.None;
+        this.recommendedPathAction = SyncPathAction.None;
+        this.recommendedContentAction = SyncContentAction.None;
         this.isPathConflict = false;
         this.isContentConflict = false;
         this.isWarning = false;
@@ -795,9 +825,9 @@ export class FileSyncStatus {
         if (this.localMoved && this.remoteMoved) {
             this.isPathConflict = true;
         } else if (this.localMoved) {
-            this.recommendedPathAction = SyncAction.CopyLocalToRemote;
+            this.recommendedPathAction = SyncPathAction.UseLocalPath;
         } else if (this.remoteMoved) {
-            this.recommendedPathAction = SyncAction.CopyRemoteToLocal;
+            this.recommendedPathAction = SyncPathAction.UseRemotePath;
         }
 
         // Content Actions
@@ -808,16 +838,16 @@ export class FileSyncStatus {
             if (this.local) {
                 if (this.remote) {
                     if (ls === FileStatus.Unchanged && rs === FileStatus.Unchanged) {
-                        this.recommendedContentAction = SyncAction.None;
+                        this.recommendedContentAction = SyncContentAction.None;
                         preferredView = 'single-local';
                     } else if (ls === FileStatus.Unchanged && rs === FileStatus.Changed) {
-                        this.recommendedContentAction = SyncAction.CopyRemoteToLocal;
+                        this.recommendedContentAction = SyncContentAction.CopyRemoteToLocal;
                         preferredView = 'base-remote';
                     } else if (ls === FileStatus.Changed && rs === FileStatus.Unchanged) {
-                        this.recommendedContentAction = SyncAction.CopyLocalToRemote;
+                        this.recommendedContentAction = SyncContentAction.CopyLocalToRemote;
                         preferredView = 'base-local';
                     } else if (ls === FileStatus.Unchanged && rs === FileStatus.Reverted) {
-                        this.recommendedContentAction = SyncAction.CopyRemoteToLocal;
+                        this.recommendedContentAction = SyncContentAction.CopyRemoteToLocal;
                         this.isWarning = true;
                         preferredView = 'base-remote';
                     } else if (ls === FileStatus.Unchanged && rs === FileStatus.Unknown) {
@@ -834,7 +864,7 @@ export class FileSyncStatus {
                         // Remote: Deleted (implied). 
                         // Doc: Use Local OR Use Remote (default), Warning.
                         // "Use Remote" => Delete Local.
-                        this.recommendedContentAction = SyncAction.DeleteLocal;
+                        this.recommendedContentAction = SyncContentAction.DeleteLocal;
                         this.isWarning = true;
                         preferredView = 'single-local';
                     } else {
@@ -850,7 +880,7 @@ export class FileSyncStatus {
                     // Local: Deleted
                     // Doc: Use Local (default) OR Use Remote, Warning
                     // "Use Local" => Delete Remote.
-                    this.recommendedContentAction = SyncAction.DeleteRemote;
+                    this.recommendedContentAction = SyncContentAction.DeleteRemote;
                     this.isWarning = true;
                     preferredView = 'single-base';
                 } else {
@@ -861,7 +891,7 @@ export class FileSyncStatus {
             } else {
                 // (base, null local, null remote)
                 // Both deleted
-                this.recommendedContentAction = SyncAction.None;
+                this.recommendedContentAction = SyncContentAction.None;
                 preferredView = 'single-base';
             }
         } else if (this.local) {
@@ -871,12 +901,12 @@ export class FileSyncStatus {
                 preferredView = 'remote-local';
             } else {
                 // New Local
-                this.recommendedContentAction = SyncAction.CopyLocalToRemote;
+                this.recommendedContentAction = SyncContentAction.CopyLocalToRemote;
                 preferredView = 'single-local';
             }
         } else if (this.remote) {
             // New Remote
-            this.recommendedContentAction = SyncAction.CopyRemoteToLocal;
+            this.recommendedContentAction = SyncContentAction.CopyRemoteToLocal;
             preferredView = 'single-remote';
         }
 

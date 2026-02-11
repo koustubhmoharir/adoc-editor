@@ -27,10 +27,6 @@ export const statusValue = style({
     color: vars.color.text,
 });
 
-export const spacer = style({
-    flex: 1,
-});
-
 export const viewButton = style({
     display: 'flex',
     alignItems: 'center',

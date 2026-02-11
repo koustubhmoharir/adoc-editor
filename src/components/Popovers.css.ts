@@ -17,7 +17,7 @@ export const container = style({
     // @ts-ignore
     positionArea: "bottom span-right",
     // @ts-ignore
-    positionTryFallbacks: "flip-block flip-inline",
+    positionTryFallbacks: "flip-block, flip-inline, flip-block flip-inline",
     margin: 0,
     // Fallback or basic positioning if anchor fails (though we use popover)
     // Popover API handles top layer, but positioning needs anchor
