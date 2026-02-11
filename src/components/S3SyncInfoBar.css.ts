@@ -72,3 +72,17 @@ export const emptyState = style({
     color: vars.color.textSecondary,
     fontStyle: 'italic',
 });
+
+export const actionButton = style({
+    padding: '4px 8px',
+    backgroundColor: vars.color.background, // fallback for now
+    color: vars.color.text,
+    border: `1px solid ${vars.color.border}`,
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    marginLeft: '8px',
+    ':hover': {
+        backgroundColor: vars.color.hoverBackground,
+    }
+});

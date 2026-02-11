@@ -61,20 +61,20 @@ export const S3SyncInfoBar = observer(({ store }: { store: S3SyncDiffStore; }) =
                     <span className={styles.statusLabel}>Local:</span>
                     <span className={styles.statusValue}>{getStatusLabel(syncItem.localStatus)}</span>
                     {syncItem.localStatus === FileStatus.New ?
-                        <button>Delete</button> : null
+                        <button className={styles.actionButton} onClick={() => store.syncStore.deleteLocalFile(syncItem)}>Delete</button> : null
                     }
                     {syncItem.localStatus === FileStatus.Deleted ?
-                        <button>Restore</button> : null
+                        <button className={styles.actionButton} onClick={() => store.syncStore.restoreLocalFile(syncItem)}>Restore</button> : null
                     }
                     {syncItem.localStatus === FileStatus.Changed ?
-                        <button>Revert</button> : null
+                        <button className={styles.actionButton} onClick={() => store.syncStore.revertLocalFile(syncItem)}>Revert</button> : null
                     }
                     {syncItem.localMoved ?
                         <>
                             <span>{syncItem.localMoveDesc}</span>
-                            <button>Undo</button>
+                            <button className={styles.actionButton} onClick={() => store.syncStore.undoLocalMove(syncItem)}>Undo</button>
                         </>
-                    : null
+                        : null
                     }
                 </div>
                 : null
@@ -83,7 +83,7 @@ export const S3SyncInfoBar = observer(({ store }: { store: S3SyncDiffStore; }) =
                 <div className={styles.statusGroup}>
                     <span className={styles.statusLabel}>Remote:</span>
                     <span className={styles.statusValue}>{getStatusLabel(syncItem.remoteStatus)}</span>
-                    {syncItem.remoteMoved?
+                    {syncItem.remoteMoved ?
                         <span>{syncItem.remoteMoveDesc}</span>
                         : null
                     }

@@ -14,6 +14,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
     }
 
     private readonly _syncStore: S3SyncStore;
+    get syncStore() { return this._syncStore; }
     get prefix() { return this._syncStore.s3Store.settings.prefix; }
 
     @observable private accessor _syncItem: FileSyncStatus | null = null;
@@ -58,7 +59,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
             this._singleEditor = null;
         }
     }
-    
+
     private _diffEditor: monaco.editor.IDiffEditor | null = null;
     private _disposeDiffEditor() {
         if (this._diffEditor) {
@@ -66,7 +67,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
             this._diffEditor = null;
         }
     }
-    
+
     private _monacoDisposables: monaco.IDisposable[] = [];
 
     // Computed: content for single pane (read-only)

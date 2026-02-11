@@ -74,22 +74,25 @@ function pathToDirAndFileName(path: string) {
     return ['', path];
 }
 
-async function getOrCreateDirectory(dir: FileSystemDirectoryHandle, ...dirNames: string[]) {
-    let path = ''
+export async function getDirectoryHandle(dir: FileSystemDirectoryHandle, path: string, options?: {create?: boolean}) {
+    if (!path) return dir;
+    let curPath = ''
+    const dirNames = path.split('/').filter(Boolean);
+    const createOptions = { create: options?.create ?? false };
     for (const name of dirNames) {
         try {
-            dir = await dir.getDirectoryHandle(name, { create: true });
-            path += `${name}/`;
+            dir = await dir.getDirectoryHandle(name, createOptions);
+            curPath += `${name}/`;
         }
         catch {
-            console.error(`Could not get or create directory ${name} at ${path}`);
+            console.error(`Could not get or create directory ${name} at ${curPath}`);
             return undefined;
         }
     }
     return dir;
 }
 
-export async function getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string, options?: {create?: boolean}): Promise<FileSystemFileHandle | null> {
+export async function getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string, options?: { create?: boolean }): Promise<FileSystemFileHandle | null> {
     const parts = path.split('/').filter(p => p.length > 0);
     let currentDir = rootHandle;
     const createOptions = { create: options?.create ?? false };
@@ -126,31 +129,7 @@ async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<
     const filesByPath = new Map<string, LocalFileRecord>();
 
     const scan = async (dirNode: DirNodeLike, currentPath: string) => {
-        // map of file name to uuids
-        // this is created with a null prototype to avoid surprises when accessing entries.
-        const uuids: Record<string, string> = Object.create(null);
-        try {
-            // TODO: protect with lock
-            const s3Dir = await dirNode.handle.getDirectoryHandle('.s3');
-            let count = 0;
-            try {
-                for await (const entry of s3Dir.values()) {
-                    if (entry.kind !== 'file') continue;
-                    count++;
-                    if (entry.name.startsWith('uuids.') && entry.name.endsWith('.json')) {
-                        try {
-                            const file = await entry.getFile();
-                            const text = await file.text();
-                            Object.assign(uuids, JSON.parse(text));
-                        }
-                        catch { }
-                    }
-                }
-            }
-            catch { }
-            // TODO: If count is greater than one, combine files into a single file
-        }
-        catch { }
+        const uuids = await readUuids(dirNode.handle);
         // 1. Unconditionally check for .adoc-editor/ignore.toml in this directory (on disk)
         try {
             const configDir = await dirNode.handle.getDirectoryHandle('.adoc-editor');
@@ -205,6 +184,122 @@ async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<
     await scan(rootNode, '');
     return filesByPath;
 }
+
+/**
+ * Returns a hash of file names to uuids for files within the directory by reading .s3/uuids.*.json files
+ */
+async function readUuids(dirHandle: FileSystemDirectoryHandle) {
+    return await updateDirectoryUuidMap(dirHandle, {}); // Reuse the reading, combining logic in this function
+}
+
+
+/**
+ * Updates the uuid map for a directory by reading all uuids.*.json files, merging them, applying changes,
+ * and writing a single new uuids.<uuid>.json file. Old files are deleted.
+ * @param dirHandle Handle to the directory containing the files (not the .s3 directory itself)
+ * @param changes Map of filename to uuid. If uuid is null, the entry is removed.
+ */
+export async function updateDirectoryUuidMap(dirHandle: FileSystemDirectoryHandle, changes: Record<string, string | null>) {
+    const changesEntries = Object.entries(changes);
+    
+    // object is created with a null prototype to avoid surprises when accessing entries.
+    const uuids: Record<string, string> = Object.create(null);
+
+    let s3Dir;
+    try {
+        s3Dir = await dirHandle.getDirectoryHandle('.s3', { create: changesEntries.length > 0 });
+    }
+    catch { }
+    if (!s3Dir) return uuids;
+
+    // 1. Read existing UUIDs
+    const filesToDelete: string[] = [];
+
+    // TODO: protect with lock
+    try {
+        for await (const entry of s3Dir.values()) {
+            if (entry.kind === 'file' && entry.name.startsWith('uuids.') && entry.name.endsWith('.json')) {
+                filesToDelete.push(entry.name);
+                try {
+                    const file = await entry.getFile();
+                    const text = await file.text();
+                    Object.assign(uuids, JSON.parse(text));
+                } catch { }
+            }
+        }
+    } catch { }
+
+    // 2. Apply changes
+    for (const [name, uuid] of changesEntries) {
+        if (uuid === null) {
+            delete uuids[name];
+        } else {
+            uuids[name] = uuid;
+        }
+    }
+
+    if (changesEntries.length > 0 || filesToDelete.length > 1) {
+        const newFileName = filesToDelete.length > 0 ? filesToDelete[0] : `uuids.${crypto.randomUUID()}.json`;
+        // 3. Write new file
+        const fileHandle = await s3Dir.getFileHandle(newFileName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(uuids, null, 2));
+        await writable.close();
+
+        // 4. Delete old files
+        for (const name of filesToDelete) {
+            if (name !== newFileName) {
+                try {
+                    await s3Dir.removeEntry(name);
+                } catch { }
+            }
+        }
+    }
+
+    return uuids;
+}
+
+/**
+ * Updates a specific base record in the .s3/m metadata store.
+ * used to update lastModifiedLocal after a restore/revert to avoid full re-hash.
+ */
+export async function saveBaseRecord(rootNode: DirNodeLike, relativePath: string, update: Partial<BaseVersionRecord>) {
+    const parent = directoryPath(relativePath);
+    const name = fileName(relativePath);
+
+    try {
+        const s3Dir = await rootNode.handle.getDirectoryHandle('.s3');
+        const baseMetaDir = await s3Dir.getDirectoryHandle('m');
+
+        const dirHandle = await getDirectoryHandle(baseMetaDir, parent);
+        if (!dirHandle) return; // Should not happen if base record exists
+
+        // Lock handling would be ideal here but skipping for now as per instructions/current arch
+
+        let fileHandle: FileSystemFileHandle;
+        let records: Record<string, BaseVersionRecord>;
+
+        try {
+            fileHandle = await dirHandle.getFileHandle('.index.json');
+            const file = await fileHandle.getFile();
+            const text = await file.text();
+            records = JSON.parse(text);
+        } catch {
+            return; // If index doesn't exist, we can't update a record that should be there
+        }
+
+        if (records.hasOwnProperty(name)) {
+            Object.assign(records[name], update);
+            const writable = await fileHandle.createWritable();
+            await writable.write(JSON.stringify(records, null, 2));
+            await writable.close();
+        }
+
+    } catch (e) {
+        console.error("Failed to save base record", e);
+    }
+}
+
 
 async function readRecords<T>(metaDir: FileSystemDirectoryHandle) {
     const recordsByPath = new Map<string, T>();
@@ -372,7 +467,7 @@ async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: 
 
 async function writeRemoteRecordsCache(newRemoteRecordsByDir: Map<string, Record<string, S3VersionRecord>>, metaCacheDir: FileSystemDirectoryHandle) {
     for (const [dir, dirRecords] of newRemoteRecordsByDir.entries()) {
-        const dirHandle = dir ? await getOrCreateDirectory(metaCacheDir, ...dir.split('/')) : metaCacheDir;
+        const dirHandle = await getDirectoryHandle(metaCacheDir, dir, { create: true });
         if (!dirHandle) continue;
         let fileHandle: FileSystemFileHandle | undefined = undefined;
         let final = dirRecords;
@@ -631,12 +726,12 @@ export enum SyncContentAction {
     DeleteLocal = "DeleteLocal",
 }
 
-function directoryPath(path: string): string {
+export function directoryPath(path: string): string {
     const lastSlash = path.lastIndexOf('/');
     return lastSlash >= 0 ? path.substring(0, lastSlash) : '';
 }
 
-function fileName(path: string): string {
+export function fileName(path: string): string {
     const lastSlash = path.lastIndexOf('/');
     return lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
 }
@@ -665,7 +760,7 @@ export class FileSyncStatus {
     private _localMoveDesc = '';
     get localMoveDesc() { return this._localMoveDesc; }
     get localMoved() { return !!this._localMoveDesc; }
-    
+
     private _remoteMoveDesc = '';
     get remoteMoveDesc() { return this._remoteMoveDesc; }
     get remoteMoved() { return !!this._remoteMoveDesc; }
@@ -684,7 +779,7 @@ export class FileSyncStatus {
      */
     relativePath(prefix: string): string {
         const fullPath = this.local?.key || this.base?.key || this.remote?.key || '';
-        return fullPath.startsWith(prefix) ? fullPath.substring(prefix.length) : fullPath;
+        return fullPath.substring(prefix.length);
     }
 
     /**
