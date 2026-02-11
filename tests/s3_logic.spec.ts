@@ -1,6 +1,6 @@
 
 import { test, expect } from '@playwright/test';
-import { scanAndCalculateStatus, DirNodeLike, FileStatus, SyncContentAction } from '../src/store/S3SyncLogic';
+import { scanAndCalculateStatus, DirNodeLike, FileStatus, SyncContentAction, SyncPathAction } from '../src/store/S3SyncLogic';
 import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from './helpers/mock_fs_handles';
 import { S3Client, ListObjectVersionsCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 
@@ -431,7 +431,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         const item = status[0];
         expect(item.localMoved).toBe(true);
-        expect(item.recommendedPathAction).toBe(SyncContentAction.CopyLocalToRemote);
+        expect(item.recommendedPathAction).toBe(SyncPathAction.UseLocalPath);
     });
 
     test('Remote Move', async () => {
@@ -476,7 +476,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         const item = status[0];
         expect(item.remoteMoved).toBe(true);
-        expect(item.recommendedPathAction).toBe(SyncContentAction.CopyRemoteToLocal);
+        expect(item.recommendedPathAction).toBe(SyncPathAction.UseRemotePath);
     });
 
     test('Fast Check (Hash Match)', async () => {
@@ -935,7 +935,7 @@ test.describe('S3 Sync Logic', () => {
 
             expect(status).toHaveLength(1);
             expect(status[0].remoteMoved).toBe(true);
-            expect(status[0].recommendedPathAction).toBe(SyncContentAction.CopyRemoteToLocal);
+            expect(status[0].recommendedPathAction).toBe(SyncPathAction.UseRemotePath);
         });
 
         test('Local Unchanged + Remote Changed', async () => {
