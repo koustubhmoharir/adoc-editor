@@ -37,59 +37,67 @@ export const S3SyncInfoBar = observer(({ store }: { store: S3SyncDiffStore; }) =
 
     return (
         <div className={styles.container} data-testid="s3sync-infobar">
-            <span>View</span>
-            <button className={styles.viewButton} data-testid="diff-view-button">
-                <span>{getViewLabel(currentView)}</span>
-                <i className="fa-solid fa-chevron-down" />
-                <ButtonMenu testid="diff-view-menu">
-                    <div className={styles.viewMenu}>
-                        {availableViews.map((view) => (
-                            <button
-                                key={view}
-                                className={`${styles.viewMenuItem} ${view === currentView ? styles.viewMenuItemActive : ''}`}
-                                onClick={() => store.setView(view)}
-                                data-testid={`diff-view-option-${view}`}
-                            >
-                                {getViewLabel(view)}
-                            </button>
-                        ))}
-                    </div>
-                </ButtonMenu>
-            </button>
-            {syncItem.localStatus !== FileStatus.None ?
-                <div className={styles.statusGroup}>
-                    <span className={styles.statusLabel}>Local:</span>
-                    <span className={styles.statusValue}>{getStatusLabel(syncItem.localStatus)}</span>
-                    {syncItem.localStatus === FileStatus.New ?
-                        <button className={styles.actionButton} onClick={() => store.syncStore.deleteLocalFile(syncItem)}>Delete</button> : null
-                    }
-                    {syncItem.localStatus === FileStatus.Deleted ?
-                        <button className={styles.actionButton} onClick={() => store.syncStore.restoreLocalFile(syncItem)}>Restore</button> : null
-                    }
-                    {syncItem.localStatus === FileStatus.Changed ?
-                        <button className={styles.actionButton} onClick={() => store.syncStore.revertLocalFile(syncItem)}>Revert</button> : null
-                    }
-                    {syncItem.localMoved ?
-                        <>
-                            <span>{syncItem.localMoveDesc}</span>
-                            <button className={styles.actionButton} onClick={() => store.syncStore.undoLocalMove(syncItem)}>Undo</button>
-                        </>
-                        : null
-                    }
-                </div>
-                : null
-            }
-            {syncItem.remoteStatus !== FileStatus.None ?
-                <div className={styles.statusGroup}>
-                    <span className={styles.statusLabel}>Remote:</span>
-                    <span className={styles.statusValue}>{getStatusLabel(syncItem.remoteStatus)}</span>
-                    {syncItem.remoteMoved ?
-                        <span>{syncItem.remoteMoveDesc}</span>
-                        : null
-                    }
-                </div>
-                : null
-            }
+            <div className={styles.section}>
+                <span className={styles.statusLabel}>Showing</span>
+                <button className={styles.viewButton} data-testid="diff-view-button">
+                    <span>{getViewLabel(currentView)}</span>
+                    <i className="fa-solid fa-chevron-down" />
+                    <ButtonMenu testid="diff-view-menu">
+                        <div className={styles.viewMenu}>
+                            {availableViews.map((view) => (
+                                <button
+                                    key={view}
+                                    className={`${styles.viewMenuItem} ${view === currentView ? styles.viewMenuItemActive : ''}`}
+                                    onClick={() => store.setView(view)}
+                                    data-testid={`diff-view-option-${view}`}
+                                >
+                                    {getViewLabel(view)}
+                                </button>
+                            ))}
+                        </div>
+                    </ButtonMenu>
+                </button>
+            </div>
+
+            <div className={styles.section}>
+                {syncItem.localStatus !== FileStatus.None ?
+                    <>
+                        <span className={styles.statusLabel}>Local:</span>
+                        <span className={styles.statusValue}>{getStatusLabel(syncItem.localStatus)}</span>
+                        {syncItem.localStatus === FileStatus.New ?
+                            <button className={styles.actionButton} onClick={() => store.syncStore.deleteLocalFile(syncItem)}>Delete</button> : null
+                        }
+                        {syncItem.localStatus === FileStatus.Deleted ?
+                            <button className={styles.actionButton} onClick={() => store.syncStore.restoreLocalFile(syncItem)}>Restore</button> : null
+                        }
+                        {syncItem.localStatus === FileStatus.Changed ?
+                            <button className={styles.actionButton} onClick={() => store.syncStore.revertLocalFile(syncItem)}>Revert</button> : null
+                        }
+                        {syncItem.localMoved ?
+                            <>
+                                <span>{syncItem.localMoveDesc}</span>
+                                <button className={styles.actionButton} onClick={() => store.syncStore.undoLocalMove(syncItem)}>Undo</button>
+                            </>
+                            : null
+                        }
+                    </>
+                    : null
+                }
+            </div>
+
+            <div className={styles.section}>
+                {syncItem.remoteStatus !== FileStatus.None ?
+                    <>
+                        <span className={styles.statusLabel}>Remote:</span>
+                        <span className={styles.statusValue}>{getStatusLabel(syncItem.remoteStatus)}</span>
+                        {syncItem.remoteMoved ?
+                            <span>{syncItem.remoteMoveDesc}</span>
+                            : null
+                        }
+                    </>
+                    : null
+                }
+            </div>
         </div>
     );
 });

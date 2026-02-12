@@ -4,18 +4,18 @@ import { vars } from '../theme.css';
 export const container = style({
     display: 'flex',
     alignItems: 'center',
-    padding: '8px 12px',
+    padding: '0',
     backgroundColor: vars.color.background,
     borderBottom: `1px solid ${vars.color.border}`,
-    gap: '16px',
     flexShrink: 0,
     fontSize: '13px',
 });
 
-export const statusGroup = style({
+export const section = style({
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'baseline',
     gap: '8px',
+    padding: '8px 12px',
 });
 
 export const statusLabel = style({
@@ -81,7 +81,6 @@ export const actionButton = style({
     borderRadius: '4px',
     cursor: 'pointer',
     fontSize: '12px',
-    marginLeft: '8px',
     ':hover': {
         backgroundColor: vars.color.hoverBackground,
     }
