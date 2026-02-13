@@ -1,4 +1,4 @@
-
+import { computed, observable } from "mobx";
 import { S3Client, ListObjectVersionsCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { Sha256 } from "@aws-crypto/sha256-browser";
 import { S3SyncSettings } from "../file_system/S3SyncSettings";
@@ -74,7 +74,7 @@ function pathToDirAndFileName(path: string) {
     return ['', path];
 }
 
-export async function getDirectoryHandle(dir: FileSystemDirectoryHandle, path: string, options?: {create?: boolean}) {
+export async function getDirectoryHandle(dir: FileSystemDirectoryHandle, path: string, options?: { create?: boolean }) {
     if (!path) return dir;
     let curPath = ''
     const dirNames = path.split('/').filter(Boolean);
@@ -201,7 +201,7 @@ async function readUuids(dirHandle: FileSystemDirectoryHandle) {
  */
 export async function updateDirectoryUuidMap(dirHandle: FileSystemDirectoryHandle, changes: Record<string, string | null>) {
     const changesEntries = Object.entries(changes);
-    
+
     // object is created with a null prototype to avoid surprises when accessing entries.
     const uuids: Record<string, string> = Object.create(null);
 
@@ -736,6 +736,12 @@ export function fileName(path: string): string {
     return lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
 }
 
+export enum SyncMode {
+    Sync = "Sync",
+    MirrorLocal = "MirrorLocal",
+    MirrorRemote = "MirrorRemote",
+}
+
 export type DiffViewMode = 'base-local' | 'base-remote' | 'remote-local' | '3way' | 'single-base' | 'single-local' | 'single-remote';
 
 export class FileSyncStatus {
@@ -754,8 +760,8 @@ export class FileSyncStatus {
     readonly local: LocalFileRecord | null;
     readonly remote: S3VersionRecord | null;
 
-    localStatus: FileStatus = FileStatus.None;
-    remoteStatus: FileStatus = FileStatus.None;
+    @observable accessor localStatus: FileStatus = FileStatus.None;
+    @observable accessor remoteStatus: FileStatus = FileStatus.None;
 
     private _localMoveDesc = '';
     get localMoveDesc() { return this._localMoveDesc; }
@@ -767,11 +773,30 @@ export class FileSyncStatus {
 
     availableDiffViews: DiffViewMode[] = [];
 
-    recommendedPathAction: SyncPathAction = SyncPathAction.None;
-    recommendedContentAction: SyncContentAction = SyncContentAction.None;
-    isPathConflict: boolean = false;
-    isContentConflict: boolean = false;
-    isWarning: boolean = false;
+    @observable private accessor _pathAction: SyncPathAction = SyncPathAction.None;
+    @computed
+    get pathAction() { return this._pathAction; }
+    set pathAction(value) { this._pathAction = value; }
+    
+    @observable private accessor _contentAction: SyncContentAction = SyncContentAction.None;
+    @computed
+    get contentAction() { return this._contentAction; }
+    set contentAction(value) { this._contentAction = value; }
+
+    @observable private accessor _isPathConflict: boolean = false;
+    get isPathConflict() { return this._isPathConflict; }
+
+    @observable private accessor _isContentConflict: boolean = false;
+    get isContentConflict() { return this._isContentConflict; }
+
+
+    @observable private accessor _isWarning: boolean = false;
+    get isWarning() { return this._isWarning; }
+    
+    @observable private accessor _isChecked: boolean = true;
+    @computed
+    get isChecked() { return this._isChecked; }
+    set isChecked(value) { this._isChecked = value; }
 
     /**
      * Returns the relative path for display, with prefix stripped.
@@ -902,27 +927,29 @@ export class FileSyncStatus {
         if (hasLocal) this.availableDiffViews.push('single-local');
         if (hasRemote) this.availableDiffViews.push('single-remote');
 
-        this.calculateAction();
+        this.updateActions(SyncMode.Sync);
     }
 
-    private calculateAction() {
-        this.recommendedPathAction = SyncPathAction.None;
-        this.recommendedContentAction = SyncContentAction.None;
-        this.isPathConflict = false;
-        this.isContentConflict = false;
-        this.isWarning = false;
+    updateActions(mode: SyncMode) {
+        this._pathAction = SyncPathAction.None;
+        this._contentAction = SyncContentAction.None;
+        this._isPathConflict = false;
+        this._isContentConflict = false;
+        this._isWarning = false;
 
         let preferredView: DiffViewMode | undefined = undefined;
 
-        // Path Actions Logic
-        // "If exactly one of local status and remote status has the Moved suffix, the default Path Action will be to apply the Move."
-        // "If both local status and remote status have the Moved suffix, there is a path conflict"
-        if (this.localMoved && this.remoteMoved) {
-            this.isPathConflict = true;
-        } else if (this.localMoved) {
-            this.recommendedPathAction = SyncPathAction.UseLocalPath;
-        } else if (this.remoteMoved) {
-            this.recommendedPathAction = SyncPathAction.UseRemotePath;
+        if (mode === SyncMode.Sync) {
+            // Path Actions Logic
+            // "If exactly one of local status and remote status has the Moved suffix, the default Path Action will be to apply the Move."
+            // "If both local status and remote status have the Moved suffix, there is a path conflict"
+            if (this.localMoved && this.remoteMoved) {
+                this._isPathConflict = true;
+            } else if (this.localMoved) {
+                this._pathAction = SyncPathAction.UseLocalPath;
+            } else if (this.remoteMoved) {
+                this._pathAction = SyncPathAction.UseRemotePath;
+            }
         }
 
         // Content Actions
@@ -933,23 +960,33 @@ export class FileSyncStatus {
             if (this.local) {
                 if (this.remote) {
                     if (ls === FileStatus.Unchanged && rs === FileStatus.Unchanged) {
-                        this.recommendedContentAction = SyncContentAction.None;
+                        this._contentAction = SyncContentAction.None;
                         preferredView = 'single-local';
                     } else if (ls === FileStatus.Unchanged && rs === FileStatus.Changed) {
-                        this.recommendedContentAction = SyncContentAction.CopyRemoteToLocal;
+                        this._contentAction = mode === SyncMode.MirrorLocal ? SyncContentAction.CopyLocalToRemote : SyncContentAction.CopyRemoteToLocal;
                         preferredView = 'base-remote';
                     } else if (ls === FileStatus.Changed && rs === FileStatus.Unchanged) {
-                        this.recommendedContentAction = SyncContentAction.CopyLocalToRemote;
+                        this._contentAction = mode === SyncMode.MirrorRemote ? SyncContentAction.CopyRemoteToLocal : SyncContentAction.CopyLocalToRemote;
                         preferredView = 'base-local';
                     } else if (ls === FileStatus.Unchanged && rs === FileStatus.Reverted) {
-                        this.recommendedContentAction = SyncContentAction.CopyRemoteToLocal;
-                        this.isWarning = true;
+                        this._contentAction = mode === SyncMode.MirrorLocal ? SyncContentAction.CopyLocalToRemote : SyncContentAction.CopyRemoteToLocal;
+                        this._isWarning = true;
                         preferredView = 'base-remote';
                     } else if (ls === FileStatus.Unchanged && rs === FileStatus.Unknown) {
-                        this.isWarning = true;
+                        if (mode === SyncMode.Sync) {
+                            this._isWarning = true;
+                        }
+                        else {
+                            this._contentAction = mode === SyncMode.MirrorLocal ? SyncContentAction.CopyLocalToRemote : SyncContentAction.CopyRemoteToLocal;
+                        }
                         preferredView = 'base-remote';
                     } else {
-                        this.isContentConflict = true;
+                        if (mode === SyncMode.Sync) {
+                            this._isContentConflict = true;
+                        }
+                        else {
+                            this._contentAction = mode === SyncMode.MirrorLocal ? SyncContentAction.CopyLocalToRemote : SyncContentAction.CopyRemoteToLocal;
+                        }
                         preferredView = '3way';
                     }
                 }
@@ -959,12 +996,17 @@ export class FileSyncStatus {
                         // Remote: Deleted (implied). 
                         // Doc: Use Local OR Use Remote (default), Warning.
                         // "Use Remote" => Delete Local.
-                        this.recommendedContentAction = SyncContentAction.DeleteLocal;
-                        this.isWarning = true;
+                        this._contentAction = mode === SyncMode.MirrorLocal ? SyncContentAction.CopyLocalToRemote : SyncContentAction.DeleteLocal;
+                        this._isWarning = true;
                         preferredView = 'single-local';
                     } else {
                         // Local Changed, Remote Deleted
-                        this.isContentConflict = true;
+                        if (mode === SyncMode.Sync) {
+                            this._isContentConflict = true;
+                        }
+                        else {
+                            this._contentAction = mode === SyncMode.MirrorLocal ? SyncContentAction.CopyLocalToRemote : SyncContentAction.DeleteLocal;
+                        }
                         preferredView = 'base-local';
                     }
                 }
@@ -975,33 +1017,43 @@ export class FileSyncStatus {
                     // Local: Deleted
                     // Doc: Use Local (default) OR Use Remote, Warning
                     // "Use Local" => Delete Remote.
-                    this.recommendedContentAction = SyncContentAction.DeleteRemote;
-                    this.isWarning = true;
+                    this._contentAction = mode === SyncMode.MirrorRemote ? SyncContentAction.CopyRemoteToLocal : SyncContentAction.DeleteRemote;
+                    this._isWarning = true;
                     preferredView = 'single-base';
                 } else {
                     // Remote Changed/Reverted, Local Deleted
-                    this.isContentConflict = true;
+                    if (mode === SyncMode.Sync) {
+                        this._isContentConflict = true;
+                    }
+                    else {
+                        this._contentAction = mode === SyncMode.MirrorLocal ? SyncContentAction.DeleteRemote : SyncContentAction.CopyRemoteToLocal;
+                    }
                     preferredView = 'base-remote';
                 }
             } else {
                 // (base, null local, null remote)
                 // Both deleted
-                this.recommendedContentAction = SyncContentAction.None;
+                this._contentAction = SyncContentAction.None;
                 preferredView = 'single-base';
             }
         } else if (this.local) {
             if (this.remote) {
                 // Both New
-                this.isContentConflict = true;
+                if (mode === SyncMode.Sync) {
+                    this._isContentConflict = true;
+                }
+                else {
+                    this._contentAction = mode === SyncMode.MirrorLocal ? SyncContentAction.CopyLocalToRemote : SyncContentAction.CopyRemoteToLocal;
+                }
                 preferredView = 'remote-local';
             } else {
                 // New Local
-                this.recommendedContentAction = SyncContentAction.CopyLocalToRemote;
+                this._contentAction = mode === SyncMode.MirrorRemote ? SyncContentAction.DeleteLocal : SyncContentAction.CopyLocalToRemote;
                 preferredView = 'single-local';
             }
         } else if (this.remote) {
             // New Remote
-            this.recommendedContentAction = SyncContentAction.CopyRemoteToLocal;
+            this._contentAction = mode === SyncMode.MirrorLocal ? SyncContentAction.DeleteRemote : SyncContentAction.CopyRemoteToLocal;
             preferredView = 'single-remote';
         }
 
@@ -1009,6 +1061,13 @@ export class FileSyncStatus {
             const i = this.availableDiffViews.indexOf(preferredView);
             this.availableDiffViews.splice(i, 1);
             this.availableDiffViews.unshift(preferredView);
+        }
+
+        if (mode === SyncMode.MirrorLocal && this._pathAction !== SyncPathAction.None) {
+            this._pathAction = SyncPathAction.UseLocalPath;
+        }
+        if (mode === SyncMode.MirrorRemote && this._pathAction !== SyncPathAction.None) {
+            this._pathAction = SyncPathAction.UseRemotePath;
         }
     }
 }

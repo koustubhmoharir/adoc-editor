@@ -85,3 +85,24 @@ export const actionButton = style({
         backgroundColor: vars.color.hoverBackground,
     }
 });
+
+export const radioGroup = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginLeft: '8px',
+});
+
+export const radioLabel = style({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '13px',
+    color: vars.color.text,
+    cursor: 'pointer',
+});
+
+export const radioInput = style({
+    cursor: 'pointer',
+    accentColor: vars.color.selectionBackground // Or a specific brand color
+});

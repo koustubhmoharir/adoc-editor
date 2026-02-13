@@ -1,6 +1,7 @@
 import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
 import { S3SyncDiffStore } from '../store/S3SyncDiffStore';
-import { DiffViewMode, FileStatus } from '../store/S3SyncLogic';
+import { DiffViewMode, FileStatus, SyncContentAction, SyncMode, SyncPathAction } from '../store/S3SyncLogic';
 import { ButtonMenu } from './Popovers';
 import * as styles from './S3SyncInfoBar.css';
 
@@ -34,6 +35,8 @@ export const S3SyncInfoBar = observer(({ store }: { store: S3SyncDiffStore; }) =
     if (!syncItem || !currentView) return null;
 
     const availableViews = syncItem.availableDiffViews;
+
+    const showPathActions = syncItem.isPathConflict || syncItem.localMoved || syncItem.remoteMoved;
 
     return (
         <div className={styles.container} data-testid="s3sync-infobar">
@@ -98,6 +101,69 @@ export const S3SyncInfoBar = observer(({ store }: { store: S3SyncDiffStore; }) =
                     : null
                 }
             </div>
+            {/* Content Actions */}
+            {(syncItem.localStatus !== FileStatus.Unchanged || syncItem.remoteStatus !== FileStatus.Unchanged) && (syncItem.local || syncItem.remote) ?
+                <div className={styles.section}>
+                    <span className={styles.statusLabel}>Action:</span>
+                    <label className={styles.radioLabel}>
+                        <input
+                            type="radio"
+                            className={styles.radioInput}
+                            name="contentAction"
+                            checked={syncItem.contentAction === SyncContentAction.CopyLocalToRemote || syncItem.contentAction === SyncContentAction.DeleteRemote}
+                            disabled={store.syncStore.syncMode !== SyncMode.Sync}
+                            onChange={() => runInAction(() => {
+                                syncItem.contentAction = syncItem.local ? SyncContentAction.CopyLocalToRemote : SyncContentAction.DeleteRemote;
+                            })}
+                        />
+                        {syncItem.local ? "Upload" : "Delete Remote"}
+                    </label>
+
+                    <label className={styles.radioLabel}>
+                        <input
+                            type="radio"
+                            className={styles.radioInput}
+                            name="contentAction"
+                            checked={syncItem.contentAction === SyncContentAction.CopyRemoteToLocal || syncItem.contentAction === SyncContentAction.DeleteLocal}
+                            disabled={store.syncStore.syncMode !== SyncMode.Sync}
+                            onChange={() => runInAction(() => {
+                                syncItem.contentAction = syncItem.remote ? SyncContentAction.CopyRemoteToLocal : SyncContentAction.DeleteLocal;
+                            })}
+                        />
+                        {syncItem.remote ? "Download" : "Delete Local"}
+                    </label>
+                </div>
+                : null
+            }
+            {/* Path Actions (if moves exist) */}
+            {store.syncStore.syncMode === SyncMode.Sync && showPathActions ?
+                <div className={styles.section}>
+                    <span className={styles.statusLabel}>Path:</span>
+                    <label className={styles.radioLabel}>
+                        <input
+                            type="radio"
+                            className={styles.radioInput}
+                            name="pathAction"
+                            checked={syncItem.pathAction === SyncPathAction.UseLocalPath}
+                            disabled={!syncItem.local}
+                            onChange={() => syncItem.pathAction = SyncPathAction.UseLocalPath}
+                        />
+                        Local Path
+                    </label>
+                    <label className={styles.radioLabel}>
+                        <input
+                            type="radio"
+                            className={styles.radioInput}
+                            name="pathAction"
+                            checked={syncItem.pathAction === SyncPathAction.UseRemotePath}
+                            disabled={!syncItem.remote}
+                            onChange={() => syncItem.pathAction = SyncPathAction.UseRemotePath}
+                        />
+                        Remote Path
+                    </label>
+                </div>
+                : null
+            }
         </div>
     );
 });

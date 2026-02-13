@@ -74,6 +74,7 @@ export const themeButtonLight = style([button, {
     color: '#fde047',
 }]);
 
+
 export const exitButton = style([button, {
     fontSize: '14px',
     padding: '4px 12px',
@@ -82,3 +83,42 @@ export const exitButton = style([button, {
     borderRadius: '4px',
     gap: '6px',
 }]);
+
+export const modeSelector = style({
+    marginLeft: '16px',
+});
+
+export const modeSelect = style({
+    padding: '4px 8px',
+    borderRadius: '4px',
+    border: `1px solid ${vars.color.border}`,
+    backgroundColor: vars.color.background,
+    color: vars.color.text,
+    fontSize: '14px',
+    cursor: 'pointer',
+});
+
+export const goButton = style({
+    marginLeft: '8px',
+    padding: '4px 12px',
+    borderRadius: '4px',
+    border: 'none',
+    backgroundColor: vars.color.buttonBackground,
+    color: vars.color.buttonText,
+    fontSize: '14px',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+    opacity: 0.5, // Initially disabled state
+    ':hover': {
+        backgroundColor: vars.color.buttonBackground, // No hover effect when disabled
+    },
+    selectors: {
+        '&:not(:disabled)': {
+            opacity: 1,
+            cursor: 'pointer'
+        },
+        '&:not(:disabled):hover': {
+            backgroundColor: vars.color.buttonHover
+        }
+    }
+});

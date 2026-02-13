@@ -114,7 +114,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         const item = status[0];
         expect(item.localStatus).toBe(FileStatus.New);
-        expect(item.recommendedContentAction).toBe(SyncContentAction.CopyLocalToRemote);
+        expect(item.contentAction).toBe(SyncContentAction.CopyLocalToRemote);
     });
 
     test('New Remote File (No Base)', async () => {
@@ -141,7 +141,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         const item = status[0];
         expect(item.remoteStatus).toBe(FileStatus.New);
-        expect(item.recommendedContentAction).toBe(SyncContentAction.CopyRemoteToLocal);
+        expect(item.contentAction).toBe(SyncContentAction.CopyRemoteToLocal);
     });
 
     test('Unchanged File (Matches Base)', async () => {
@@ -186,7 +186,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         expect(status[0].localStatus).toBe(FileStatus.Unchanged);
         expect(status[0].remoteStatus).toBe(FileStatus.Unchanged);
-        expect(status[0].recommendedContentAction).toBe(SyncContentAction.None);
+        expect(status[0].contentAction).toBe(SyncContentAction.None);
     });
 
     test('Conflict (Both Changed)', async () => {
@@ -285,7 +285,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         expect(status[0].localStatus).toBe(FileStatus.Deleted);
         expect(status[0].remoteStatus).toBe(FileStatus.Unchanged);
-        expect(status[0].recommendedContentAction).toBe(SyncContentAction.DeleteRemote);
+        expect(status[0].contentAction).toBe(SyncContentAction.DeleteRemote);
         expect(status[0].isWarning).toBe(true);
     });
 
@@ -322,7 +322,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         expect(status[0].remoteStatus).toBe(FileStatus.Deleted);
         expect(status[0].localStatus).toBe(FileStatus.Unchanged);
-        expect(status[0].recommendedContentAction).toBe(SyncContentAction.DeleteLocal);
+        expect(status[0].contentAction).toBe(SyncContentAction.DeleteLocal);
         expect(status[0].isWarning).toBe(true);
     });
 
@@ -431,7 +431,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         const item = status[0];
         expect(item.localMoved).toBe(true);
-        expect(item.recommendedPathAction).toBe(SyncPathAction.UseLocalPath);
+        expect(item.pathAction).toBe(SyncPathAction.UseLocalPath);
     });
 
     test('Remote Move', async () => {
@@ -476,7 +476,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         const item = status[0];
         expect(item.remoteMoved).toBe(true);
-        expect(item.recommendedPathAction).toBe(SyncPathAction.UseRemotePath);
+        expect(item.pathAction).toBe(SyncPathAction.UseRemotePath);
     });
 
     test('Fast Check (Hash Match)', async () => {
@@ -550,7 +550,7 @@ test.describe('S3 Sync Logic', () => {
         expect(status).toHaveLength(1);
         const item = status[0];
         expect(item.localStatus).toBe(FileStatus.Changed);
-        expect(item.recommendedContentAction).toBe(SyncContentAction.CopyLocalToRemote);
+        expect(item.contentAction).toBe(SyncContentAction.CopyLocalToRemote);
     });
 
     test('Both Moved (Path Conflict)', async () => {
@@ -620,7 +620,7 @@ test.describe('S3 Sync Logic', () => {
         const status = await scanAndCalculateStatus(rootNode, s3Client, settings);
 
         expect(status).toHaveLength(1);
-        expect(status[0].recommendedContentAction).toBe(SyncContentAction.None);
+        expect(status[0].contentAction).toBe(SyncContentAction.None);
     });
 
     test('Remote Reverted', async () => {
@@ -935,7 +935,7 @@ test.describe('S3 Sync Logic', () => {
 
             expect(status).toHaveLength(1);
             expect(status[0].remoteMoved).toBe(true);
-            expect(status[0].recommendedPathAction).toBe(SyncPathAction.UseRemotePath);
+            expect(status[0].pathAction).toBe(SyncPathAction.UseRemotePath);
         });
 
         test('Local Unchanged + Remote Changed', async () => {
@@ -979,7 +979,7 @@ test.describe('S3 Sync Logic', () => {
             expect(status).toHaveLength(1);
             expect(status[0].localStatus).toBe(FileStatus.Unchanged);
             expect(status[0].remoteStatus).toBe(FileStatus.Changed);
-            expect(status[0].recommendedContentAction).toBe(SyncContentAction.CopyRemoteToLocal);
+            expect(status[0].contentAction).toBe(SyncContentAction.CopyRemoteToLocal);
         });
     });
 

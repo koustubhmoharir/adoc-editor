@@ -4,6 +4,8 @@ import { themeStore, appName } from '../store/ThemeStore';
 import { appStore } from '../store/AppStore';
 import * as styles from './S3SyncTitleBar.css';
 
+import { SyncMode } from '../store/S3SyncLogic';
+
 export const S3SyncTitleBar: React.FC = observer(() => {
     const syncStore = appStore.activeSyncStore;
     const directoryNode = syncStore?.directoryNode;
@@ -18,6 +20,19 @@ export const S3SyncTitleBar: React.FC = observer(() => {
         <header className={styles.header} data-testid="s3sync-title-bar">
             <div className={styles.leftSection}>
                 <h3 className={styles.title}>{appName}</h3>
+                <div className={styles.modeSelector}>
+                    <select
+                        className={styles.modeSelect}
+                        value={syncStore?.syncMode}
+                        onChange={(e) => syncStore?.setSyncMode(e.target.value as SyncMode)}
+                        disabled={!syncStore}
+                    >
+                        <option value={SyncMode.Sync}>Sync</option>
+                        <option value={SyncMode.MirrorLocal}>Mirror Local</option>
+                        <option value={SyncMode.MirrorRemote}>Mirror Remote</option>
+                    </select>
+                </div>
+                <button className={styles.goButton} disabled={true}>Go</button>
             </div>
 
             <div className={styles.centerSection}>

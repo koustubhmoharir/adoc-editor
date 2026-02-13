@@ -1,4 +1,5 @@
 import { observer } from 'mobx-react-lite';
+import { runInAction } from 'mobx';
 import { FileSyncStatus, FileStatus, SyncContentAction } from '../store/S3SyncLogic';
 import { S3SyncStore } from '../store/S3SyncStore';
 import * as styles from './S3SyncSidebar.css';
@@ -44,16 +45,16 @@ function getStatusIcon(item: FileSyncStatus): { icon: string; className: string;
 }
 
 function getActionLabel(item: FileSyncStatus): string | null {
-    if (item.recommendedContentAction === SyncContentAction.CopyLocalToRemote) {
+    if (item.contentAction === SyncContentAction.CopyLocalToRemote) {
         return '↑ Upload';
     }
-    if (item.recommendedContentAction === SyncContentAction.CopyRemoteToLocal) {
+    if (item.contentAction === SyncContentAction.CopyRemoteToLocal) {
         return '↓ Download';
     }
-    if (item.recommendedContentAction === SyncContentAction.DeleteLocal) {
+    if (item.contentAction === SyncContentAction.DeleteLocal) {
         return '× Delete Local';
     }
-    if (item.recommendedContentAction === SyncContentAction.DeleteRemote) {
+    if (item.contentAction === SyncContentAction.DeleteRemote) {
         return '× Delete Remote';
     }
     return null;
@@ -98,6 +99,13 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
                             data-selected={isSelected}
                             title={item.relativePath(prefix)}
                         >
+                            <input
+                                type="checkbox"
+                                className={styles.checkbox}
+                                checked={item.isChecked}
+                                onChange={(e) => runInAction(() => item.isChecked = e.target.checked)}
+                                onClick={(e) => e.stopPropagation()}
+                            />
                             <i className={`${status.icon} ${styles.statusIcon} ${status.className}`} title={status.title} />
                             <div className={styles.itemContent}>
                                 <span className={styles.itemFileName}>{fileName}</span>

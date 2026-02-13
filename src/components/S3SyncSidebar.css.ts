@@ -133,3 +133,8 @@ export const statusBadge = style({
     color: vars.color.textSecondary,
     flexShrink: 0,
 });
+
+export const checkbox = style({
+    marginRight: '8px',
+    cursor: 'pointer',
+});

@@ -2,7 +2,7 @@ import { action, observable, runInAction } from "mobx";
 import { DirectoryNodeModel } from "./FileSystemModels";
 import { S3Store } from "./S3Store";
 import { S3SyncDiffStore } from "./S3SyncDiffStore";
-import { FileSyncStatus, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, getFileHandle, updateDirectoryUuidMap, saveBaseRecord, getDirectoryHandle } from "./S3SyncLogic";
+import { FileSyncStatus, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, getFileHandle, updateDirectoryUuidMap, saveBaseRecord, getDirectoryHandle, SyncMode } from "./S3SyncLogic";
 import { traceLog } from "../utils/trace";
 import { dialog } from "../components/Dialog";
 
@@ -26,6 +26,19 @@ export class S3SyncStore {
 
     @observable accessor _syncStatusItems: FileSyncStatus[] | undefined = undefined;
     get syncStatusItems() { return this._syncStatusItems; }
+
+    @observable accessor syncMode: SyncMode = SyncMode.Sync;
+
+    @action.bound
+    setSyncMode(mode: SyncMode) {
+        this.syncMode = mode;
+        if (this._syncStatusItems) {
+            for (const item of this._syncStatusItems) {
+                item.isChecked = true;
+                item.updateActions(mode);
+            }
+        }
+    }
 
     @action.bound
     async setSelectedItem(item: FileSyncStatus | null) {
@@ -128,7 +141,7 @@ export class S3SyncStore {
 
             // Get/Create target parent directory
             const parentHandle = await getDirectoryHandle(root, localDirPath, { create: true });
-            
+
             if (!parentHandle) {
                 await dialog.alert("Could not create directory to restore file.");
                 return;
@@ -193,10 +206,10 @@ export class S3SyncStore {
 
         const root = this.directoryNode.handle;
         const oldParentHandle = await getDirectoryHandle(root, oldParentPath);
-        
+
         // 1. Ensure target directory (base path) exists
         const targetDir = await getDirectoryHandle(root, newParentPath, { create: true });
-        
+
         if (!oldParentHandle || !targetDir) {
             await dialog.alert("Could not access directory.");
             return;
