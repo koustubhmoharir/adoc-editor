@@ -49,6 +49,9 @@ export const S3SyncTitleBar = observer(({ store }: { store: S3SyncStore }) => {
                             <span>
                                 <span className={styles.syncInfoLabel}>Syncing {progress.current}/{progress.total}:</span>
                                 <span className={styles.syncInfoValue}>{progress.currentPath}</span>
+                                {progress.concurrencyErrors > 0 &&
+                                    <span className={styles.syncInfoLabel}> ({progress.concurrencyErrors} conflict{progress.concurrencyErrors > 1 ? 's' : ''})</span>
+                                }
                             </span>
                         }
                     </>

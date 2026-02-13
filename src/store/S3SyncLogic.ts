@@ -27,7 +27,7 @@ export interface S3VersionRecord {
      */
     syncVersion: number;
     deviceName: string;
-    etag?: string;
+    etag: string;
     sha256?: string;
     contentLength?: number;
     lastModified?: string;
@@ -345,7 +345,7 @@ function groupRecordsByKey<T>(records: Map<string, T>, keyFunc: (r: T) => string
     return recordsByUuid;
 }
 
-async function computeSha256(input: FileSystemFileHandle): Promise<[number, string]> {
+async function computeSha256(input: FileSystemFileHandle): Promise<{ size: number; base64: string }> {
     const hash = new Sha256();
     const file = await input.getFile();
     const stream = file.stream();
@@ -364,7 +364,8 @@ async function computeSha256(input: FileSystemFileHandle): Promise<[number, stri
     }
 
     const digest = await hash.digest();
-    return [file.size, Array.from(digest).map(b => b.toString(16).padStart(2, '0')).join('')];
+    const base64 = btoa(String.fromCharCode(...digest));
+    return { size: file.size, base64 };
 }
 
 async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: string, metaCacheDir: FileSystemDirectoryHandle, baseRecordsByPath: Map<string, BaseVersionRecord>) {
@@ -397,7 +398,7 @@ async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: 
                     uuid: '',
                     syncVersion: 0,
                     deviceName: '',
-                    etag: remoteInfo.ETag?.replace(/"/g, ''),
+                    etag: remoteInfo.ETag?.replace(/"/g, '') ?? '',
                     sha256: '',
                     lastModified: remoteInfo.LastModified?.toISOString()
                 };
@@ -437,6 +438,9 @@ async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: 
                         remoteRecord.deviceName = headResponse.Metadata?.['devicename'] || '';
                         remoteRecord.sha256 = headResponse.ChecksumSHA256;
                         remoteRecord.contentLength = headResponse.ContentLength;
+                        if (!remoteRecord.etag) {
+                            remoteRecord.etag = headResponse.ETag?.replace(/"/g, '') ?? '';
+                        }
                         const [dir, name] = pathToDirAndFileName(remotePath);
                         let dirRecords = newRemoteRecordsByDir.get(dir);
                         if (!dirRecords) {
@@ -465,32 +469,31 @@ async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: 
     return remoteRecordsByPath;
 }
 
-export async function loadRemoteFileFromCache(rootHandle: FileSystemDirectoryHandle, relativePath: string): Promise<string | null> {
+function remoteCachePath(relativePath: string, version: string): string {
+    return `.adoc-editor/s3/r/${relativePath}.${version}`;
+}
+
+export async function loadRemoteFileFromCache(rootHandle: FileSystemDirectoryHandle, relativePath: string, version: string): Promise<FileSystemFileHandle | null> {
     try {
-        const cachePath = `.adoc-editor/s3/r/${relativePath}`;
-        const handle = await getFileHandle(rootHandle, cachePath);
-        if (handle) {
-            const file = await handle.getFile();
-            return await file.text();
-        }
+        return await getFileHandle(rootHandle, remoteCachePath(relativePath, version)) ?? null;
     } catch {
         // Cache miss
     }
     return null;
 }
 
-export async function saveRemoteFileToCache(rootHandle: FileSystemDirectoryHandle, relativePath: string, content: string): Promise<void> {
+export async function saveRemoteFileToCache(rootHandle: FileSystemDirectoryHandle, relativePath: string, version: string, stream: ReadableStream<Uint8Array>): Promise<FileSystemFileHandle | null> {
     try {
-        const cachePath = `.adoc-editor/s3/r/${relativePath}`;
-        const handle = await getFileHandle(rootHandle, cachePath, { create: true });
+        const handle = await getFileHandle(rootHandle, remoteCachePath(relativePath, version), { create: true });
         if (handle) {
             const writable = await handle.createWritable();
-            await writable.write(content);
-            await writable.close();
+            await stream.pipeTo(writable);
+            return handle;
         }
     } catch (e) {
         console.error(`Failed to cache remote content at ${relativePath}`, e);
     }
+    return null;
 }
 
 async function writeRemoteRecordsCache(newRemoteRecordsByDir: Map<string, Record<string, S3VersionRecord>>, metaCacheDir: FileSystemDirectoryHandle) {
@@ -626,9 +629,9 @@ async function matchBaseWithLocal(baseRecords: Map<string, BaseVersionRecord>, b
     const baseRecordsByHash = groupRecordsByKey(remainingBaseRecords, r => r.contentLength ? r.sha256 : '');
 
     for (const r of remainingLocalRecords.values()) {
-        const [contentLength, hash] = await computeSha256(r.handle);
-        r.contentLength = contentLength;
-        r.sha256 = hash;
+        const sha256Result = await computeSha256(r.handle);
+        r.contentLength = sha256Result.size;
+        r.sha256 = sha256Result.base64;
     }
     const localRecordsByHash = groupRecordsByKey(remainingLocalRecords, r => r.contentLength ? r.sha256 : '');
     const baseLocalHashes = new Set(baseRecordsByHash.keys()).intersection(localRecordsByHash);
@@ -932,9 +935,9 @@ export class FileSyncStatus {
 
         // Perform slow check if fast check seems risky
         if (this.local && !this.local.sha256 && (this.localStatus === FileStatus.Changed || this.remoteStatus !== FileStatus.Unchanged)) {
-            const [contentLength, hash] = await computeSha256(this.local.handle)
-            this.local.contentLength = contentLength;
-            this.local.sha256 = hash;
+            const sha256Result = await computeSha256(this.local.handle)
+            this.local.contentLength = sha256Result.size;
+            this.local.sha256 = sha256Result.base64;
             this.localStatus = this.local.sha256 !== this.base?.sha256 ? FileStatus.Changed : FileStatus.Unchanged;
         }
 
@@ -1109,20 +1112,72 @@ export interface PendingChanges {
     baseFileDeletes: string[];
     /** dirPath (relative, e.g. "" or "sub/dir") → Record<fileName, uuid | null> */
     uuidChanges: Map<string, Record<string, string | null>>;
+    /** Remote cache file paths (relative to root) to delete after sync */
+    remoteCacheDeletes: string[];
+}
+
+/** Wrap an unquoted ETag with double-quotes for use in If-Match / CopySourceIfMatch headers. */
+function quotedEtag(etag: string): string {
+    return `"${etag}"`;
+}
+
+/** Check if an error is a concurrency conflict (HTTP 409 Conflict or 412 Precondition Failed). */
+export function isConcurrencyError(e: unknown): boolean {
+    if (e && typeof e === 'object' && '$metadata' in e) {
+        const code = (e as { $metadata: { httpStatusCode?: number } }).$metadata.httpStatusCode;
+        return code === 409 || code === 412;
+    }
+    return false;
+}
+
+/**
+ * Re-fetch the current state of a remote object via HeadObject.
+ * Returns a fresh S3VersionRecord, or null if the object no longer exists (404).
+ */
+export async function refreshRemoteRecord(
+    s3Client: S3Client,
+    bucket: string,
+    key: string,
+): Promise<S3VersionRecord | null> {
+    try {
+        const resp = await s3Client.send(new HeadObjectCommand({
+            Bucket: bucket,
+            Key: key,
+        }));
+        return {
+            key,
+            version: resp.VersionId || '',
+            uuid: resp.Metadata?.['uuid'] || '',
+            syncVersion: parseInt(resp.Metadata?.['syncversion'] || '0', 10),
+            deviceName: resp.Metadata?.['devicename'] || '',
+            etag: resp.ETag?.replace(/"/g, '') ?? '',
+            sha256: resp.ChecksumSHA256,
+            contentLength: resp.ContentLength,
+            lastModified: resp.LastModified?.toISOString(),
+        };
+    } catch (e: unknown) {
+        if (e && typeof e === 'object' && '$metadata' in e) {
+            const code = (e as { $metadata: { httpStatusCode?: number } }).$metadata.httpStatusCode;
+            if (code === 404) return null;
+        }
+        throw e;
+    }
 }
 
 interface PutObjectResult {
     versionId: string;
     etag: string;
+    lastModified: string;
 }
 
 async function putObjectToS3(
     s3Client: S3Client,
     bucket: string,
     key: string,
-    body: Uint8Array,
+    body: File,
     metadata: { uuid: string; syncVersion: number; deviceName: string },
     sha256Base64: string,
+    expectedEtag: string | undefined,
 ): Promise<PutObjectResult> {
     const response = await s3Client.send(new PutObjectCommand({
         Bucket: bucket,
@@ -1135,13 +1190,31 @@ async function putObjectToS3(
         },
         ChecksumAlgorithm: 'SHA256',
         ChecksumSHA256: sha256Base64,
+        // Conditional write: if updating existing object, require ETag match;
+        // if creating new object, require it doesn't already exist.
+        ...(expectedEtag ? { IfMatch: quotedEtag(expectedEtag) } : { IfNoneMatch: '*' }),
     }));
     if (!response.VersionId) {
         throw new Error(`PutObject for ${key} did not return a VersionId. Is versioning enabled on the bucket?`);
     }
+    // Get the server-side LastModified via HeadObject
+    let lastModified = new Date().toISOString();
+    try {
+        const headResp = await s3Client.send(new HeadObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            VersionId: response.VersionId,
+        }));
+        if (headResp.LastModified) {
+            lastModified = headResp.LastModified.toISOString();
+        }
+    } catch {
+        // Fall back to local timestamp if HeadObject fails
+    }
     return {
         versionId: response.VersionId,
         etag: response.ETag?.replace(/"/g, '') || '',
+        lastModified,
     };
 }
 
@@ -1200,7 +1273,7 @@ export async function executeSyncItem(
     rootHandle: FileSystemDirectoryHandle,
     settings: S3SyncSettings,
     pending: PendingChanges,
-    getRemoteContent: (remote: S3VersionRecord) => Promise<string | null>,
+    ensureRemoteCached: (remote: S3VersionRecord) => Promise<FileSystemFileHandle | null>,
 ) {
     const prefix = settings.prefix;
     const bucket = settings.bucket;
@@ -1208,40 +1281,93 @@ export async function executeSyncItem(
     const pathAction = item.pathAction;
     const targetKey = resolveTargetKey(item);
     const targetPath = targetKey.substring(prefix.length);
-
-    if (contentAction === SyncContentAction.None && pathAction === SyncPathAction.None) {
-        return; // Nothing to do
-    }
-
     const uuid = resolveUuid(item);
 
-    if (contentAction === SyncContentAction.CopyLocalToRemote) {
-
-        // TODO: if (item.localStatus === FileStatus.Unchanged) check if base version id exists on bucket and if so copy it instead of reuploading the local file
-        
-        // Upload local content to S3
-        // TODO: Do not load file into memory
-        const localFile = await item.local!.handle.getFile();
-        const bytes = new Uint8Array(await localFile.arrayBuffer());
-
-        // Compute SHA256 for integrity and base record
-        const hash = new Sha256();
-        hash.update(bytes);
-        const digest = await hash.digest();
-        const sha256Hex = Array.from(digest).map(b => b.toString(16).padStart(2, '0')).join('');
-        const sha256Base64 = btoa(String.fromCharCode(...digest));
+    // Handle both-deleted case: base exists but local and remote are both gone
+    if (contentAction === SyncContentAction.None && pathAction === SyncPathAction.None) {
+        if (item.base && !item.local && !item.remote) {
+            // Both deleted — clean up base record and base file
+            const basePath = item.base.key.substring(prefix.length);
+            pending.baseRecords.set(basePath, null);
+            pending.baseFileDeletes.push(basePath);
+        }
+    } else if (contentAction === SyncContentAction.CopyLocalToRemote) {
 
         const syncVersion = resolveSyncVersion(item);
+        let putResult: PutObjectResult | undefined = undefined;
+        let sha256Base64: string = '';
+        let contentLength: number = 0;
 
-        // PutObject at targetKey
-        // TODO: The put should be conditional on the expected etag to handle race conditions. If the condition fails, the item should be left out of the sync, but with a refresh of remote metadata so that the user can decide what to do and possibly retry.
-        const putResult = await putObjectToS3(s3Client, bucket, targetKey, bytes, {
-            uuid, syncVersion, deviceName: settings.device_name,
-        }, sha256Base64);
+        // Optimization: if local is unchanged (remote deleted or moved), the base version may still
+        // exist on the bucket. Use CopyObject from the base version instead of re-uploading.
+        if (item.localStatus === FileStatus.Unchanged) {
+            try {
+                const copyResp = await s3Client.send(new CopyObjectCommand({
+                    Bucket: bucket,
+                    CopySource: `${bucket}/${encodeURIComponent(item.base!.key)}?versionId=${item.base!.version}`,
+                    Key: targetKey,
+                    MetadataDirective: 'REPLACE',
+                    Metadata: {
+                        uuid,
+                        syncversion: syncVersion.toString(),
+                        devicename: settings.device_name,
+                    },
+                    // Conditional write: if updating existing object, require ETag match;
+                    // if creating new object, require it doesn't already exist.
+                    ...(item.remote ? { IfMatch: quotedEtag(item.remote.etag) } : { IfNoneMatch: '*' }),
+                }));
+                if (!copyResp.VersionId) {
+                    throw new Error('CopyObject did not return a VersionId');
+                }
+                // Get server-side LastModified via HeadObject
+                let lastModified = new Date().toISOString();
+                try {
+                    const headResp = await s3Client.send(new HeadObjectCommand({
+                        Bucket: bucket,
+                        Key: targetKey,
+                        VersionId: copyResp.VersionId,
+                    }));
+                    if (headResp.LastModified) {
+                        lastModified = headResp.LastModified.toISOString();
+                    }
+                } catch { }
+                putResult = {
+                    versionId: copyResp.VersionId,
+                    etag: copyResp.CopyObjectResult?.ETag?.replace(/"/g, '') ?? item.base!.etag,
+                    lastModified,
+                };
+                sha256Base64 = item.base!.sha256;
+                contentLength = item.base!.contentLength;
+                traceLog(`CopyLocalToRemote: used CopyObject from base version for ${targetKey}`);
+            } catch (e) {
+                if (isConcurrencyError(e)) {
+                    throw e;
+                }
+                traceLog(`CopyObject from base failed, falling back to upload: ${e}`);
+                // Fall through to upload path below
+                putResult = undefined;
+            }
+        }
+
+        // Upload path: stream SHA256 from file, pass File directly as PutObject body
+        if (!putResult) {
+            const sha256 = await computeSha256(item.local!.handle);
+            sha256Base64 = sha256.base64;
+            contentLength = sha256.size;
+
+            const localFile = await item.local!.handle.getFile();
+            putResult = await putObjectToS3(s3Client, bucket, targetKey, localFile, {
+                uuid, syncVersion, deviceName: settings.device_name,
+            }, sha256.base64, item.remote?.etag);
+        }
 
         // If remote exists at a different key, delete the old one
         if (item.remote && item.remote.key !== targetKey) {
-            await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: item.remote.key }));
+            await s3Client.send(new DeleteObjectCommand({
+                Bucket: bucket,
+                Key: item.remote.key,
+                IfMatch: quotedEtag(item.remote.etag),
+            }));
         }
 
         // If local file is at a different path than target, move it
@@ -1274,10 +1400,9 @@ export async function executeSyncItem(
             syncVersion,
             deviceName: settings.device_name,
             etag: putResult.etag,
-            sha256: sha256Hex,
-            contentLength: bytes.length,
-            // TODO: This must be lastModified as captured on S3
-            lastModified: new Date().toISOString(),
+            sha256: sha256Base64,
+            contentLength,
+            lastModified: putResult.lastModified,
             lastModifiedLocal,
             compressionMethod: '',
         };
@@ -1290,13 +1415,32 @@ export async function executeSyncItem(
         }
 
     } else if (contentAction === SyncContentAction.CopyRemoteToLocal) {
-        // TODO: if (item.remoteStatus === FileStatus.Unchanged) simply restore the content from base without making a request to S3 at all
 
-        // Download remote content to local FS
-        // TODO: This needs to be refactored to handle non-text files
-        const remoteContent = await getRemoteContent(item.remote!);
-        if (remoteContent === null) {
-            throw new Error(`Failed to download remote content for ${item.remote!.key}`);
+        // Get the source file handle to stream from.
+        // If remote is unchanged, restore from base file; otherwise from cached S3 download.
+        let sourceHandle: FileSystemFileHandle;
+
+        if (item.remoteStatus === FileStatus.Unchanged && item.base) {
+            const baseRelPath = item.base.key.substring(prefix.length);
+            const basePath = `.s3/b/${baseRelPath}`;
+            const baseHandle = await getFileHandle(rootHandle, basePath);
+            if (baseHandle) {
+                sourceHandle = baseHandle;
+                traceLog(`CopyRemoteToLocal: restoring from base file for ${targetPath}`);
+            } else {
+                // Base file missing, fall back to S3 download
+                const cached = await ensureRemoteCached(item.remote!);
+                if (!cached) {
+                    throw new Error(`Failed to download remote content for ${item.remote!.key}`);
+                }
+                sourceHandle = cached;
+            }
+        } else {
+            const cached = await ensureRemoteCached(item.remote!);
+            if (!cached) {
+                throw new Error(`Failed to download remote content for ${item.remote!.key}`);
+            }
+            sourceHandle = cached;
         }
 
         // If local exists at a different path from target, delete old local file
@@ -1311,7 +1455,7 @@ export async function executeSyncItem(
             addUuidChange(pending, oldDir, oldName, null);
         }
 
-        // Write to local file at targetPath
+        // Stream source to local file at targetPath
         const newDir = directoryPath(targetPath);
         const newName = fileName(targetPath);
         const dirHandle = await getDirectoryHandle(rootHandle, newDir, { create: true });
@@ -1319,14 +1463,13 @@ export async function executeSyncItem(
             throw new Error(`Could not create directory for ${targetPath}`);
         }
         const fileHandle = await dirHandle.getFileHandle(newName, { create: true });
+        const sourceFile = await sourceHandle.getFile();
         const writable = await fileHandle.createWritable();
-        await writable.write(remoteContent);
-        await writable.close();
+        await sourceFile.stream().pipeTo(writable);
 
         addUuidChange(pending, newDir, newName, uuid);
 
         // If S3 key needs to change (path action), copy + delete on S3
-        // TODO: The S3 operation must be conditional to handle race conditions
         let finalVersionId = item.remote!.version;
         let finalEtag = item.remote!.etag || '';
         if (item.remote!.key !== targetKey) {
@@ -1335,16 +1478,26 @@ export async function executeSyncItem(
                 CopySource: `${bucket}/${encodeURIComponent(item.remote!.key)}?versionId=${item.remote!.version}`,
                 Key: targetKey,
                 MetadataDirective: 'COPY',
+                // Conditional write: require object at targetKey doesn't exist.
+                // There is an edge case where this is not correct such as when 'a' is moved to 'b' and 'b' is moved to something else at the same time. This is difficult to handle. To be addressed later
+                IfNoneMatch: '*',
             }));
-            await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: item.remote!.key }));
+            await s3Client.send(new DeleteObjectCommand({
+                Bucket: bucket,
+                Key: item.remote!.key,
+                IfMatch: quotedEtag(item.remote!.etag),
+            }));
             finalVersionId = copyResp.VersionId || finalVersionId;
             finalEtag = copyResp.CopyObjectResult?.ETag?.replace(/"/g, '') || finalEtag;
         }
 
         // Build base record
+        let sha256 = item.remote!.sha256 || '';
+        if (!sha256) {
+            sha256 = (await computeSha256(fileHandle)).base64;
+        }
         const localFile = await fileHandle.getFile();
         const lastModifiedLocal = new Date(localFile.lastModified).toISOString();
-        const sha256 = item.remote!.sha256 || '';
         const baseRecord: BaseVersionRecord = {
             key: targetKey,
             version: finalVersionId,
@@ -1365,11 +1518,13 @@ export async function executeSyncItem(
         if (item.base && item.base.key !== targetKey) {
             accumulateBasePathChange(pending, prefix, item.base.key, targetKey);
         }
-
     } else if (contentAction === SyncContentAction.DeleteRemote) {
-        // Delete from S3
-        // TODO: The delete must be conditional to handle race conditions
-        await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: item.remote!.key }));
+        // Delete from S3 with conditional check
+        await s3Client.send(new DeleteObjectCommand({
+            Bucket: bucket,
+            Key: item.remote!.key,
+            IfMatch: quotedEtag(item.remote!.etag),
+        }));
 
         // Remove base record and file
         if (item.base) {
@@ -1402,14 +1557,18 @@ export async function executeSyncItem(
         // Content unchanged, just path move
         if (pathAction === SyncPathAction.UseLocalPath) {
             // S3 key needs to match local key
-            // TODO: The S3 operations must be conditional to handle race conditions
             const copyResp = await s3Client.send(new CopyObjectCommand({
                 Bucket: bucket,
                 CopySource: `${bucket}/${encodeURIComponent(item.remote!.key)}?versionId=${item.remote!.version}`,
                 Key: targetKey,
                 MetadataDirective: 'COPY',
+                IfNoneMatch: '*',
             }));
-            await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: item.remote!.key }));
+            await s3Client.send(new DeleteObjectCommand({
+                Bucket: bucket,
+                Key: item.remote!.key,
+                IfMatch: quotedEtag(item.remote!.etag),
+            }));
 
             const newVersionId = copyResp.VersionId || item.remote!.version;
             const newEtag = copyResp.CopyObjectResult?.ETag?.replace(/"/g, '') || item.remote!.etag || '';
@@ -1452,6 +1611,12 @@ export async function executeSyncItem(
             // Copy base file from local handle at new location
             pending.baseFileWrites.set(targetPath, item.local!.handle);
         }
+    }
+
+    // Schedule remote cache cleanup for this item's version
+    if (item.remote) {
+        const remoteRelPath = item.remote.key.substring(prefix.length);
+        pending.remoteCacheDeletes.push(remoteCachePath(remoteRelPath, item.remote.version));
     }
 }
 
@@ -1568,5 +1733,22 @@ export async function flushPendingChanges(
         }
     }
 
-    traceLog(`Metadata flush complete: ${pending.baseRecords.size} records, ${pending.baseFileWrites.size} base files written, ${pending.baseFileDeletes.length} base files deleted, ${pending.uuidChanges.size} uuid map updates.`);
+    // 5. Delete remote cache files from .adoc-editor/s3/r/
+    if (pending.remoteCacheDeletes.length > 0) {
+        for (const cachePath of pending.remoteCacheDeletes) {
+            try {
+                const dir = directoryPath(cachePath);
+                const name = fileName(cachePath);
+                const dirHandle = await getDirectoryHandle(rootHandle, dir);
+                if (dirHandle) {
+                    await dirHandle.removeEntry(name);
+                }
+            } catch (e) {
+                // Cache file may already be gone, that's fine
+                traceLog(`Failed to delete remote cache file ${cachePath}: ${e}`);
+            }
+        }
+    }
+
+    traceLog(`Metadata flush complete: ${pending.baseRecords.size} records, ${pending.baseFileWrites.size} base files written, ${pending.baseFileDeletes.length} base files deleted, ${pending.uuidChanges.size} uuid map updates, ${pending.remoteCacheDeletes.length} remote cache files deleted.`);
 }

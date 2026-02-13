@@ -103,22 +103,19 @@ export const goButton = style({
     padding: '4px 12px',
     borderRadius: '4px',
     border: 'none',
-    backgroundColor: vars.color.buttonBackground,
-    color: vars.color.buttonText,
+    backgroundColor: vars.color.background,
+    color: vars.color.text,
     fontSize: '14px',
     cursor: 'pointer',
     fontWeight: 'bold',
     opacity: 0.5, // Initially disabled state
-    ':hover': {
-        backgroundColor: vars.color.buttonBackground, // No hover effect when disabled
-    },
     selectors: {
         '&:not(:disabled)': {
             opacity: 1,
             cursor: 'pointer'
         },
         '&:not(:disabled):hover': {
-            backgroundColor: vars.color.buttonHover
+            backgroundColor: vars.color.hoverBackground
         }
     }
 });

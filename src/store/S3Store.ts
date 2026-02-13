@@ -71,25 +71,23 @@ export class S3Store {
     }
 
     /**
-     * Get object content with caching.
-     * First checks .adoc-editor/s3/r/<relativePath> for cached content.
-     * If not found, fetches from S3 and caches locally.
+     * Ensure a remote object's content is cached locally.
+     * Checks .adoc-editor/s3/r/<relativePath> for existing cache file.
+     * If not found, fetches from S3 and streams directly to cache file.
+     * Returns the cache file handle, or null on failure.
      */
-    async getObjectContent(rootHandle: FileSystemDirectoryHandle, remote: S3VersionRecord, {cachedOnly}: {cachedOnly: boolean}): Promise<string | null> {
+    async ensureRemoteCached(rootHandle: FileSystemDirectoryHandle, remote: S3VersionRecord): Promise<FileSystemFileHandle | null> {
         const prefix = this.settings.prefix || '';
         const relativePath = remote.key.startsWith(prefix) ? remote.key.substring(prefix.length) : remote.key;
 
         // Try to load from cache
-        const cached = await loadRemoteFileFromCache(rootHandle, relativePath);
+        const cached = await loadRemoteFileFromCache(rootHandle, relativePath, remote.version);
         if (cached !== null) {
             traceLog(`Using cached remote content for ${relativePath}`);
             return cached;
         }
-        if (cachedOnly) {
-            return null;
-        }
 
-        // Fetch from S3
+        // Fetch from S3 and stream to cache
         const client = await this.ensureClient();
         if (!client) return null;
 
@@ -97,19 +95,44 @@ export class S3Store {
             const response = await client.send(new GetObjectCommand({
                 Bucket: this.settings.bucket,
                 Key: remote.key,
-                VersionId: remote.version, // Fetch specific version
+                VersionId: remote.version,
             }));
 
             if (response.Body) {
-                const content = await response.Body.transformToString();
-                // Cache the content
-                await saveRemoteFileToCache(rootHandle, relativePath, content);
+                const webStream = response.Body.transformToWebStream() as ReadableStream<Uint8Array>;
+                const cacheHandle = await saveRemoteFileToCache(rootHandle, relativePath, remote.version, webStream);
                 traceLog(`Fetched and cached remote content for ${relativePath}`);
-                return content;
+                return cacheHandle;
             }
             return null;
         } catch (e) {
             console.error(`Failed to get object ${remote.key} version ${remote.version}`, e);
+            return null;
+        }
+    }
+
+    /**
+     * Get object content as text string, for display in diff editor.
+     * Reads from cache file. If not cached and cachedOnly is false, downloads first.
+     */
+    async getObjectContentAsText(rootHandle: FileSystemDirectoryHandle, remote: S3VersionRecord, { cachedOnly }: { cachedOnly: boolean }): Promise<string | null> {
+        let handle: FileSystemFileHandle | null = null;
+
+        if (cachedOnly) {
+            const prefix = this.settings.prefix || '';
+            const relativePath = remote.key.startsWith(prefix) ? remote.key.substring(prefix.length) : remote.key;
+            handle = await loadRemoteFileFromCache(rootHandle, relativePath, remote.version);
+        } else {
+            handle = await this.ensureRemoteCached(rootHandle, remote);
+        }
+
+        if (!handle) return null;
+
+        try {
+            const file = await handle.getFile();
+            return await file.text();
+        } catch (e) {
+            console.error(`Failed to read cached file for ${remote.key}`, e);
             return null;
         }
     }

@@ -152,7 +152,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
         if (item?.remote) {
             try {
-                remoteContent = await this._syncStore.s3Store.getObjectContent(this._syncStore.directoryNode.handle, item.remote, { cachedOnly: true });
+                remoteContent = await this._syncStore.s3Store.getObjectContentAsText(this._syncStore.directoryNode.handle, item.remote, { cachedOnly: true });
             } catch (e) {
                 console.error('Failed to load remote content', e);
             }

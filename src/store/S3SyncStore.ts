@@ -2,7 +2,7 @@ import { action, observable, runInAction } from "mobx";
 import { DirectoryNodeModel } from "./FileSystemModels";
 import { S3Store } from "./S3Store";
 import { S3SyncDiffStore } from "./S3SyncDiffStore";
-import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, getFileHandle, updateDirectoryUuidMap, saveBaseRecord, getDirectoryHandle, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges } from "./S3SyncLogic";
+import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, getFileHandle, updateDirectoryUuidMap, saveBaseRecord, getDirectoryHandle, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges, isConcurrencyError, refreshRemoteRecord } from "./S3SyncLogic";
 import { traceLog } from "../utils/trace";
 import { dialog } from "../components/Dialog";
 
@@ -35,7 +35,7 @@ export class S3SyncStore {
     @observable private accessor _cancelRequested: boolean = false;
     get cancelRequested() { return this._cancelRequested; }
 
-    @observable.ref private accessor _syncProgress: Readonly<{ current: number; total: number; currentPath: string }> | null = null;
+    @observable.ref private accessor _syncProgress: Readonly<{ current: number; total: number; currentPath: string; concurrencyErrors: number }> | null = null;
     get syncProgress() { return this._syncProgress; }
 
     @action.bound
@@ -89,7 +89,8 @@ export class S3SyncStore {
         const items = this._syncStatusItems.filter(item =>
             item.isChecked && (
                 item.contentAction !== SyncContentAction.None ||
-                item.pathAction !== SyncPathAction.None
+                item.pathAction !== SyncPathAction.None ||
+                (item.base && !item.local && !item.remote) // base needs to be cleaned up for these items
             )
         );
 
@@ -119,18 +120,21 @@ export class S3SyncStore {
             baseFileWrites: new Map(),
             baseFileDeletes: [],
             uuidChanges: new Map(),
+            remoteCacheDeletes: [],
         };
 
         runInAction(() => {
             this._isSyncing = true;
             this._cancelRequested = false;
-            this._syncProgress = { current: 0, total: items.length, currentPath: '' };
+            this._syncProgress = { current: 0, total: items.length, currentPath: '', concurrencyErrors: 0 };
         });
 
-        const getRemoteContent = (remote: S3VersionRecord) =>
-            this.s3Store.getObjectContent(rootHandle, remote, { cachedOnly: false });
+        const ensureRemoteCached = async (remote: S3VersionRecord): Promise<FileSystemFileHandle | null> => {
+            return await this.s3Store.ensureRemoteCached(rootHandle, remote);
+        };
 
         let syncedCount = 0;
+        const concurrencyFailedItems: FileSyncStatus[] = [];
         try {
             for (let i = 0; i < items.length; i++) {
                 if (this._cancelRequested) {
@@ -142,21 +146,64 @@ export class S3SyncStore {
                 const itemPath = item.relativePath(prefix);
 
                 runInAction(() => {
-                    this._syncProgress = { current: i + 1, total: items.length, currentPath: itemPath };
+                    this._syncProgress = { current: i + 1, total: items.length, currentPath: itemPath, concurrencyErrors: concurrencyFailedItems.length };
                 });
 
                 try {
-                    await executeSyncItem(item, s3Client, rootHandle, settings, pending, getRemoteContent);
+                    await executeSyncItem(item, s3Client, rootHandle, settings, pending, ensureRemoteCached);
                     syncedCount++;
                 } catch (e) {
-                    console.error(`Sync failed for ${itemPath}:`, e);
-                    const shouldContinue = await dialog.confirm(
-                        `Sync failed for '${itemPath}':\n${e}\n\nContinue with remaining items?`
-                    );
-                    if (!shouldContinue) {
-                        break;
+                    if (isConcurrencyError(e)) {
+                        traceLog(`Concurrency conflict for ${itemPath}: ${e}`);
+                        concurrencyFailedItems.push(item);
+                        runInAction(() => {
+                            this._syncProgress = { current: i + 1, total: items.length, currentPath: itemPath, concurrencyErrors: concurrencyFailedItems.length };
+                        });
+                    } else {
+                        console.error(`Sync failed for ${itemPath}:`, e);
+                        const shouldContinue = await dialog.confirm(
+                            `Sync failed for '${itemPath}':\n${e}\n\nContinue with remaining items?`
+                        );
+                        if (!shouldContinue) {
+                            break;
+                        }
                     }
                 }
+            }
+
+            // Re-fetch remote state for items that had concurrency conflicts
+            if (concurrencyFailedItems.length > 0) {
+                traceLog(`Re-fetching remote state for ${concurrencyFailedItems.length} concurrency-conflicted items...`);
+                const syncItemTuples: { old: FileSyncStatus; new: FileSyncStatus }[] = [];
+                let newSelItem: FileSyncStatus | undefined = undefined;
+                for (const item of concurrencyFailedItems) {
+                    const remoteKey = item.remote?.key || (prefix + item.relativePath(prefix));
+                    try {
+                        const newRemote = await refreshRemoteRecord(s3Client, settings.bucket, remoteKey);
+                        const newSyncItem = await FileSyncStatus.create(item.base, item.local, newRemote, prefix);
+                        newSyncItem.updateActions(this.syncMode);
+                        syncItemTuples.push({ old: item, new: newSyncItem });
+                        if (this._selectedItem === item) {
+                            newSelItem = newSyncItem;
+                        }
+                    } catch (e) {
+                        console.error(`Failed to refresh remote state for ${remoteKey}:`, e);
+                    }
+                }
+                await runInAction(async () => {
+                    if (this._syncStatusItems) {
+                        for (let i = 0, j = 0; i < this._syncStatusItems.length; i++) {
+                            const item = this._syncStatusItems[i];
+                            if (item === syncItemTuples[j].old) {
+                                this._syncStatusItems[i] = syncItemTuples[j].new;
+                                j++;
+                            }
+                        }
+                    }
+                    if (newSelItem) {
+                        await this.setSelectedItem(newSelItem);
+                    }
+                });
             }
         } finally {
             // Flush metadata for everything that was synced
@@ -176,7 +223,14 @@ export class S3SyncStore {
                 this._syncProgress = null;
             });
 
-            traceLog(`Sync complete. ${syncedCount}/${items.length} items synced.`);
+            let summary = `Sync complete. ${syncedCount}/${items.length} items synced.`;
+            if (concurrencyFailedItems.length > 0) {
+                summary += ` ${concurrencyFailedItems.length} item(s) had concurrency conflicts and have been refreshed.`;
+            }
+            traceLog(summary);
+            if (concurrencyFailedItems.length > 0) {
+                await dialog.alert(summary);
+            }
         }
     }
 
