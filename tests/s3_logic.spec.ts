@@ -8,7 +8,8 @@ import { createHash } from 'crypto';
 
 // Helper to calculate SHA256 matches S3SyncLogic
 function computeHash(content: string) {
-    return createHash('sha256').update(content).digest('hex');
+    const digest = createHash('sha256').update(content).digest();
+    return btoa(String.fromCharCode(...digest));
 }
 
 // Mock S3 Client
@@ -633,7 +634,7 @@ test.describe('S3 Sync Logic', () => {
             version: 'v2',
             syncVersion: 2,
             deviceName: 'dev',
-            sha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+            sha256: computeHash('test'),
             contentLength: 4,
             lastModifiedLocal: new Date().toISOString(),
             compressionMethod: ''
@@ -675,16 +676,14 @@ test.describe('S3 Sync Logic', () => {
             version: 'v1',
             syncVersion: 1,
             deviceName: 'dev',
-            sha256: 'hash-1',
+            sha256: computeHash('test'),
             contentLength: 4,
             lastModifiedLocal: new Date().toISOString(),
             compressionMethod: ''
         };
-        baseDir.addFile('.index.json', JSON.stringify({ 'file.txt': baseRecord }));
 
         // Local: Unchanged
         rootHandle.addFile('file.txt', 'test');
-        baseRecord.sha256 = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
         baseDir.addFile('.index.json', JSON.stringify({ 'file.txt': baseRecord }));
 
         // Remote: No sync metadata
@@ -717,16 +716,14 @@ test.describe('S3 Sync Logic', () => {
             version: 'v1',
             syncVersion: 1,
             deviceName: 'dev',
-            sha256: 'hash-1',
+            sha256: computeHash('test'),
             contentLength: 4,
             lastModifiedLocal: new Date().toISOString(),
             compressionMethod: ''
         };
-        baseDir.addFile('.index.json', JSON.stringify({ 'file.txt': baseRecord }));
 
         // Local: Unchanged
         rootHandle.addFile('file.txt', 'test');
-        baseRecord.sha256 = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
         baseDir.addFile('.index.json', JSON.stringify({ 'file.txt': baseRecord }));
 
         // Remote: Same SyncVer, Diff Hash
@@ -1270,7 +1267,7 @@ test.describe('S3 Sync Logic', () => {
                     const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
                     const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
 
-                    const sharedContentHash = '13dc762db802d34578dd514c74bf67179a3cf00d2dedddf36f8a4d309c901662';
+                    const sharedContentHash = computeHash('shared-content');
 
                     const baseRecord = {
                         uuid: '', // Missing UUID
@@ -1307,8 +1304,7 @@ test.describe('S3 Sync Logic', () => {
                     const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
                     const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
 
-                    const sharedContentHash = '13dc762db802d34578dd514c74bf67179a3cf00d2dedddf36f8a4d309c901662';
-
+                    const sharedContentHash = computeHash('shared-content');
                     const baseRecord = {
                         uuid: 'uuid-base',
                         key: 'test-prefix/base-has-uuid.txt',
