@@ -169,6 +169,108 @@ Content Actions
         Use Local OR Use Remote, Conflict (needs user input)  
         Display remote vs local (editable)
 
+## Sync Execution
+
+After the user resolves any conflicts and selects items to sync, the execution phase processes each item. Items are filtered to those that are checked and have either a content action, a path action, or both-deleted state (base exists but both local and remote are gone).
+
+### Sync Modes
+
+Three sync modes control default and allowed actions:
+
+- **Sync**: Default actions favor no data loss — conflicts require manual resolution.
+- **Mirror Local**: Default actions make the remote match local state.
+- **Mirror Remote**: Default actions make the local state match remote.
+
+The user can override individual item actions in Sync mode. In the other two modes, the default action is the only allowed action.
+
+### Conditional S3 Operations
+
+All S3 write operations use conditional headers to prevent race conditions from concurrent modifications:
+
+- **IfMatch**: Used on PutObject and DeleteObject. Contains the quoted ETag of the expected current object version. The operation fails if the object's current ETag doesn't match.
+- **IfNoneMatch: \***: Used on PutObject and CopyObject when creating a new object. The operation fails if an object already exists at the target key.
+
+ETags returned by S3 include surrounding double quotes. The application strips quotes when storing ETags and re-adds them when constructing conditional headers. The HTTP specification requires quoted ETags in these headers.
+
+SHA256 hashes are consistently represented in base64 format throughout the system, matching S3's `ChecksumSHA256` format.
+
+### Content Action: CopyLocalToRemote
+
+Uploads a local file to S3, with an optimization for unchanged local content.
+
+1. **CopyObject optimization**: If the local file is unchanged from the base version, the base version may still exist on the S3 bucket under the old version. A CopyObject is used instead of re-uploading. The CopyObject source is specified with a versionId, so it always refers to the correct version. The conditional header is applied to the *destination*: `IfMatch` if the destination already exists, `IfNoneMatch: *` if it doesn't.
+2. **Upload fallback**: If the CopyObject fails (non-concurrency error) or if the local content has changed, the file is uploaded via PutObject. The SHA256 hash is computed by streaming through the file and the File object is passed directly as the request body (streaming).
+3. **Old key cleanup**: If the remote existed at a different key (due to path action), the old remote object is deleted with IfMatch.
+4. **Local file move**: If the path action requires moving the local file, the File System Access API `move()` method is used.
+5. **Base record**: A new base record is saved with the version, etag, sha256, and content length from the upload/copy result.
+
+### Content Action: CopyRemoteToLocal
+
+Downloads (or restores) remote content to the local file system.
+
+1. **Source selection**: If the remote is unchanged from the base, the base file at `.s3/b/<relativePath>` is used as the source (avoiding a network download). If the base file is missing or the remote has changed, the content is downloaded from S3 and cached at `.adoc-editor/s3/r/<relativePath>.<versionId>`.
+2. **Old local cleanup**: If the local file existed at a different path, the old file is deleted and UUID maps are updated.
+3. **Streaming write**: The source file content is streamed to the target local file path.
+4. **S3 key move**: If the path action requires the S3 key to change, a CopyObject + DeleteObject is performed. The CopyObject uses `IfNoneMatch: *` on the destination.
+5. **SHA256 calculation**: If the remote record doesn't have a sha256, it is calculated from the local file after writing.
+6. **Base record**: A new base record is saved with the remote's version, etag, and other metadata.
+
+### Content Action: DeleteRemote
+
+Deletes the remote object from S3.
+
+1. A DeleteObjectCommand is sent with `IfMatch` to ensure the expected version is being deleted.
+2. The base record and base file are removed.
+
+### Content Action: DeleteLocal
+
+Deletes the local file and cleans up associated state.
+
+1. The local file is deleted from the file system.
+2. UUID maps are updated to remove the entry.
+3. The base record and base file are removed.
+
+### Path-Only Changes (Content Unchanged)
+
+When only the path differs but content is the same:
+
+- **UseLocalPath**: The S3 object is copied to the new key (matching local path) with `IfNoneMatch: *` and the old key is deleted with `IfMatch`. The base record is updated with the new key and version.
+- **UseRemotePath**: The local file is moved to match the remote path using `FileSystemFileHandle.move()`. The base record is updated with the remote's key.
+
+### Both-Deleted Cleanup
+
+If an item has a base record but both local and remote are gone (content action and path action are both None), the base record and base file are cleaned up.
+
+### Pending Changes and Batch Flush
+
+To avoid frequent file I/O during sync, all metadata changes are accumulated in a `PendingChanges` object during item processing and flushed to disk in a single batch at the end:
+
+1. **Base metadata records** (`.s3/m/<dir>/.index.json`): Updated per directory, reading the existing index, applying changes (upserts and deletes), and writing back.
+2. **Base file writes** (`.s3/b/<relativePath>`): Source file handles are streamed to the target path.
+3. **Base file deletes** (`.s3/b/<relativePath>`): Entries removed.
+4. **UUID map updates**: Per-directory `.s3/uuids.<dir_uuid>.json` files are updated.
+5. **Remote cache cleanup** (`.adoc-editor/s3/r/<relativePath>.<versionId>`): Cached remote files for synced items are deleted after sync.
+
+### Remote Content Caching
+
+Remote content is cached at `.adoc-editor/s3/r/<relativePath>.<versionId>`. The version ID is appended to prevent serving stale cached content when the remote version changes. Cache files are:
+
+- Created when downloading remote content for preview (diff editor) or for CopyRemoteToLocal.
+- Deleted during the batch flush after a sync operation completes.
+
+### Concurrency Error Handling
+
+Conditional S3 operations may return HTTP 409 (Conflict) or 412 (Precondition Failed) when the remote state has changed since the last scan. These are expected concurrency errors, not bugs.
+
+When a concurrency error is detected:
+1. The item is added to a list of concurrency-failed items. No error dialog is shown.
+2. The progress indicator in the title bar shows the count of concurrency conflicts.
+3. Sync continues with remaining items.
+4. After the sync loop completes, the remote state is re-fetched for each failed item using a HeadObject request.
+5. A new `FileSyncStatus` is created with the updated remote record, and actions are recalculated based on the current sync mode.
+6. The item is replaced in the sync status list so the user can review and re-sync.
+7. A summary alert is shown indicating how many items had concurrency conflicts.
+
 ## Implementation Notes
 
 - File IO must integrate with the beforeUnload event to prevent corruption.
