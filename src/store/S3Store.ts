@@ -6,7 +6,7 @@ import { AuthStore } from "./AuthStore";
 import { S3SyncSettings } from "../file_system/S3SyncSettings";
 import { traceLog } from "../utils/trace";
 import { User } from "oidc-client-ts";
-import { getFileHandle, S3VersionRecord } from "./S3SyncLogic";
+import { loadRemoteFileFromCache, S3VersionRecord, saveRemoteFileToCache } from "./S3SyncLogic";
 
 export class S3Store {
 
@@ -80,7 +80,7 @@ export class S3Store {
         const relativePath = remote.key.startsWith(prefix) ? remote.key.substring(prefix.length) : remote.key;
 
         // Try to load from cache
-        const cached = await this.loadFromCache(rootHandle, relativePath);
+        const cached = await loadRemoteFileFromCache(rootHandle, relativePath);
         if (cached !== null) {
             traceLog(`Using cached remote content for ${relativePath}`);
             return cached;
@@ -103,7 +103,7 @@ export class S3Store {
             if (response.Body) {
                 const content = await response.Body.transformToString();
                 // Cache the content
-                await this.saveToCache(rootHandle, relativePath, content);
+                await saveRemoteFileToCache(rootHandle, relativePath, content);
                 traceLog(`Fetched and cached remote content for ${relativePath}`);
                 return content;
             }
@@ -111,34 +111,6 @@ export class S3Store {
         } catch (e) {
             console.error(`Failed to get object ${remote.key} version ${remote.version}`, e);
             return null;
-        }
-    }
-
-    private async loadFromCache(rootHandle: FileSystemDirectoryHandle, relativePath: string): Promise<string | null> {
-        try {
-            const cachePath = `.adoc-editor/s3/r/${relativePath}`;
-            const handle = await getFileHandle(rootHandle, cachePath);
-            if (handle) {
-                const file = await handle.getFile();
-                return await file.text();
-            }
-        } catch {
-            // Cache miss
-        }
-        return null;
-    }
-
-    private async saveToCache(rootHandle: FileSystemDirectoryHandle, relativePath: string, content: string): Promise<void> {
-        try {
-            const cachePath = `.adoc-editor/s3/r/${relativePath}`;
-            const handle = await getFileHandle(rootHandle, cachePath, { create: true });
-            if (handle) {
-                const writable = await handle.createWritable();
-                await writable.write(content);
-                await writable.close();
-            }
-        } catch (e) {
-            console.error(`Failed to cache remote content at ${relativePath}`, e);
         }
     }
 }

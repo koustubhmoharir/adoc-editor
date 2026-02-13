@@ -82,6 +82,7 @@ class DialogStore implements Dialog {
             // Requirement says: "dialog.input(fieldDefs, options)"
             // So we don't have a message param for input.
         } else {
+            // TODO: Convert any new lines in the message to <br/>
             this.message = messageOrFields as string;
         }
 

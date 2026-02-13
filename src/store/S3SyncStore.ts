@@ -2,7 +2,7 @@ import { action, observable, runInAction } from "mobx";
 import { DirectoryNodeModel } from "./FileSystemModels";
 import { S3Store } from "./S3Store";
 import { S3SyncDiffStore } from "./S3SyncDiffStore";
-import { FileSyncStatus, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, getFileHandle, updateDirectoryUuidMap, saveBaseRecord, getDirectoryHandle, SyncMode } from "./S3SyncLogic";
+import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, getFileHandle, updateDirectoryUuidMap, saveBaseRecord, getDirectoryHandle, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges } from "./S3SyncLogic";
 import { traceLog } from "../utils/trace";
 import { dialog } from "../components/Dialog";
 
@@ -21,13 +21,22 @@ export class S3SyncStore {
     readonly s3Store: S3Store;
     readonly diffStore: S3SyncDiffStore;
 
-    @observable accessor _selectedItem: FileSyncStatus | null = null;
+    @observable private accessor _selectedItem: FileSyncStatus | null = null;
     get selectedItem() { return this._selectedItem; }
 
-    @observable accessor _syncStatusItems: FileSyncStatus[] | undefined = undefined;
+    @observable private accessor _syncStatusItems: FileSyncStatus[] | undefined = undefined;
     get syncStatusItems() { return this._syncStatusItems; }
 
     @observable accessor syncMode: SyncMode = SyncMode.Sync;
+
+    @observable private accessor _isSyncing: boolean = false;
+    get isSyncing() { return this._isSyncing; }
+
+    @observable private accessor _cancelRequested: boolean = false;
+    get cancelRequested() { return this._cancelRequested; }
+
+    @observable.ref private accessor _syncProgress: Readonly<{ current: number; total: number; currentPath: string }> | null = null;
+    get syncProgress() { return this._syncProgress; }
 
     @action.bound
     setSyncMode(mode: SyncMode) {
@@ -49,7 +58,7 @@ export class S3SyncStore {
     /**
      * Start the sync process - scans files and calculates status
      */
-    async startSync() {
+    async calculateStatus() {
         const s3Client = await this.s3Store.ensureClient();
         if (!s3Client) return;
         const settings = this.s3Store.settings;
@@ -68,6 +77,112 @@ export class S3SyncStore {
                 traceLog(`Sync failed: ${e}`);
             });
         }
+    }
+
+    @action.bound
+    async executeSyncGo() {
+        if (!this._syncStatusItems || this._isSyncing) return;
+
+        const prefix = this.s3Store.settings.prefix;
+
+        // Filter checked items with actionable content or path actions
+        const items = this._syncStatusItems.filter(item =>
+            item.isChecked && (
+                item.contentAction !== SyncContentAction.None ||
+                item.pathAction !== SyncPathAction.None
+            )
+        );
+
+        if (items.length === 0) {
+            await dialog.alert('No actionable items selected.');
+            return;
+        }
+
+        // Validate: block if any checked item has unresolved conflict
+        const unresolvedConflicts = items.filter(item =>
+            (item.isContentConflict && item.contentAction === SyncContentAction.None) ||
+            (item.isPathConflict && item.pathAction === SyncPathAction.None)
+        );
+        if (unresolvedConflicts.length > 0) {
+            const paths = unresolvedConflicts.map(i => i.relativePath(prefix)).join('\n');
+            await dialog.alert(`The following items have unresolved conflicts. Please set their actions before syncing:\n${paths}`);
+            return;
+        }
+
+        const s3Client = await this.s3Store.ensureClient();
+        if (!s3Client) return;
+
+        const rootHandle = this.directoryNode.handle;
+        const settings = this.s3Store.settings;
+        const pending: PendingChanges = {
+            baseRecords: new Map(),
+            baseFileWrites: new Map(),
+            baseFileDeletes: [],
+            uuidChanges: new Map(),
+        };
+
+        runInAction(() => {
+            this._isSyncing = true;
+            this._cancelRequested = false;
+            this._syncProgress = { current: 0, total: items.length, currentPath: '' };
+        });
+
+        const getRemoteContent = (remote: S3VersionRecord) =>
+            this.s3Store.getObjectContent(rootHandle, remote, { cachedOnly: false });
+
+        let syncedCount = 0;
+        try {
+            for (let i = 0; i < items.length; i++) {
+                if (this._cancelRequested) {
+                    traceLog(`Sync cancelled after ${syncedCount} items.`);
+                    break;
+                }
+
+                const item = items[i];
+                const itemPath = item.relativePath(prefix);
+
+                runInAction(() => {
+                    this._syncProgress = { current: i + 1, total: items.length, currentPath: itemPath };
+                });
+
+                try {
+                    await executeSyncItem(item, s3Client, rootHandle, settings, pending, getRemoteContent);
+                    syncedCount++;
+                } catch (e) {
+                    console.error(`Sync failed for ${itemPath}:`, e);
+                    const shouldContinue = await dialog.confirm(
+                        `Sync failed for '${itemPath}':\n${e}\n\nContinue with remaining items?`
+                    );
+                    if (!shouldContinue) {
+                        break;
+                    }
+                }
+            }
+        } finally {
+            // Flush metadata for everything that was synced
+            if (syncedCount > 0 || pending.baseRecords.size > 0) {
+                try {
+                    traceLog('Flushing pending metadata changes...');
+                    await flushPendingChanges(rootHandle, pending);
+                } catch (e) {
+                    console.error('Failed to flush pending changes:', e);
+                    await dialog.alert(`Failed to save sync metadata: ${e}`);
+                }
+            }
+
+            runInAction(() => {
+                this._isSyncing = false;
+                this._cancelRequested = false;
+                this._syncProgress = null;
+            });
+
+            traceLog(`Sync complete. ${syncedCount}/${items.length} items synced.`);
+        }
+    }
+
+    @action.bound
+    requestCancel() {
+        this._cancelRequested = true;
     }
 
     private async updateItemStatus(item: FileSyncStatus, newLocal: LocalFileRecord | null) {

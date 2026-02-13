@@ -8,7 +8,7 @@ import { S3SyncStore } from '../store/S3SyncStore';
 export const S3Sync = observer(({ store }: { store: S3SyncStore }) => {
     return (
         <>
-            <S3SyncTitleBar />
+            <S3SyncTitleBar store={store} />
             <div className={styles.container}>
                 <S3SyncSidebar store={store} />
                 <S3SyncDiffEditor store={store.diffStore} />

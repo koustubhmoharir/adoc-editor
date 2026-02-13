@@ -1,5 +1,5 @@
 import { computed, observable } from "mobx";
-import { S3Client, ListObjectVersionsCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, ListObjectVersionsCommand, HeadObjectCommand, PutObjectCommand, DeleteObjectCommand, CopyObjectCommand } from "@aws-sdk/client-s3";
 import { Sha256 } from "@aws-crypto/sha256-browser";
 import { S3SyncSettings } from "../file_system/S3SyncSettings";
 import { traceLog } from "../utils/trace";
@@ -465,6 +465,34 @@ async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: 
     return remoteRecordsByPath;
 }
 
+export async function loadRemoteFileFromCache(rootHandle: FileSystemDirectoryHandle, relativePath: string): Promise<string | null> {
+    try {
+        const cachePath = `.adoc-editor/s3/r/${relativePath}`;
+        const handle = await getFileHandle(rootHandle, cachePath);
+        if (handle) {
+            const file = await handle.getFile();
+            return await file.text();
+        }
+    } catch {
+        // Cache miss
+    }
+    return null;
+}
+
+export async function saveRemoteFileToCache(rootHandle: FileSystemDirectoryHandle, relativePath: string, content: string): Promise<void> {
+    try {
+        const cachePath = `.adoc-editor/s3/r/${relativePath}`;
+        const handle = await getFileHandle(rootHandle, cachePath, { create: true });
+        if (handle) {
+            const writable = await handle.createWritable();
+            await writable.write(content);
+            await writable.close();
+        }
+    } catch (e) {
+        console.error(`Failed to cache remote content at ${relativePath}`, e);
+    }
+}
+
 async function writeRemoteRecordsCache(newRemoteRecordsByDir: Map<string, Record<string, S3VersionRecord>>, metaCacheDir: FileSystemDirectoryHandle) {
     for (const [dir, dirRecords] of newRemoteRecordsByDir.entries()) {
         const dirHandle = await getDirectoryHandle(metaCacheDir, dir, { create: true });
@@ -777,7 +805,7 @@ export class FileSyncStatus {
     @computed
     get pathAction() { return this._pathAction; }
     set pathAction(value) { this._pathAction = value; }
-    
+
     @observable private accessor _contentAction: SyncContentAction = SyncContentAction.None;
     @computed
     get contentAction() { return this._contentAction; }
@@ -792,7 +820,7 @@ export class FileSyncStatus {
 
     @observable private accessor _isWarning: boolean = false;
     get isWarning() { return this._isWarning; }
-    
+
     @observable private accessor _isChecked: boolean = true;
     @computed
     get isChecked() { return this._isChecked; }
@@ -939,17 +967,20 @@ export class FileSyncStatus {
 
         let preferredView: DiffViewMode | undefined = undefined;
 
-        if (mode === SyncMode.Sync) {
-            // Path Actions Logic
-            // "If exactly one of local status and remote status has the Moved suffix, the default Path Action will be to apply the Move."
-            // "If both local status and remote status have the Moved suffix, there is a path conflict"
-            if (this.localMoved && this.remoteMoved) {
+        // Path Actions Logic
+        // "If exactly one of local status and remote status has the Moved suffix, the default Path Action will be to apply the Move."
+        // "If both local status and remote status have the Moved suffix, there is a path conflict"
+        if (this.localMoved && this.remoteMoved) {
+            if (mode === SyncMode.Sync) {
                 this._isPathConflict = true;
-            } else if (this.localMoved) {
-                this._pathAction = SyncPathAction.UseLocalPath;
-            } else if (this.remoteMoved) {
-                this._pathAction = SyncPathAction.UseRemotePath;
             }
+            else {
+                this._pathAction = mode === SyncMode.MirrorLocal ? SyncPathAction.UseLocalPath : SyncPathAction.UseRemotePath;
+            }
+        } else if (this.localMoved) {
+            this._pathAction = mode === SyncMode.MirrorRemote ? (this.remote ? SyncPathAction.UseRemotePath : SyncPathAction.None) : SyncPathAction.UseLocalPath;
+        } else if (this.remoteMoved) {
+            this._pathAction = mode === SyncMode.MirrorLocal ? (this.local ? SyncPathAction.UseLocalPath : SyncPathAction.None) : SyncPathAction.UseRemotePath;
         }
 
         // Content Actions
@@ -1062,12 +1093,480 @@ export class FileSyncStatus {
             this.availableDiffViews.splice(i, 1);
             this.availableDiffViews.unshift(preferredView);
         }
+    }
+}
 
-        if (mode === SyncMode.MirrorLocal && this._pathAction !== SyncPathAction.None) {
-            this._pathAction = SyncPathAction.UseLocalPath;
+// ============================================================
+// Sync Execution Logic
+// ============================================================
+
+export interface PendingChanges {
+    /** relativePath → new BaseVersionRecord, or null to delete the record */
+    baseRecords: Map<string, BaseVersionRecord | null>;
+    /** relativePath → FileSystemFileHandle to copy content from for .s3/b/<relativePath> */
+    baseFileWrites: Map<string, FileSystemFileHandle>;
+    /** relativePaths to delete from .s3/b/ */
+    baseFileDeletes: string[];
+    /** dirPath (relative, e.g. "" or "sub/dir") → Record<fileName, uuid | null> */
+    uuidChanges: Map<string, Record<string, string | null>>;
+}
+
+interface PutObjectResult {
+    versionId: string;
+    etag: string;
+}
+
+async function putObjectToS3(
+    s3Client: S3Client,
+    bucket: string,
+    key: string,
+    body: Uint8Array,
+    metadata: { uuid: string; syncVersion: number; deviceName: string },
+    sha256Base64: string,
+): Promise<PutObjectResult> {
+    const response = await s3Client.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        Metadata: {
+            uuid: metadata.uuid,
+            syncversion: metadata.syncVersion.toString(),
+            devicename: metadata.deviceName,
+        },
+        ChecksumAlgorithm: 'SHA256',
+        ChecksumSHA256: sha256Base64,
+    }));
+    if (!response.VersionId) {
+        throw new Error(`PutObject for ${key} did not return a VersionId. Is versioning enabled on the bucket?`);
+    }
+    return {
+        versionId: response.VersionId,
+        etag: response.ETag?.replace(/"/g, '') || '',
+    };
+}
+
+function resolveUuid(item: FileSyncStatus): string {
+    return item.local?.uuid || item.base?.uuid || item.remote?.uuid || crypto.randomUUID();
+}
+
+function resolveSyncVersion(item: FileSyncStatus): number {
+    return Math.max(item.base?.syncVersion ?? 0, item.remote?.syncVersion ?? 0) + 1;
+}
+
+/**
+ * Determine the target S3 key based on the path action.
+ */
+function resolveTargetKey(item: FileSyncStatus): string {
+    if (item.pathAction === SyncPathAction.UseLocalPath) return item.local!.key;
+    if (item.pathAction === SyncPathAction.UseRemotePath) return item.remote!.key;
+    return item.base?.key ?? item.local?.key ?? item.remote?.key ?? '';
+}
+
+function addUuidChange(pending: PendingChanges, dirPath: string, name: string, uuid: string | null) {
+    let changes = pending.uuidChanges.get(dirPath);
+    if (!changes) {
+        pending.uuidChanges.set(dirPath, changes = Object.create(null));
+    }
+    changes![name] = uuid;
+}
+
+/**
+ * Accumulate base record and base file changes resulting from a move.
+ * The old base path record is deleted and its base file is deleted.
+ */
+function accumulateBasePathChange(pending: PendingChanges, prefix: string, oldKey: string, newKey: string) {
+    const oldPath = oldKey.substring(prefix.length);
+    const newPath = newKey.substring(prefix.length);
+    if (oldPath !== newPath) {
+        pending.baseRecords.set(oldPath, null);
+        pending.baseFileDeletes.push(oldPath);
+    }
+}
+
+/**
+ * Execute sync for a single item. Performs S3 and local FS operations,
+ * then accumulates metadata changes in `pending` for batch flush.
+ * 
+ * @param item The FileSyncStatus item to sync
+ * @param s3Client The authenticated S3 client
+ * @param rootHandle The root directory handle for the sync root
+ * @param settings S3 sync settings
+ * @param pending Accumulated changes to be flushed after all items
+ * @param getRemoteContent Function to get remote content (from S3Store)
+ */
+export async function executeSyncItem(
+    item: FileSyncStatus,
+    s3Client: S3Client,
+    rootHandle: FileSystemDirectoryHandle,
+    settings: S3SyncSettings,
+    pending: PendingChanges,
+    getRemoteContent: (remote: S3VersionRecord) => Promise<string | null>,
+) {
+    const prefix = settings.prefix;
+    const bucket = settings.bucket;
+    const contentAction = item.contentAction;
+    const pathAction = item.pathAction;
+    const targetKey = resolveTargetKey(item);
+    const targetPath = targetKey.substring(prefix.length);
+
+    if (contentAction === SyncContentAction.None && pathAction === SyncPathAction.None) {
+        return; // Nothing to do
+    }
+
+    const uuid = resolveUuid(item);
+
+    if (contentAction === SyncContentAction.CopyLocalToRemote) {
+
+        // TODO: if (item.localStatus === FileStatus.Unchanged) check if base version id exists on bucket and if so copy it instead of reuploading the local file
+        
+        // Upload local content to S3
+        // TODO: Do not load file into memory
+        const localFile = await item.local!.handle.getFile();
+        const bytes = new Uint8Array(await localFile.arrayBuffer());
+
+        // Compute SHA256 for integrity and base record
+        const hash = new Sha256();
+        hash.update(bytes);
+        const digest = await hash.digest();
+        const sha256Hex = Array.from(digest).map(b => b.toString(16).padStart(2, '0')).join('');
+        const sha256Base64 = btoa(String.fromCharCode(...digest));
+
+        const syncVersion = resolveSyncVersion(item);
+
+        // PutObject at targetKey
+        // TODO: The put should be conditional on the expected etag to handle race conditions. If the condition fails, the item should be left out of the sync, but with a refresh of remote metadata so that the user can decide what to do and possibly retry.
+        const putResult = await putObjectToS3(s3Client, bucket, targetKey, bytes, {
+            uuid, syncVersion, deviceName: settings.device_name,
+        }, sha256Base64);
+
+        // If remote exists at a different key, delete the old one
+        if (item.remote && item.remote.key !== targetKey) {
+            await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: item.remote.key }));
         }
-        if (mode === SyncMode.MirrorRemote && this._pathAction !== SyncPathAction.None) {
-            this._pathAction = SyncPathAction.UseRemotePath;
+
+        // If local file is at a different path than target, move it
+        if (item.local && item.local.key !== targetKey) {
+            const newLocalPath = targetPath;
+            const newDir = directoryPath(newLocalPath);
+            const newName = fileName(newLocalPath);
+            const dirHandle = await getDirectoryHandle(rootHandle, newDir, { create: true });
+            if (dirHandle) {
+                const handle = item.local.handle as any;
+                if (typeof handle.move === 'function') {
+                    await handle.move(dirHandle, newName);
+                }
+            }
+            // Update uuid maps for the move
+            const oldLocalPath = item.local.key.substring(prefix.length);
+            addUuidChange(pending, directoryPath(oldLocalPath), fileName(oldLocalPath), null);
+            addUuidChange(pending, directoryPath(newLocalPath), newName, uuid);
+        } else {
+            // Ensure uuid is in the map for the current location
+            addUuidChange(pending, directoryPath(targetPath), fileName(targetPath), uuid);
+        }
+
+        // Build base record
+        const lastModifiedLocal = new Date((await item.local!.handle.getFile()).lastModified).toISOString();
+        const baseRecord: BaseVersionRecord = {
+            key: targetKey,
+            version: putResult.versionId,
+            uuid,
+            syncVersion,
+            deviceName: settings.device_name,
+            etag: putResult.etag,
+            sha256: sha256Hex,
+            contentLength: bytes.length,
+            // TODO: This must be lastModified as captured on S3
+            lastModified: new Date().toISOString(),
+            lastModifiedLocal,
+            compressionMethod: '',
+        };
+        pending.baseRecords.set(targetPath, baseRecord);
+        pending.baseFileWrites.set(targetPath, item.local!.handle);
+
+        // Clean up old base path if key changed
+        if (item.base && item.base.key !== targetKey) {
+            accumulateBasePathChange(pending, prefix, item.base.key, targetKey);
+        }
+
+    } else if (contentAction === SyncContentAction.CopyRemoteToLocal) {
+        // TODO: if (item.remoteStatus === FileStatus.Unchanged) simply restore the content from base without making a request to S3 at all
+
+        // Download remote content to local FS
+        // TODO: This needs to be refactored to handle non-text files
+        const remoteContent = await getRemoteContent(item.remote!);
+        if (remoteContent === null) {
+            throw new Error(`Failed to download remote content for ${item.remote!.key}`);
+        }
+
+        // If local exists at a different path from target, delete old local file
+        if (item.local && item.local.key !== targetKey) {
+            const oldLocalPath = item.local.key.substring(prefix.length);
+            const oldDir = directoryPath(oldLocalPath);
+            const oldName = fileName(oldLocalPath);
+            const oldDirHandle = await getDirectoryHandle(rootHandle, oldDir);
+            if (oldDirHandle) {
+                try { await oldDirHandle.removeEntry(oldName); } catch { }
+            }
+            addUuidChange(pending, oldDir, oldName, null);
+        }
+
+        // Write to local file at targetPath
+        const newDir = directoryPath(targetPath);
+        const newName = fileName(targetPath);
+        const dirHandle = await getDirectoryHandle(rootHandle, newDir, { create: true });
+        if (!dirHandle) {
+            throw new Error(`Could not create directory for ${targetPath}`);
+        }
+        const fileHandle = await dirHandle.getFileHandle(newName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(remoteContent);
+        await writable.close();
+
+        addUuidChange(pending, newDir, newName, uuid);
+
+        // If S3 key needs to change (path action), copy + delete on S3
+        // TODO: The S3 operation must be conditional to handle race conditions
+        let finalVersionId = item.remote!.version;
+        let finalEtag = item.remote!.etag || '';
+        if (item.remote!.key !== targetKey) {
+            const copyResp = await s3Client.send(new CopyObjectCommand({
+                Bucket: bucket,
+                CopySource: `${bucket}/${encodeURIComponent(item.remote!.key)}?versionId=${item.remote!.version}`,
+                Key: targetKey,
+                MetadataDirective: 'COPY',
+            }));
+            await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: item.remote!.key }));
+            finalVersionId = copyResp.VersionId || finalVersionId;
+            finalEtag = copyResp.CopyObjectResult?.ETag?.replace(/"/g, '') || finalEtag;
+        }
+
+        // Build base record
+        const localFile = await fileHandle.getFile();
+        const lastModifiedLocal = new Date(localFile.lastModified).toISOString();
+        const sha256 = item.remote!.sha256 || '';
+        const baseRecord: BaseVersionRecord = {
+            key: targetKey,
+            version: finalVersionId,
+            uuid,
+            syncVersion: item.remote!.syncVersion,
+            deviceName: item.remote!.deviceName,
+            etag: finalEtag,
+            sha256,
+            contentLength: localFile.size,
+            lastModified: item.remote!.lastModified,
+            lastModifiedLocal,
+            compressionMethod: '',
+        };
+        pending.baseRecords.set(targetPath, baseRecord);
+        pending.baseFileWrites.set(targetPath, fileHandle);
+
+        // Clean up old base path if key changed
+        if (item.base && item.base.key !== targetKey) {
+            accumulateBasePathChange(pending, prefix, item.base.key, targetKey);
+        }
+
+    } else if (contentAction === SyncContentAction.DeleteRemote) {
+        // Delete from S3
+        // TODO: The delete must be conditional to handle race conditions
+        await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: item.remote!.key }));
+
+        // Remove base record and file
+        if (item.base) {
+            const basePath = item.base.key.substring(prefix.length);
+            pending.baseRecords.set(basePath, null);
+            pending.baseFileDeletes.push(basePath);
+        }
+
+    } else if (contentAction === SyncContentAction.DeleteLocal) {
+        // Delete local file
+        if (item.local) {
+            const localPath = item.local.key.substring(prefix.length);
+            const dir = directoryPath(localPath);
+            const name = fileName(localPath);
+            const dirHandle = await getDirectoryHandle(rootHandle, dir);
+            if (dirHandle) {
+                await dirHandle.removeEntry(name);
+            }
+            addUuidChange(pending, dir, name, null);
+        }
+
+        // Remove base record and file
+        if (item.base) {
+            const basePath = item.base.key.substring(prefix.length);
+            pending.baseRecords.set(basePath, null);
+            pending.baseFileDeletes.push(basePath);
+        }
+
+    } else if (contentAction === SyncContentAction.None && pathAction !== SyncPathAction.None) {
+        // Content unchanged, just path move
+        if (pathAction === SyncPathAction.UseLocalPath) {
+            // S3 key needs to match local key
+            // TODO: The S3 operations must be conditional to handle race conditions
+            const copyResp = await s3Client.send(new CopyObjectCommand({
+                Bucket: bucket,
+                CopySource: `${bucket}/${encodeURIComponent(item.remote!.key)}?versionId=${item.remote!.version}`,
+                Key: targetKey,
+                MetadataDirective: 'COPY',
+            }));
+            await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: item.remote!.key }));
+
+            const newVersionId = copyResp.VersionId || item.remote!.version;
+            const newEtag = copyResp.CopyObjectResult?.ETag?.replace(/"/g, '') || item.remote!.etag || '';
+
+            // Update base record with new key and version
+            const baseRecord: BaseVersionRecord = {
+                ...item.base!,
+                key: targetKey,
+                version: newVersionId,
+                etag: newEtag,
+            };
+            pending.baseRecords.set(targetPath, baseRecord);
+            accumulateBasePathChange(pending, prefix, item.base!.key, targetKey);
+            // Copy old base file to new path
+            pending.baseFileWrites.set(targetPath, item.local!.handle);
+        } else {
+            // UseRemotePath: move local file to match remote path
+            const localPath = item.local!.key.substring(prefix.length);
+            const newDir = directoryPath(targetPath);
+            const newName = fileName(targetPath);
+            const dirHandle = await getDirectoryHandle(rootHandle, newDir, { create: true });
+            if (dirHandle) {
+                const handle = item.local!.handle as any;
+                if (typeof handle.move === 'function') {
+                    await handle.move(dirHandle, newName);
+                }
+            }
+            // Update uuid maps
+            addUuidChange(pending, directoryPath(localPath), fileName(localPath), null);
+            addUuidChange(pending, newDir, newName, uuid);
+
+            // Update base record with new key
+            const baseRecord: BaseVersionRecord = {
+                ...item.base!,
+                key: targetKey,
+                lastModifiedLocal: new Date((await item.local!.handle.getFile()).lastModified).toISOString(),
+            };
+            pending.baseRecords.set(targetPath, baseRecord);
+            accumulateBasePathChange(pending, prefix, item.base!.key, targetKey);
+            // Copy base file from local handle at new location
+            pending.baseFileWrites.set(targetPath, item.local!.handle);
         }
     }
+}
+
+/**
+ * Flush all accumulated metadata changes to disk.
+ * This is called once at the end of the sync (or after cancel).
+ */
+export async function flushPendingChanges(
+    rootHandle: FileSystemDirectoryHandle,
+    pending: PendingChanges,
+) {
+    let s3Dir: FileSystemDirectoryHandle;
+    try {
+        s3Dir = await rootHandle.getDirectoryHandle('.s3', { create: true });
+    } catch {
+        console.error('Failed to access .s3 directory for metadata flush');
+        return;
+    }
+
+    // 1. Update .s3/m/ base metadata records
+    if (pending.baseRecords.size > 0) {
+        const baseMetaDir = await s3Dir.getDirectoryHandle('m', { create: true });
+
+        // Group by directory
+        const byDir = new Map<string, Map<string, BaseVersionRecord | null>>();
+        for (const [relPath, record] of pending.baseRecords) {
+            const dir = directoryPath(relPath);
+            const name = fileName(relPath);
+            let dirMap = byDir.get(dir);
+            if (!dirMap) {
+                byDir.set(dir, dirMap = new Map());
+            }
+            dirMap.set(name, record);
+        }
+
+        for (const [dir, changes] of byDir) {
+            try {
+                const dirHandle = await getDirectoryHandle(baseMetaDir, dir, { create: true });
+                if (!dirHandle) continue;
+
+                let records: Record<string, BaseVersionRecord> = Object.create(null);
+                try {
+                    const fh = await dirHandle.getFileHandle('.index.json');
+                    const file = await fh.getFile();
+                    const text = await file.text();
+                    records = JSON.parse(text);
+                } catch { }
+
+                for (const [name, record] of changes) {
+                    if (record === null) {
+                        delete records[name];
+                    } else {
+                        records[name] = record;
+                    }
+                }
+
+                const fh = await dirHandle.getFileHandle('.index.json', { create: true });
+                const writable = await fh.createWritable();
+                await writable.write(JSON.stringify(records, null, 2));
+                await writable.close();
+            } catch (e) {
+                console.error(`Failed to update metadata for directory ${dir}`, e);
+            }
+        }
+    }
+
+    // 2. Write base files at .s3/b/<relativePath>
+    if (pending.baseFileWrites.size > 0) {
+        const baseDir = await s3Dir.getDirectoryHandle('b', { create: true });
+        for (const [relPath, sourceHandle] of pending.baseFileWrites) {
+            try {
+                const targetHandle = await getFileHandle(baseDir, relPath, { create: true });
+                if (!targetHandle) continue;
+                const sourceFile = await sourceHandle.getFile();
+                const writable = await targetHandle.createWritable();
+                await sourceFile.stream().pipeTo(writable);
+            } catch (e) {
+                console.error(`Failed to write base file for ${relPath}`, e);
+            }
+        }
+    }
+
+    // 3. Delete base files from .s3/b/
+    if (pending.baseFileDeletes.length > 0) {
+        let baseDir: FileSystemDirectoryHandle | undefined;
+        try {
+            baseDir = await s3Dir.getDirectoryHandle('b');
+        } catch { }
+        if (baseDir) {
+            for (const relPath of pending.baseFileDeletes) {
+                try {
+                    const dir = directoryPath(relPath);
+                    const name = fileName(relPath);
+                    const dirHandle = await getDirectoryHandle(baseDir, dir);
+                    if (dirHandle) {
+                        await dirHandle.removeEntry(name);
+                    }
+                } catch (e) {
+                    console.error(`Failed to delete base file for ${relPath}`, e);
+                }
+            }
+        }
+    }
+
+    // 4. Update uuid maps
+    for (const [dirPath, changes] of pending.uuidChanges) {
+        try {
+            const dirHandle = await getDirectoryHandle(rootHandle, dirPath);
+            if (dirHandle) {
+                await updateDirectoryUuidMap(dirHandle, changes);
+            }
+        } catch (e) {
+            console.error(`Failed to update uuid map for ${dirPath}`, e);
+        }
+    }
+
+    traceLog(`Metadata flush complete: ${pending.baseRecords.size} records, ${pending.baseFileWrites.size} base files written, ${pending.baseFileDeletes.length} base files deleted, ${pending.uuidChanges.size} uuid map updates.`);
 }

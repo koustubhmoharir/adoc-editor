@@ -15,7 +15,7 @@ export class AppStore {
         const syncStore = new S3SyncStore(node, s3Store);
         this.activeSyncStore = syncStore;
         this.mode = 's3sync';
-        await syncStore.startSync();
+        await syncStore.calculateStatus();
     }
 
     @action.bound

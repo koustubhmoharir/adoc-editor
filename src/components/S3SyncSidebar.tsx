@@ -64,6 +64,7 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
     const statusItems = store.syncStatusItems;
     const selectedItem = store.selectedItem;
     const prefix = store.s3Store.settings.prefix || '';
+    const isSyncing = store.isSyncing;
 
     return (
         <div className={styles.sidebar} data-testid="s3sync-sidebar">
@@ -93,7 +94,7 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
                         <div
                             key={index}
                             className={`${styles.item} ${isSelected ? styles.itemSelected : ''}`}
-                            onClick={() => store.setSelectedItem(item)}
+                            onClick={() => !isSyncing && store.setSelectedItem(item)}
                             data-testid="s3sync-item"
                             data-item-path={item.relativePath(prefix)}
                             data-selected={isSelected}
@@ -105,6 +106,7 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
                                 checked={item.isChecked}
                                 onChange={(e) => runInAction(() => item.isChecked = e.target.checked)}
                                 onClick={(e) => e.stopPropagation()}
+                                disabled={isSyncing}
                             />
                             <i className={`${status.icon} ${styles.statusIcon} ${status.className}`} title={status.title} />
                             <div className={styles.itemContent}>
