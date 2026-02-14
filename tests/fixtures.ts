@@ -1,5 +1,6 @@
 import { test as base, Page, expect, BrowserContext, Browser } from '@playwright/test';
 import { FsTestSetup } from './helpers/fs_test_setup.ts'; // Explicit .ts to match project style
+import { S3TestSetup } from './helpers/s3_test_setup.ts';
 
 
 interface DialogHandle {
@@ -213,12 +214,19 @@ export const helpers = {
      * - Waits for globals to be ready.
      * 
      * @param page - The Playwright Page object.
+     * @param page - The Playwright Page object.
      * @param fsSetup - The file system setup helper.
+     * @param s3Setup - The S3 setup helper.
      */
-    async setupNewPage(page: Page, fsSetup: FsTestSetup) {
+    async setupNewPage(page: Page, { fsSetup, s3Setup }: { fsSetup?: FsTestSetup; s3Setup?: S3TestSetup}) {
         // Setup environment
         enableTestLogging(page);
-        await fsSetup.register(page);
+        if (fsSetup) {
+            await fsSetup.register(page);
+        }
+        if (s3Setup) {
+            await s3Setup.register(page);
+        }
         await enableTestGlobals(page);
 
         // Navigate once per worker
@@ -345,133 +353,17 @@ export const helpers = {
             return window.__TEST_editorStore.editor?.getModel()?.getLanguageId() ?? '';
         });
     },
-
-    /**
-     * Injects a mock S3 client into the browser page context.
-     * The mock records all `send()` calls and returns plausible responses.
-     * Use `getMockS3Calls` to retrieve the recorded calls for assertions.
-     *
-     * @param page - The Playwright Page object.
-     * @param options - Configuration for initial remote state.
-     * @param options.versions - Array of remote versions to pre-populate for ListObjectVersionsCommand.
-     */
-    async injectMockS3Client(page: Page, options?: {
-        versions?: Array<{
-            Key: string;
-            VersionId: string;
-            IsLatest: boolean;
-            Size?: number;
-            ETag?: string;
-            LastModified?: string;
-            Metadata?: Record<string, string>;
-        }>;
-    }): Promise<void> {
-        await page.evaluate((opts) => {
-            const versions = opts?.versions ?? [];
-            const calls: Array<{ command: string; input: any }> = [];
-            let nextVersionCounter = 1;
-
-            (window as any).__TEST_mockS3Calls = calls;
-
-            // Identify command type by schema since esbuild minifies constructor names in production bundle.
-            function identifyCommand(command: any): string {
-                const schemaName = command.schema?.[2] ?? '';
-                return `${schemaName}Command`;
-            }
-
-            window.__TEST_mockS3Client = {
-                send(command: any): Promise<any> {
-                    const input = command.input;
-                    const name = identifyCommand(command);
-                    calls.push({ command: name, input: { ...input, Body: input.Body ? '[body]' : undefined } });
-
-                    switch (name) {
-                        case 'ListObjectVersionsCommand':
-                            return Promise.resolve({
-                                Versions: versions
-                                    .filter((v: any) => !input.Prefix || v.Key.startsWith(input.Prefix))
-                                    .map((v: any) => ({
-                                        Key: v.Key,
-                                        VersionId: v.VersionId,
-                                        IsLatest: v.IsLatest,
-                                        LastModified: v.LastModified ? new Date(v.LastModified) : new Date(),
-                                        ETag: v.ETag ?? '"mock-etag"',
-                                        Size: v.Size ?? 0,
-                                    })),
-                                NextKeyMarker: undefined,
-                                NextVersionIdMarker: undefined,
-                            });
-
-                        case 'HeadObjectCommand': {
-                            const v = versions.find((ver: any) =>
-                                ver.Key === input.Key &&
-                                (!input.VersionId || ver.VersionId === input.VersionId)
-                            );
-                            if (!v) {
-                                const err: any = new Error('NoSuchKey');
-                                err.$metadata = { httpStatusCode: 404 };
-                                return Promise.reject(err);
-                            }
-                            return Promise.resolve({
-                                VersionId: v.VersionId,
-                                Metadata: v.Metadata ?? {},
-                                ContentLength: v.Size ?? 0,
-                                ETag: v.ETag ?? '"mock-etag"',
-                                LastModified: v.LastModified ? new Date(v.LastModified) : new Date(),
-                            });
-                        }
-
-                        case 'PutObjectCommand': {
-                            const vId = `mock-put-version-${nextVersionCounter++}`;
-                            return Promise.resolve({
-                                VersionId: vId,
-                                ETag: '"mock-put-etag"',
-                            });
-                        }
-
-                        case 'DeleteObjectCommand':
-                            return Promise.resolve({
-                                DeleteMarker: true,
-                                VersionId: `mock-delete-version-${nextVersionCounter++}`,
-                            });
-
-                        case 'CopyObjectCommand':
-                            return Promise.resolve({
-                                VersionId: `mock-copy-version-${nextVersionCounter++}`,
-                                CopyObjectResult: {
-                                    ETag: '"mock-copy-etag"',
-                                    LastModified: new Date(),
-                                },
-                            });
-
-                        default:
-                            return Promise.reject(new Error(`MockS3Client: Unknown command: ${name}`));
-                    }
-                },
-            };
-        }, options);
-    },
-
-    /**
-     * Retrieves the list of S3 commands that were sent to the mock S3 client.
-     *
-     * @param page - The Playwright Page object.
-     * @returns Array of recorded calls with command name and input.
-     */
-    async getMockS3Calls(page: Page): Promise<Array<{ command: string; input: any }>> {
-        return page.evaluate(() => {
-            return (window as any).__TEST_mockS3Calls ?? [];
-        });
-    },
 }
 
 interface WorkerState {
     context: BrowserContext;
     page: Page;
     fsSetup: FsTestSetup;
+    s3Setup: S3TestSetup;
     isDirty: boolean;
     viewport: { width: number; height: number };
 }
+
 
 type WorkerFixture = {
     workerState: WorkerState;
@@ -479,6 +371,7 @@ type WorkerFixture = {
 
 type TestFixture = {
     fsSetup: FsTestSetup;
+    s3Setup: S3TestSetup;
     // We override 'page' so tests get the shared one
 };
 
@@ -503,7 +396,7 @@ async function prepareWorkerForTest(browser: Browser, workerState: WorkerState):
         workerState.context = await browser.newContext();
         workerState.page = await workerState.context.newPage();
         workerState.isDirty = false;
-        await helpers.setupNewPage(workerState.page, workerState.fsSetup);
+        await helpers.setupNewPage(workerState.page, { fsSetup: workerState.fsSetup, s3Setup: workerState.s3Setup });
     }
     else {
         // Reset state before each test
@@ -535,10 +428,11 @@ export const test = base.extend<TestFixture, WorkerFixture>({
         state.context = await browser.newContext();
         state.page = await state.context.newPage();
         state.fsSetup = new FsTestSetup();
+        state.s3Setup = new S3TestSetup();
         state.isDirty = false;
         state.viewport = state.page.viewportSize()!;
 
-        await helpers.setupNewPage(state.page, state.fsSetup);
+        await helpers.setupNewPage(state.page, { fsSetup: state.fsSetup, s3Setup: state.s3Setup });
 
         // State object to track dirtiness across tests in this worker
         await use(state);
@@ -546,6 +440,7 @@ export const test = base.extend<TestFixture, WorkerFixture>({
         // Cleanup after all tests in worker are done
         await state.context.close();
         state.fsSetup.cleanup();
+        state.s3Setup.cleanup();
     }, { scope: 'worker' }],
 
     page: async ({ browser, workerState }, use, testInfo) => {
@@ -568,6 +463,10 @@ export const test = base.extend<TestFixture, WorkerFixture>({
 
     fsSetup: async ({ workerState }, use) => {
         await use(workerState.fsSetup);
+    },
+
+    s3Setup: async ({ workerState }, use) => {
+        await use(workerState.s3Setup);
     }
 });
 

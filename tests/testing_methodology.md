@@ -72,7 +72,7 @@ To maintain clean and robust tests, we use reusable helper functions.
 **Most core helpers are located in `tests/fixtures.ts` and exported via the `helpers` object.**
 
 - **`tests/fixtures.ts` (Core Helpers)**:
-    - `helpers.setupNewPage(page, fsSetup)`: Sets up a fresh test environment (logging, mocks, globals).
+    - `helpers.setupNewPage(page, { fsSetup, s3Setup })`: Sets up a fresh test environment (logging, mocks, globals).
     - `helpers.reloadPage(page, options)`: Reloads the page, optionally skipping state restoration.
     - `helpers.getEditorContent(page)`: Retrieves the current content from the editor store.
     - `helpers.setEditorContentDirect(page, content)`: Sets editor content directly via the store (bypassing typing).

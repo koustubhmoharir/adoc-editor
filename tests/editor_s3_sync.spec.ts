@@ -1,5 +1,5 @@
 
-import { test, expect, helpers } from './fixtures';
+import { test, expect } from './fixtures';
 import { loadInitialDirectory, openContextMenu } from './helpers/sidebar_helpers';
 import { getDirectoryItem, getSyncItemByPath } from './helpers/locators';
 import { SyncContentAction } from '../src/store/S3SyncLogic';
@@ -18,12 +18,14 @@ prefix = "test-prefix"
         `);
 });
 
-test('should upload new local file to S3', async ({ page, fsSetup }) => {
+test('should upload new local file to S3', async ({ page, fsSetup, s3Setup }) => {
     // 1. Setup: Create a local file
     fsSetup.createFile('s3-project', 'new-file.txt', 'Hello S3');
 
     // 2. Inject Mock S3 Client (empty remote state)
-    await helpers.injectMockS3Client(page, { versions: [] });
+    // s3Setup is already injected by fixture, we just need to seed it if needed.
+    // By default it is empty.
+    s3Setup.seed([]);
 
     // 3. Load directory
     await loadInitialDirectory(page, 's3-project');
@@ -57,11 +59,11 @@ test('should upload new local file to S3', async ({ page, fsSetup }) => {
 
     // Let's retry asserting the calls until they appear
     await expect.poll(async () => {
-        const calls = await helpers.getMockS3Calls(page);
+        const calls = s3Setup.getCalls();
         return calls.some(c => c.command === 'PutObjectCommand' && c.input.Key === 'test-prefix/new-file.txt');
     }, { timeout: 5000 }).toBe(true);
 
-    const calls = await helpers.getMockS3Calls(page);
+    const calls = s3Setup.getCalls();
     const putCall = calls.find(c => c.command === 'PutObjectCommand' && c.input.Key === 'test-prefix/new-file.txt');
     expect(putCall).toBeDefined();
     expect(putCall?.input.Bucket).toBe('test-bucket');

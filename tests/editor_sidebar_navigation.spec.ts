@@ -101,7 +101,7 @@ test('Debounced File Loading @OwnContext', async ({ browser, fsSetup }) => {
     try {
         const page = await context.newPage();
         await page.clock.install();
-        await helpers.setupNewPage(page, fsSetup);
+        await helpers.setupNewPage(page, {fsSetup});
         await loadInitialDirectory(page, 'dir1');
 
         const file1 = page.locator('[data-testid="file-item"][data-file-path="file1.adoc"]');

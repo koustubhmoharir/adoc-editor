@@ -46,6 +46,11 @@ function computeSha256Base64(content: Buffer): string {
     return digest.toString('base64');
 }
 
+function identifyCommand(command: any): string {
+    const schemaName = command.schema?.[2] ?? '';
+    return `${schemaName}Command`;
+}
+
 /**
  * Mock S3 client for testing. Implements the `send()` method to handle
  * all S3 commands used by S3SyncLogic:
@@ -54,14 +59,11 @@ function computeSha256Base64(content: Buffer): string {
  * - PutObjectCommand
  * - DeleteObjectCommand
  * - CopyObjectCommand
- *
- * Dispatches on command.constructor.name so it works both with `instanceof`
- * checks (unit tests importing real command classes) and in browser context
- * (E2E tests where commands are injected).
  */
 export class MockS3Client {
     private versions: StoredVersion[] = [];
     private nextVersionCounter = 1;
+    public calls: Array<{ command: string; input: any }> = [];
 
     private generateVersionId(): string {
         return `mock-version-${this.nextVersionCounter++}`;
@@ -130,8 +132,11 @@ export class MockS3Client {
      * Main dispatch: handles all S3 commands by constructor name.
      */
     send(command: any): Promise<any> {
-        const name = command.constructor.name;
+        const name = identifyCommand(command);
+        this.calls.push({ command: name, input: command.input });
         switch (name) {
+            case 'GetObjectCommand':
+                return this.handleGetObject(command.input);
             case 'ListObjectVersionsCommand':
                 return this.handleListObjectVersions(command.input);
             case 'HeadObjectCommand':
@@ -145,6 +150,34 @@ export class MockS3Client {
             default:
                 return Promise.reject(new Error(`MockS3Client: Unknown command: ${name}`));
         }
+    }
+
+    private handleGetObject(input: any): Promise<any> {
+        const key = input.Key!;
+        const versionId = input.VersionId;
+
+        let version: StoredVersion | undefined;
+        if (versionId) {
+            version = this.versions.find(v => v.key === key && v.versionId === versionId);
+        } else {
+            version = this.versions.find(v => v.key === key && v.isLatest);
+        }
+
+        if (!version) {
+            const error: any = new Error(`NoSuchKey: ${key}`);
+            error.$metadata = { httpStatusCode: 404 };
+            return Promise.reject(error);
+        }
+
+        return Promise.resolve({
+            VersionId: version.versionId,
+            Metadata: { ...version.metadata },
+            ChecksumSHA256: version.checksumSHA256,
+            ContentLength: version.size,
+            ETag: `"${version.etag}"`,
+            LastModified: version.lastModified,
+            Body: version.content, // Buffer
+        });
     }
 
     private handleListObjectVersions(input: any): Promise<any> {

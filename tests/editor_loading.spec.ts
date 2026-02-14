@@ -97,7 +97,7 @@ test('If any changes are made to the current file, they are auto-saved after a s
         const page = await context.newPage();
         await page.clock.install();
 
-        await helpers.setupNewPage(page, fsSetup);
+        await helpers.setupNewPage(page, { fsSetup });
         await loadInitialDirectory(page, 'dir1');
 
         await page.click('[data-testid="file-item"][data-file-path="file1.adoc"]');

@@ -66,28 +66,65 @@ class MockFileSystemFileHandle extends MockFileSystemHandle {
 
     async createWritable() {
         const path = this._path;
-        let contentBuffer = '';
+        let chunks = [];
 
-        return {
-            write: async (data) => {
-                if (typeof data === 'string') {
-                    contentBuffer += data;
-                } else if (data instanceof Blob) {
-                    contentBuffer += await data.text();
+        const stream = new WritableStream({
+            write(chunk) {
+                if (typeof chunk === 'string') {
+                    chunks.push(new TextEncoder().encode(chunk));
+                } else if (chunk.type) { // Blob-like
+                    // We can't await in sync write easily if it's a blob without reading? 
+                    // But WritableStream write can return promise.
+                    // However, we need to handle Blob specifically.
+                    if (chunk instanceof Blob) {
+                        return chunk.arrayBuffer().then(buf => chunks.push(new Uint8Array(buf)));
+                    }
+                    // Fallback for unexpected types
+                    chunks.push(new TextEncoder().encode(String(chunk)));
+                } else if (chunk.buffer || chunk instanceof ArrayBuffer) {
+                    chunks.push(new Uint8Array(chunk.buffer || chunk, chunk.byteOffset, chunk.byteLength));
                 } else {
-                    // BufferSource (ArrayBuffer or ArrayBufferView)
-                    // Simplified: assume text
-                    const dec = new TextDecoder();
-                    contentBuffer += dec.decode(data);
+                    chunks.push(new TextEncoder().encode(String(chunk)));
                 }
             },
-            close: async () => {
-                await window.__fs_writeFile(path, contentBuffer);
-            },
-            abort: async () => { },
-            seek: async () => { },
-            truncate: async () => { },
+            close() {
+                // Concat chunks
+                const size = chunks.reduce((acc, c) => acc + c.length, 0);
+                const combined = new Uint8Array(size);
+                let offset = 0;
+                for (const c of chunks) {
+                    combined.set(c, offset);
+                    offset += c.length;
+                }
+
+                // Convert to base64
+                let binary = '';
+                const len = combined.byteLength;
+                for (let i = 0; i < len; i += 32768) {
+                    binary += String.fromCharCode.apply(null, combined.subarray(i, Math.min(i + 32768, len)));
+                }
+                const base64 = btoa(binary);
+
+                return window.__fs_writeFile(path, { type: 'base64', data: base64 });
+            }
+        });
+
+        // Patch methods required by FileSystemWritableFileStream
+        stream.write = async (data) => {
+            const writer = stream.getWriter();
+            await writer.write(data);
+            writer.releaseLock();
         };
+
+        stream.close = async () => {
+            const writer = stream.getWriter();
+            await writer.close();
+        };
+
+        stream.seek = async (position) => { console.warn("seek not implemented in mock"); };
+        stream.truncate = async (size) => { console.warn("truncate not implemented in mock"); };
+
+        return stream;
     }
 }
 

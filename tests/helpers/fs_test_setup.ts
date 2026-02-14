@@ -208,7 +208,7 @@ export class FsTestSetup {
             return Buffer.from(entry.content).toString('base64');
         });
 
-        await page.exposeFunction('__fs_writeFile', async (filePath: string, content: string) => {
+        await page.exposeFunction('__fs_writeFile', async (filePath: string, content: string | { type: 'base64', data: string }) => {
             // Write file, creating directories if needed. 
             // Reuse logic from createDirectory/createFile but adapted for single path string
             const parts = filePath.split(/[/\\]/);
@@ -222,13 +222,15 @@ export class FsTestSetup {
 
             const parent = this.ensureDirectory(root, parentParts);
 
-            // Content matches fs_test_setup: string (legacy) or buffer? 
-            // The exposed function receives string. fs_mock sends string buffer (sometimes accumulated).
-            // in fs_mock.js: window.__fs_writeFile(path, contentBuffer);
-            // In original fs_test_setup: fs.writeFileSync(fullPath, content);
+            let buffer: Uint8Array;
+            if (typeof content === 'string') {
+                buffer = new TextEncoder().encode(content);
+            } else if (typeof content === 'object' && content.type === 'base64') {
+                buffer = Buffer.from(content.data, 'base64');
+            } else {
+                throw new Error("Invalid content format");
+            }
 
-            // We'll treat it as string and encode to utf8 bytes
-            const buffer = new TextEncoder().encode(content);
             parent.children.set(fileName, { kind: 'file', content: buffer });
         });
 

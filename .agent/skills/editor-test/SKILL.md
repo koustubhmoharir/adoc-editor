@@ -52,7 +52,7 @@ These helpers are available via the `helpers` object:
     - Reloads the page, optionally skipping state restoration. It should be used only by tests that need to verify persistence of data across a reload. Reloading is expensive so calling this will slow down the test.
     - **Usage**: `await helpers.reloadPage(page);`
 
-- **`setupNewPage(page, fsSetup)`**: 
+- **`setupNewPage(page, { fsSetup, s3Setup })`**: 
     - Use this only when a new page is created from within the test. It should not be used for a page that is received by the test.
     - Initializes test logging.
     - Registers file system mocks.
@@ -122,7 +122,7 @@ test('Debounced Auto-Save', async ({ browser, fsSetup }) => {
     
     try {
         // 2. Setup standard environment manually
-        await helpers.setupNewPage(page, fsSetup);
+        await helpers.setupNewPage(page, { fsSetup });
         
         // 3. Install Clock
         await page.clock.install();
