@@ -57,6 +57,17 @@ export class S3TestSetup {
         return this.mockClient.calls;
     }
 
+    /**
+     * Simulates a DeleteObject command from the server side (e.g. another client deleted it).
+     */
+    deleteObject(key: string) {
+        return this.mockClient.send({
+            constructor: { name: 'DeleteObjectCommand' },
+            schema: [, , 'DeleteObject'], // loose mock of Smithy structure [,, 'Name']
+            input: { Key: key }
+        });
+    }
+
     async register(page: Page) {
         // Expose function to receive commands from browser
         await page.exposeFunction('__TEST_S3_send', async (commandName: string, input: any) => {

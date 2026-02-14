@@ -121,7 +121,7 @@ export class FsTestSetup {
 
     createDirectory(dirName: string, relativePath: string) {
         const root = this.getRoot(dirName);
-        const parts = relativePath.split(/[/\\]/);
+        const parts = relativePath ? relativePath.split(/[/\\]/) : [];
         this.ensureDirectory(root, parts);
     }
 
