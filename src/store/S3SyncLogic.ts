@@ -874,6 +874,7 @@ export class FileSyncStatus {
                 else {
                     this._remoteMoveDesc = `Moved from ${basePath} to ${remotePath}`;
                 }
+                traceLog(`Remote move detected: ${this._remoteMoveDesc}`);
             }
 
             const isShaMatch = this.base.sha256 && this.remote.sha256 && this.base.sha256 === this.remote.sha256;
@@ -1096,6 +1097,7 @@ export class FileSyncStatus {
             this.availableDiffViews.splice(i, 1);
             this.availableDiffViews.unshift(preferredView);
         }
+        traceLog(`updateActions: ls=${this.localStatus}, rs=${this.remoteStatus} => contentAction=${this._contentAction}, pathAction=${this._pathAction}, conflict=${this._isContentConflict}`);
     }
 }
 

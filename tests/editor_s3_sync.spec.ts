@@ -317,19 +317,26 @@ test('should download new remote file', async ({ page, fsSetup, s3Setup }) => {
 
 test('should preserve UUID when renaming local file', async ({ page, fsSetup, s3Setup }) => {
     fsSetup.createFile('s3-project', 'file.txt', 'Rename Me');
+    fsSetup.createFile('s3-project', 'subdir/nested.txt', 'Rename Nested Me');
     s3Setup.seed([]);
 
     // Initial Sync
     await loadDirectoryAndEnterSyncMode(page);
     await completeSync(page);
-    
+
+    // 1. Rename local root file
     await page.getByTestId('exit-sync-button').click();
 
-    // Rename local file
-    
     const fileItem = getFileItem(page, 'file.txt');
     const input = await triggerRename(page, fileItem);
     await completeRename(page, input, 'renamed-file.txt', 'enter');
+
+    // 2. Rename local nested file
+    // Need to expand directory first if not visible (it should be visible from initial load)
+    const nestedItem = getFileItem(page, 'subdir/nested.txt'); 
+    const nestedInput = await triggerRename(page, nestedItem);
+    await completeRename(page, nestedInput, 'renamed-nested.txt', 'enter');
+
 
     // Sync Again
     await loadDirectoryAndEnterSyncMode(page);
@@ -341,6 +348,11 @@ test('should preserve UUID when renaming local file', async ({ page, fsSetup, s3
     await expect(syncItem).toHaveAttribute('data-path-action', 'UseLocalPath');
     await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.None);
 
+    const nestedSyncItem = getSyncItemByPath(page, 'subdir/renamed-nested.txt');
+    await expect(nestedSyncItem).toBeVisible();
+    await expect(nestedSyncItem).toHaveAttribute('data-path-action', 'UseLocalPath');
+    await expect(nestedSyncItem).toHaveAttribute('data-content-action', SyncContentAction.None);
+
     await completeSync(page);
 
     // Verify Remote State
@@ -350,4 +362,134 @@ test('should preserve UUID when renaming local file', async ({ page, fsSetup, s3
     const newRemote = s3Setup.getLatestVersion('test-prefix/renamed-file.txt');
     expect(newRemote).toBeDefined();
     expect(newRemote?.content.toString('utf-8')).toBe('Rename Me');
+
+    const oldNestedRemote = s3Setup.getLatestVersion('test-prefix/subdir/nested.txt');
+    expect(oldNestedRemote).toBeUndefined();
+
+    const newNestedRemote = s3Setup.getLatestVersion('test-prefix/subdir/renamed-nested.txt');
+    expect(newNestedRemote).toBeDefined();
+    expect(newNestedRemote?.content.toString('utf-8')).toBe('Rename Nested Me');
+});
+
+test('should rename local file when remote file is renamed', async ({ page, fsSetup, s3Setup }) => {
+    fsSetup.createFile('s3-project', 'file.txt', 'Move Me');
+    s3Setup.seed([]);
+
+    // Initial Sync to establish UUID
+    await loadDirectoryAndEnterSyncMode(page);
+    await completeSync(page);
+
+    // Get UUID from remote
+    const remoteVersion = s3Setup.getLatestVersion('test-prefix/file.txt');
+    const uuid = remoteVersion?.metadata?.uuid;
+    expect(uuid).toBeDefined();
+
+    // Simulate Remote Rename: Delete old, add new with SAME UUID
+    await s3Setup.deleteObject('test-prefix/file.txt');
+    s3Setup.addTextVersion('test-prefix/renamed-remote.txt', 'Move Me', { uuid });
+
+    // Sync Again
+    await page.getByTestId('exit-sync-button').click();
+    await loadDirectoryAndEnterSyncMode(page);
+
+    // Note: The UI currently displays the item using the local path if it exists.
+    // So we look for 'file.txt' but expect the action to be UseRemotePath (rename to renamed-remote.txt)
+    const syncItem = getSyncItemByPath(page, 'file.txt');
+    await expect(syncItem).toBeVisible();
+
+    // Should be UseRemotePath (implied rename) and None (content match)
+    await expect(syncItem).toHaveAttribute('data-path-action', 'UseRemotePath');
+    await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.None);
+
+    await completeSync(page);
+
+    // Verify Local State
+    await page.getByTestId('exit-sync-button').click();
+
+    // Check old file gone
+    await expect(getFileItem(page, 'file.txt')).not.toBeVisible();
+
+    // Check new file present
+    await expect(getFileItem(page, 'renamed-remote.txt')).toBeVisible();
+    const content = fsSetup.readFile('s3-project', 'renamed-remote.txt');
+    expect(content).toBe('Move Me');
+});
+
+test('should move local file when remote file is moved', async ({ page, fsSetup, s3Setup }) => {
+    fsSetup.createFile('s3-project', 'file.txt', 'Move Me To Subdir');
+    s3Setup.seed([]);
+
+    // Initial Sync
+    await loadDirectoryAndEnterSyncMode(page);
+    await completeSync(page);
+
+    // Get UUID
+    const remoteVersion = s3Setup.getLatestVersion('test-prefix/file.txt');
+    const uuid = remoteVersion?.metadata?.uuid;
+
+    // Simulate Remote Move
+    await s3Setup.deleteObject('test-prefix/file.txt');
+    s3Setup.addTextVersion('test-prefix/subdir/moved.txt', 'Move Me To Subdir', { uuid, syncVersion: 1 });
+
+    // Sync
+    await page.getByTestId('exit-sync-button').click();
+    await loadDirectoryAndEnterSyncMode(page);
+
+    // Expected item is at local path 'file.txt'
+    const syncItem = getSyncItemByPath(page, 'file.txt');
+    await expect(syncItem).toBeVisible();
+    await expect(syncItem).toHaveAttribute('data-path-action', 'UseRemotePath');
+    await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.None);
+
+    await completeSync(page);
+    await page.getByTestId('exit-sync-button').click();
+
+    // Verify Local
+    const root = getDirectoryItem(page, '');
+    await root.click();
+    await expect(root).toHaveAttribute('data-selected', 'true');
+    await page.keyboard.press('F5');
+    
+    await expect(getFileItem(page, 'file.txt')).not.toBeVisible();
+
+    await expect(getFileItem(page, 'subdir/moved.txt')).toBeVisible();
+});
+
+test('should rename local file and update content when remote file is renamed and changed', async ({ page, fsSetup, s3Setup }) => {
+    fsSetup.createFile('s3-project', 'file.txt', 'Original Content');
+    s3Setup.seed([]);
+
+    // Initial Sync
+    await loadDirectoryAndEnterSyncMode(page);
+    await completeSync(page);
+
+    // Get UUID
+    const remoteVersion = s3Setup.getLatestVersion('test-prefix/file.txt');
+    const uuid = remoteVersion?.metadata?.uuid;
+    const syncVersion = parseInt(remoteVersion?.metadata?.syncversion || '0', 10);
+
+    // Simulate Remote Rename + Change
+    await s3Setup.deleteObject('test-prefix/file.txt');
+    s3Setup.addTextVersion('test-prefix/renamed-changed.txt', 'New Content', { uuid, syncVersion: syncVersion + 1 });
+
+    // Sync
+    await page.getByTestId('exit-sync-button').click();
+    await loadDirectoryAndEnterSyncMode(page);
+
+    const syncItem = getSyncItemByPath(page, 'file.txt');
+    await expect(syncItem).toBeVisible();
+
+    // Should be UseRemotePath (rename) AND CopyRemoteToLocal (content change)
+    await expect(syncItem).toHaveAttribute('data-path-action', 'UseRemotePath');
+    await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.CopyRemoteToLocal);
+
+    await completeSync(page);
+
+    // Verify Local
+    await page.getByTestId('exit-sync-button').click();
+    await expect(getFileItem(page, 'file.txt')).not.toBeVisible();
+
+    await expect(getFileItem(page, 'renamed-changed.txt')).toBeVisible();
+    const content = fsSetup.readFile('s3-project', 'renamed-changed.txt');
+    expect(content).toBe('New Content');
 });
