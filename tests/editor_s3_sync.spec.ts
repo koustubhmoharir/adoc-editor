@@ -62,6 +62,7 @@ async function completeSync(page: Page, expectedMessage: string = 'Sync complete
 test('should upload new local file to S3', async ({ page, fsSetup, s3Setup }) => {
     // 1. Setup: Create a local file
     fsSetup.createFile('s3-project', 'new-file.txt', 'Hello S3');
+    fsSetup.createFile('s3-project', 'subdir/nested.txt', 'Hello Nested S3');
 
     // 2. Inject Mock S3 Client (empty remote state)
     s3Setup.seed([]);
@@ -73,6 +74,10 @@ test('should upload new local file to S3', async ({ page, fsSetup, s3Setup }) =>
     await expect(fileItem).toBeVisible();
     await expect(fileItem).toHaveAttribute('data-content-action', SyncContentAction.CopyLocalToRemote);
 
+    const nestedItem = getSyncItemByPath(page, 'subdir/nested.txt');
+    await expect(nestedItem).toBeVisible();
+    await expect(nestedItem).toHaveAttribute('data-content-action', SyncContentAction.CopyLocalToRemote);
+
     await completeSync(page);
 
     // Verify Upload in Mock S3
@@ -80,11 +85,17 @@ test('should upload new local file to S3', async ({ page, fsSetup, s3Setup }) =>
     expect(uploaded).toBeDefined();
     expect(uploaded?.content.toString('utf-8')).toBe('Hello S3');
     expect(uploaded?.isLatest).toBe(true);
+
+    const uploadedNested = s3Setup.getLatestVersion('test-prefix/subdir/nested.txt');
+    expect(uploadedNested).toBeDefined();
+    expect(uploadedNested?.content.toString('utf-8')).toBe('Hello Nested S3');
+    expect(uploadedNested?.isLatest).toBe(true);
 });
 
 test('should upload local changes to S3', async ({ page, fsSetup, s3Setup }) => {
     // 1. Setup: Create a local file and sync it to establish base state
     fsSetup.createFile('s3-project', 'file.txt', 'Version 1');
+    fsSetup.createFile('s3-project', 'subdir/nested.txt', 'Nested Version 1');
     s3Setup.seed([]);
 
     // Initial Sync
@@ -93,6 +104,7 @@ test('should upload local changes to S3', async ({ page, fsSetup, s3Setup }) => 
 
     // fsSetup.createFile overwrites in the mock FS.
     fsSetup.createFile('s3-project', 'file.txt', 'Version 2');
+    fsSetup.createFile('s3-project', 'subdir/nested.txt', 'Nested Version 2');
 
     // Sync Again
     await loadDirectoryAndEnterSyncMode(page);
@@ -101,16 +113,24 @@ test('should upload local changes to S3', async ({ page, fsSetup, s3Setup }) => 
     await expect(fileItem).toBeVisible();
     await expect(fileItem).toHaveAttribute('data-content-action', SyncContentAction.CopyLocalToRemote);
 
+    const nestedItem = getSyncItemByPath(page, 'subdir/nested.txt');
+    await expect(nestedItem).toBeVisible();
+    await expect(nestedItem).toHaveAttribute('data-content-action', SyncContentAction.CopyLocalToRemote);
+
     await completeSync(page);
 
     // Verify Upload
     const uploaded = s3Setup.getLatestVersion('test-prefix/file.txt');
     expect(uploaded?.content.toString('utf-8')).toBe('Version 2');
+
+    const uploadedNested = s3Setup.getLatestVersion('test-prefix/subdir/nested.txt');
+    expect(uploadedNested?.content.toString('utf-8')).toBe('Nested Version 2');
 });
 
 test('should download remote changes to local', async ({ page, fsSetup, s3Setup }) => {
     // 1. Setup: Create local file and sync
     fsSetup.createFile('s3-project', 'file.txt', 'Version 1');
+    fsSetup.createFile('s3-project', 'subdir/nested.txt', 'Nested Version 1');
     s3Setup.seed([]);
 
     // Initial Sync
@@ -119,8 +139,12 @@ test('should download remote changes to local', async ({ page, fsSetup, s3Setup 
 
     const record = s3Setup.getLatestVersion('test-prefix/file.txt');
     expect(record).toBeDefined();
+    const nestedRecord = s3Setup.getLatestVersion('test-prefix/subdir/nested.txt');
+    expect(nestedRecord).toBeDefined();
+
     // 2. Update remote file, metadata must be set to avoid conflict in next sync
     s3Setup.addTextVersion('test-prefix/file.txt', 'Version 2', { syncVersion: 2, uuid: record!.metadata['uuid'] });
+    s3Setup.addTextVersion('test-prefix/subdir/nested.txt', 'Nested Version 2', { syncVersion: 2, uuid: nestedRecord!.metadata['uuid'] });
 
     // 3. Sync Again
     await loadDirectoryAndEnterSyncMode(page);
@@ -129,15 +153,22 @@ test('should download remote changes to local', async ({ page, fsSetup, s3Setup 
     await expect(fileItem).toBeVisible();
     await expect(fileItem).toHaveAttribute('data-content-action', SyncContentAction.CopyRemoteToLocal);
 
+    const nestedItem = getSyncItemByPath(page, 'subdir/nested.txt');
+    await expect(nestedItem).toBeVisible();
+    await expect(nestedItem).toHaveAttribute('data-content-action', SyncContentAction.CopyRemoteToLocal);
+
     await completeSync(page);
 
     // Verify Local File Content
     const content = fsSetup.readFile('s3-project', 'file.txt');
     expect(content).toBe('Version 2');
+    const nestedContent = fsSetup.readFile('s3-project', 'subdir/nested.txt');
+    expect(nestedContent).toBe('Nested Version 2');
 });
 
 test('should do nothing when content is identical', async ({ page, fsSetup, s3Setup }) => {
     fsSetup.createFile('s3-project', 'file.txt', 'Version 1');
+    fsSetup.createFile('s3-project', 'subdir/nested.txt', 'Nested Version 1');
     s3Setup.seed([]);
 
     // Initial Sync
@@ -156,6 +187,10 @@ test('should do nothing when content is identical', async ({ page, fsSetup, s3Se
         if (await fileItem.isVisible()) {
             await expect(fileItem).toHaveAttribute('data-content-action', 'None');
         }
+        const nestedItem = getSyncItemByPath(page, 'subdir/nested.txt');
+        if (await nestedItem.isVisible()) {
+            await expect(nestedItem).toHaveAttribute('data-content-action', 'None');
+        }
     }
 
     await completeSync(page, "No actionable items selected");
@@ -163,6 +198,7 @@ test('should do nothing when content is identical', async ({ page, fsSetup, s3Se
 
 test('should delete remote file when local file is deleted', async ({ page, fsSetup, s3Setup }) => {
     fsSetup.createFile('s3-project', 'file.txt', 'Delete Me');
+    fsSetup.createFile('s3-project', 'subdir/nested.txt', 'Delete Nested Me');
     s3Setup.seed([]);
 
     // Initial Sync
@@ -173,15 +209,37 @@ test('should delete remote file when local file is deleted', async ({ page, fsSe
     // To delete a file mid-test, we should use the UI or evaluate script.
 
     await page.getByTestId('exit-sync-button').click();
+
+    // Delete root file
     const fileItem = getFileItem(page, 'file.txt');
     await openContextMenu(page, fileItem);
-
-    // Handle confirmation dialog for delete
-    const dialogHandle = await helpers.handleNextDialog(page, true);
+    let dialogHandle = await helpers.handleNextDialog(page, true);
     await page.getByTestId('ctx-delete').click();
-    await dialogHandle.getMessage(); // Wait for dialog to be handled
-
+    await dialogHandle.getMessage();
     await expect(fileItem).not.toBeVisible();
+
+    // Delete nested file
+    // Need to expand directory? It should be expanded if we just synced? 
+    // Actually sidebar logic might collapse or not.
+    // Let's ensure subdir is visible.
+    const dirItem = getDirectoryItem(page, 'subdir');
+    // If it's collapsed, expand it. But we access by data-file-path which works if visible.
+    // If directory is collapsed, children are not in DOM.
+    // Check if subdir is present.
+    await expect(dirItem).toBeVisible();
+    // Assuming it is expanded or we can find it.
+    // Let's expand just in case.
+    if (await dirItem.getAttribute('aria-expanded') === 'false') {
+        await dirItem.click();
+    }
+
+    const nestedFileItem = getFileItem(page, 'subdir/nested.txt');
+    await openContextMenu(page, nestedFileItem);
+    dialogHandle = await helpers.handleNextDialog(page, true);
+    await page.getByTestId('ctx-delete').click();
+    await dialogHandle.getMessage();
+    await expect(nestedFileItem).not.toBeVisible();
+
 
     // Sync Again
     await loadDirectoryAndEnterSyncMode(page);
@@ -189,20 +247,22 @@ test('should delete remote file when local file is deleted', async ({ page, fsSe
     const syncItem = getSyncItemByPath(page, 'file.txt');
     await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.DeleteRemote);
 
+    const nestedSyncItem = getSyncItemByPath(page, 'subdir/nested.txt');
+    await expect(nestedSyncItem).toHaveAttribute('data-content-action', SyncContentAction.DeleteRemote);
+
     await completeSync(page);
 
     // Verify Remote Delete
     const latest = s3Setup.getLatestVersion('test-prefix/file.txt');
-    // If deleted, it might be gone or have delete marker. 
-    // MockS3Client doesn't strictly implement DeleteMarkers visibly in getLatestVersion unless we check internals.
-    // But getLatestVersion returns undefined if no latest version (or if all are not latest).
-    // Actually `handleDeleteObject` sets `isLatest=false` on all versions. 
-    // So `getLatestVersion` should return undefined.
     expect(latest).toBeUndefined();
+
+    const latestNested = s3Setup.getLatestVersion('test-prefix/subdir/nested.txt');
+    expect(latestNested).toBeUndefined();
 });
 
 test('should delete local file when remote file is deleted', async ({ page, fsSetup, s3Setup }) => {
     fsSetup.createFile('s3-project', 'file.txt', 'Delete Me');
+    fsSetup.createFile('s3-project', 'subdir/nested.txt', 'Delete Nested Me');
     s3Setup.seed([]);
 
     // Initial Sync
@@ -211,6 +271,7 @@ test('should delete local file when remote file is deleted', async ({ page, fsSe
 
     // Delete remote file
     await s3Setup.deleteObject('test-prefix/file.txt');
+    await s3Setup.deleteObject('test-prefix/subdir/nested.txt');
 
     // Sync Again
     await loadDirectoryAndEnterSyncMode(page);
@@ -218,10 +279,14 @@ test('should delete local file when remote file is deleted', async ({ page, fsSe
     const syncItem = getSyncItemByPath(page, 'file.txt');
     await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.DeleteLocal);
 
+    const nestedSyncItem = getSyncItemByPath(page, 'subdir/nested.txt');
+    await expect(nestedSyncItem).toHaveAttribute('data-content-action', SyncContentAction.DeleteLocal);
+
     await completeSync(page);
 
     // Verify delete
     expect(fsSetup.exists('s3-project', 'file.txt')).toEqual(false);
+    expect(fsSetup.exists('s3-project', 'subdir/nested.txt')).toEqual(false);
 });
 
 test('should download new remote file', async ({ page, fsSetup, s3Setup }) => {
@@ -231,14 +296,21 @@ test('should download new remote file', async ({ page, fsSetup, s3Setup }) => {
 
     s3Setup.seed([]);
     s3Setup.addTextVersion('test-prefix/remote-only.txt', 'I am from S3');
+    s3Setup.addTextVersion('test-prefix/subdir/nested-remote.txt', 'I am nested from S3');
 
     await loadDirectoryAndEnterSyncMode(page);
 
     const syncItem = getSyncItemByPath(page, 'remote-only.txt');
     await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.CopyRemoteToLocal);
 
+    const nestedSyncItem = getSyncItemByPath(page, 'subdir/nested-remote.txt');
+    await expect(nestedSyncItem).toHaveAttribute('data-content-action', SyncContentAction.CopyRemoteToLocal);
+
     await completeSync(page);
 
     const content = fsSetup.readFile('s3-project', 'remote-only.txt');
     expect(content).toBe('I am from S3');
+
+    const nestedContent = fsSetup.readFile('s3-project', 'subdir/nested-remote.txt');
+    expect(nestedContent).toBe('I am nested from S3');
 });
