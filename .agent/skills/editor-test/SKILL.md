@@ -12,7 +12,7 @@ This skill guides the creation of end-to-end tests for the ADoc Editor using Pla
 All tests MUST use the custom test fixture from `fixtures.ts` to ensure proper environment setup, isolation, cleanup, and helper availability.
 
 ```typescript
-// ALWAYS import from fixtures.ts (adjust path depth as needed)
+// ALWAYS import from fixtures.ts (adjust import path as needed)
 import { test, expect, helpers } from './fixtures';
 ```
 
@@ -144,25 +144,23 @@ test('Debounced Auto-Save', async ({ browser, fsSetup }) => {
 import { test, expect, helpers } from './fixtures';
 import { loadInitialDirectory } from './helpers/sidebar_helpers';
 
-test.describe('Feature Name', () => {
-
-    test.beforeEach(async ({ fsSetup }) => {
-        fsSetup.cleanup();
-        fsSetup.createFile('test-dir', 'example.adoc', '= Example');
-    });
-
-    test('should perform specific action', async ({ page }) => {
-        // Initialize
-        await loadInitialDirectory(page, 'test-dir');
-
-        // Action
-        await page.click('[data-file-path="example.adoc"]');
-
-        // Verification
-        const content = await helpers.getEditorContent(page);
-        expect(content).toBe('= Example');
-    });
+test.beforeEach(async ({ fsSetup }) => {
+    fsSetup.cleanup();
+    fsSetup.createFile('test-dir', 'example.adoc', '= Example');
 });
+
+test('should perform specific action', async ({ page }) => {
+    // Initialize
+    await loadInitialDirectory(page, 'test-dir');
+
+    // Action
+    await page.click('[data-file-path="example.adoc"]');
+
+    // Verification
+    const content = await helpers.getEditorContent(page);
+    expect(content).toBe('= Example');
+});
+
 ```
 
 ## 6. Avoiding Flakiness

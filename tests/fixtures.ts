@@ -145,10 +145,10 @@ function enableTestLogging(page: Page) {
         if (t === 'error') {
             console.error(`BROWSER: ${msg.text()}`);
         }
-        if (t === 'warning') {
+        else if (t === 'warning') {
             console.warn(`BROWSER: ${msg.text()}`);
         }
-        if (process.env.DEBUG_TESTS) {
+        else if (process.env.DEBUG_TESTS) {
             console.log(`BROWSER: ${msg.text()}`);
         }
     });
@@ -345,6 +345,124 @@ export const helpers = {
             return window.__TEST_editorStore.editor?.getModel()?.getLanguageId() ?? '';
         });
     },
+
+    /**
+     * Injects a mock S3 client into the browser page context.
+     * The mock records all `send()` calls and returns plausible responses.
+     * Use `getMockS3Calls` to retrieve the recorded calls for assertions.
+     *
+     * @param page - The Playwright Page object.
+     * @param options - Configuration for initial remote state.
+     * @param options.versions - Array of remote versions to pre-populate for ListObjectVersionsCommand.
+     */
+    async injectMockS3Client(page: Page, options?: {
+        versions?: Array<{
+            Key: string;
+            VersionId: string;
+            IsLatest: boolean;
+            Size?: number;
+            ETag?: string;
+            LastModified?: string;
+            Metadata?: Record<string, string>;
+        }>;
+    }): Promise<void> {
+        await page.evaluate((opts) => {
+            const versions = opts?.versions ?? [];
+            const calls: Array<{ command: string; input: any }> = [];
+            let nextVersionCounter = 1;
+
+            (window as any).__TEST_mockS3Calls = calls;
+
+            // Identify command type by schema since esbuild minifies constructor names in production bundle.
+            function identifyCommand(command: any): string {
+                const schemaName = command.schema?.[2] ?? '';
+                return `${schemaName}Command`;
+            }
+
+            window.__TEST_mockS3Client = {
+                send(command: any): Promise<any> {
+                    const input = command.input;
+                    const name = identifyCommand(command);
+                    calls.push({ command: name, input: { ...input, Body: input.Body ? '[body]' : undefined } });
+
+                    switch (name) {
+                        case 'ListObjectVersionsCommand':
+                            return Promise.resolve({
+                                Versions: versions
+                                    .filter((v: any) => !input.Prefix || v.Key.startsWith(input.Prefix))
+                                    .map((v: any) => ({
+                                        Key: v.Key,
+                                        VersionId: v.VersionId,
+                                        IsLatest: v.IsLatest,
+                                        LastModified: v.LastModified ? new Date(v.LastModified) : new Date(),
+                                        ETag: v.ETag ?? '"mock-etag"',
+                                        Size: v.Size ?? 0,
+                                    })),
+                                NextKeyMarker: undefined,
+                                NextVersionIdMarker: undefined,
+                            });
+
+                        case 'HeadObjectCommand': {
+                            const v = versions.find((ver: any) =>
+                                ver.Key === input.Key &&
+                                (!input.VersionId || ver.VersionId === input.VersionId)
+                            );
+                            if (!v) {
+                                const err: any = new Error('NoSuchKey');
+                                err.$metadata = { httpStatusCode: 404 };
+                                return Promise.reject(err);
+                            }
+                            return Promise.resolve({
+                                VersionId: v.VersionId,
+                                Metadata: v.Metadata ?? {},
+                                ContentLength: v.Size ?? 0,
+                                ETag: v.ETag ?? '"mock-etag"',
+                                LastModified: v.LastModified ? new Date(v.LastModified) : new Date(),
+                            });
+                        }
+
+                        case 'PutObjectCommand': {
+                            const vId = `mock-put-version-${nextVersionCounter++}`;
+                            return Promise.resolve({
+                                VersionId: vId,
+                                ETag: '"mock-put-etag"',
+                            });
+                        }
+
+                        case 'DeleteObjectCommand':
+                            return Promise.resolve({
+                                DeleteMarker: true,
+                                VersionId: `mock-delete-version-${nextVersionCounter++}`,
+                            });
+
+                        case 'CopyObjectCommand':
+                            return Promise.resolve({
+                                VersionId: `mock-copy-version-${nextVersionCounter++}`,
+                                CopyObjectResult: {
+                                    ETag: '"mock-copy-etag"',
+                                    LastModified: new Date(),
+                                },
+                            });
+
+                        default:
+                            return Promise.reject(new Error(`MockS3Client: Unknown command: ${name}`));
+                    }
+                },
+            };
+        }, options);
+    },
+
+    /**
+     * Retrieves the list of S3 commands that were sent to the mock S3 client.
+     *
+     * @param page - The Playwright Page object.
+     * @returns Array of recorded calls with command name and input.
+     */
+    async getMockS3Calls(page: Page): Promise<Array<{ command: string; input: any }>> {
+        return page.evaluate(() => {
+            return (window as any).__TEST_mockS3Calls ?? [];
+        });
+    },
 }
 
 interface WorkerState {
@@ -391,7 +509,7 @@ async function prepareWorkerForTest(browser: Browser, workerState: WorkerState):
         // Reset state before each test
         workerState.page.setViewportSize(workerState.viewport);
         // Reset file system state
-        await workerState.page.evaluate(async ({enableTraceLogging}) => {
+        await workerState.page.evaluate(async ({ enableTraceLogging }) => {
             window.localStorage.clear();
             if (window.__TEST_fileSystemStore) {
                 await window.__TEST_fileSystemStore.clearDirectory();

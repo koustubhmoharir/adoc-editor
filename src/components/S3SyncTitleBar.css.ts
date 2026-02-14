@@ -100,9 +100,9 @@ export const modeSelect = style({
 
 export const goButton = style({
     marginLeft: '8px',
-    padding: '4px 12px',
+    padding: '5px 12px',
     borderRadius: '4px',
-    border: 'none',
+    border: `1px solid ${vars.color.border}`,
     backgroundColor: vars.color.background,
     color: vars.color.text,
     fontSize: '14px',

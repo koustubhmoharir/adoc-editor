@@ -9,3 +9,9 @@ export const getDirectoryItem = (page: Page, dirPath: string): Locator =>
 
 export const getRenameInput = (page: Page): Locator =>
     page.locator('[data-testid="rename-input"]');
+
+export const getSyncItemByPath = (page: Page, filePath: string): Locator =>
+    page.locator(`[data-testid="s3sync-item"][data-item-path="${filePath}"]`);
+
+export const getSyncItemByUuid = (page: Page, uuid: string): Locator =>
+    page.locator(`[data-testid="s3sync-item"][data-uuid="${uuid}"]`);

@@ -17,6 +17,7 @@ declare global {
         __TEST_mockDirPickerDirName?: string;
         __TEST_mockFilePickerLastCallOptions?: OpenFilePickerOptions | null;
         __TEST_mockFilePickerFilePath?: string | null;
+        __TEST_mockS3Client?: any;
     }
 
 }

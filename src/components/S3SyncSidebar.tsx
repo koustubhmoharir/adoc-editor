@@ -97,6 +97,9 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
                             onClick={() => !isSyncing && store.setSelectedItem(item)}
                             data-testid="s3sync-item"
                             data-item-path={item.relativePath(prefix)}
+                            data-uuid={item.base?.uuid ?? item.remote?.uuid ?? ''}
+                            data-content-action={item.contentAction}
+                            data-path-action={item.pathAction}
                             data-selected={isSelected}
                             title={item.relativePath(prefix)}
                         >

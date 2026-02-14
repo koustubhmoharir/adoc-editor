@@ -63,6 +63,12 @@ export class S3Store {
     async ensureClient(): Promise<S3Client | null> {
         if (this._s3Client) return this._s3Client;
 
+        // In E2E tests, use the injected mock S3 client
+        if (window.__TEST_mockS3Client) {
+            this._s3Client = window.__TEST_mockS3Client as S3Client;
+            return this._s3Client;
+        }
+
         const user = await this.ensureLoggedIn();
         if (!user) return null;
 
