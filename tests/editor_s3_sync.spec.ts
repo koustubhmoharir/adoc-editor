@@ -1,5 +1,5 @@
 import { test, expect, helpers } from './fixtures';
-import { loadInitialDirectory, openContextMenu } from './helpers/sidebar_helpers';
+import { completeRename, loadInitialDirectory, openContextMenu, triggerRename } from './helpers/sidebar_helpers';
 import { getDirectoryItem, getFileItem, getSyncItemByPath } from './helpers/locators';
 import { SyncContentAction } from '../src/store/S3SyncLogic';
 import { Page } from '@playwright/test';
@@ -313,4 +313,41 @@ test('should download new remote file', async ({ page, fsSetup, s3Setup }) => {
 
     const nestedContent = fsSetup.readFile('s3-project', 'subdir/nested-remote.txt');
     expect(nestedContent).toBe('I am nested from S3');
+});
+
+test('should preserve UUID when renaming local file', async ({ page, fsSetup, s3Setup }) => {
+    fsSetup.createFile('s3-project', 'file.txt', 'Rename Me');
+    s3Setup.seed([]);
+
+    // Initial Sync
+    await loadDirectoryAndEnterSyncMode(page);
+    await completeSync(page);
+    
+    await page.getByTestId('exit-sync-button').click();
+
+    // Rename local file
+    
+    const fileItem = getFileItem(page, 'file.txt');
+    const input = await triggerRename(page, fileItem);
+    await completeRename(page, input, 'renamed-file.txt', 'enter');
+
+    // Sync Again
+    await loadDirectoryAndEnterSyncMode(page);
+
+    const syncItem = getSyncItemByPath(page, 'renamed-file.txt');
+    await expect(syncItem).toBeVisible();
+
+    // Should be UseLocalPath (implied rename) and None (implied content match)
+    await expect(syncItem).toHaveAttribute('data-path-action', 'UseLocalPath');
+    await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.None);
+
+    await completeSync(page);
+
+    // Verify Remote State
+    const oldRemote = s3Setup.getLatestVersion('test-prefix/file.txt');
+    expect(oldRemote).toBeUndefined();
+
+    const newRemote = s3Setup.getLatestVersion('test-prefix/renamed-file.txt');
+    expect(newRemote).toBeDefined();
+    expect(newRemote?.content.toString('utf-8')).toBe('Rename Me');
 });

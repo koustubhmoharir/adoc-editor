@@ -188,7 +188,7 @@ async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<
 /**
  * Returns a hash of file names to uuids for files within the directory by reading .s3/uuids.*.json files
  */
-async function readUuids(dirHandle: FileSystemDirectoryHandle) {
+export async function readUuids(dirHandle: FileSystemDirectoryHandle) {
     return await updateDirectoryUuidMap(dirHandle, {}); // Reuse the reading, combining logic in this function
 }
 

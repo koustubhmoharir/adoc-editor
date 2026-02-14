@@ -9,6 +9,7 @@ import { parse as parseToml } from 'smol-toml';
 import { S3Store } from "./S3Store";
 import { traceLog } from "../utils/trace";
 import { appStore } from "./AppStore";
+import { readUuids, updateDirectoryUuidMap } from "./S3SyncLogic";
 
 interface FSHandleTypes {
     file: FileSystemFileHandle;
@@ -423,7 +424,11 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
         const handle = this.handle;
         if ('move' in handle) {
             try {
+                const oldName = this.name;
                 await (handle.move as any)(parentDir, finalName);
+
+                // Update UUID if inside S3 Sync directory
+                await this.updateUuidForFileRename(oldName, finalName);
 
                 // Determine new path to set pending focus
                 const parentPath = this.path.substring(0, this.path.lastIndexOf('/'));
@@ -442,6 +447,39 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
             await dialog.alert('Your browser does not support renaming items directly (File System Access API "move" method is missing).');
             return false;
         }
+    }
+
+    private async updateUuidForFileRename(oldName: string, finalName: string) {
+        if (this.isFile() && this.parent) {
+            if (this.isInS3SyncDirectory()) {
+                try {
+                    const uuids = await readUuids(this.parent.handle);
+                    const uuid = uuids[oldName];
+                    if (uuid) {
+                        await updateDirectoryUuidMap(this.parent.handle, {
+                            [oldName]: null,
+                            [finalName]: uuid
+                        });
+                        traceLog(`Moved UUID for ${oldName} -> ${finalName}`);
+                    }
+                } catch (e) {
+                    console.error('Failed to update UUID map on rename', e);
+                }
+            }
+        }
+    }
+
+    protected isInS3SyncDirectory() {
+        let hasSyncConfig = false;
+        let current: DirectoryNodeModel | null = this.parent;
+        while (current) {
+            if (current.hasS3SyncConfig) {
+                hasSyncConfig = true;
+                break;
+            }
+            current = current.parent;
+        }
+        return hasSyncConfig;
     }
 }
 
