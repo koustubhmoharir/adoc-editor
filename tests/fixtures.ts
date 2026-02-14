@@ -4,7 +4,7 @@ import { S3TestSetup } from './helpers/s3_test_setup.ts';
 
 
 interface DialogHandle {
-    getMessage: () => Promise<string>;
+    getMessage: (timeout?: number) => Promise<string>;
 }
 
 interface DialogResult {
@@ -218,7 +218,7 @@ export const helpers = {
      * @param fsSetup - The file system setup helper.
      * @param s3Setup - The S3 setup helper.
      */
-    async setupNewPage(page: Page, { fsSetup, s3Setup }: { fsSetup?: FsTestSetup; s3Setup?: S3TestSetup}) {
+    async setupNewPage(page: Page, { fsSetup, s3Setup }: { fsSetup?: FsTestSetup; s3Setup?: S3TestSetup }) {
         // Setup environment
         enableTestLogging(page);
         if (fsSetup) {

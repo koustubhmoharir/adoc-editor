@@ -18,7 +18,32 @@ window.__TEST_mockS3Client = {
         const input = command.input;
 
         // Serialize Blob/File/Buffer in input if necessary
-        // Simple serialization for now
+        if (input && input.Body) {
+            if (input.Body instanceof Blob) { // Includes File
+                const buf = await input.Body.arrayBuffer();
+                const bytes = new Uint8Array(buf);
+                let binary = '';
+                const len = bytes.byteLength;
+                for (let i = 0; i < len; i += 32768) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 32768, len)));
+                }
+                input.Body = {
+                    type: 'Buffer',
+                    data: btoa(binary)
+                };
+            } else if (input.Body instanceof Uint8Array || input.Body instanceof ArrayBuffer) {
+                const bytes = input.Body instanceof ArrayBuffer ? new Uint8Array(input.Body) : input.Body;
+                let binary = '';
+                const len = bytes.byteLength;
+                for (let i = 0; i < len; i += 32768) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 32768, len)));
+                }
+                input.Body = {
+                    type: 'Buffer',
+                    data: btoa(binary)
+                };
+            }
+        }
 
         const result = await window.__TEST_S3_send(name, input);
 

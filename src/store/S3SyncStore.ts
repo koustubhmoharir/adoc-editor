@@ -230,6 +230,8 @@ export class S3SyncStore {
             traceLog(summary);
             if (concurrencyFailedItems.length > 0) {
                 await dialog.alert(summary);
+            } else {
+                await dialog.alert(summary);
             }
         }
     }

@@ -46,6 +46,13 @@ export class S3TestSetup {
         return this.mockClient.addBinaryVersion(key, content, options);
     }
 
+    /**
+     * Proxies to MockS3Client.getLatestVersion
+     */
+    getLatestVersion(key: string) {
+        return this.mockClient.getLatestVersion(key);
+    }
+
     getCalls() {
         return this.mockClient.calls;
     }
@@ -62,7 +69,7 @@ export class S3TestSetup {
 
             // Fix input body if it was sent as string/buffer from browser
             if (input.Body && typeof input.Body === 'object' && input.Body.type === 'Buffer') {
-                input.Body = Buffer.from(input.Body.data);
+                input.Body = Buffer.from(input.Body.data, 'base64');
             }
 
             try {
