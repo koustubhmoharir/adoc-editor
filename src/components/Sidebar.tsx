@@ -202,6 +202,7 @@ export const Sidebar: React.FC = observer(() => {
                 className={styles.sidebar}
                 style={{ width: `${fileSystemStore.sidebarWidth}px`, flexShrink: 0 }}
                 data-testid="sidebar"
+                data-refreshing={fileSystemStore.isRefreshing}
             >
                 <SidebarContextMenu />
 

@@ -34,6 +34,9 @@ class FileSystemStore extends EffectAwareModel {
         window.addEventListener('keydown', this.handleGlobalKeyDown);
     }
 
+    @observable private accessor _isRefreshing = false;
+    get isRefreshing() { return this._isRefreshing; }
+
     @observable private accessor _currentFileNode: FileModel | null = null;
     get currentFileNode() { return this._currentFileNode; }
     get currentFileHandle() { return this._currentFileNode?.handle ?? null; }
@@ -879,82 +882,93 @@ class FileSystemStore extends EffectAwareModel {
         // Default to root if no node provided
         const targetNode = node || this.rootNode;
         if (!targetNode) return;
-
+        
         // Verify permission if root (needed?) or simple check
         // For subdirectories, permission is inherited usually.
         const hasPerm = await this.verifyPermission(targetNode.handle);
-
+        
         if (!hasPerm) return;
+        if (this._isRefreshing) {
+            return;
+        }
+        this._isRefreshing = true;
+        try {
 
-        const tree = await this.readDirectory(targetNode);
+            const tree = await this.readDirectory(targetNode);
 
-        runInAction(() => {
-            targetNode.children = tree;
-        });
+            runInAction(() => {
+                targetNode.children = tree;
+            });
 
-        // Handle pending focus - RECURSIVE search from targetNode
-        let nodeToFocus: FileSystemNodeModel | undefined = undefined;
-        if (focusPath) {
-            const findNode = (n: FileSystemNodeModel): FileSystemNodeModel | undefined => {
-                if (n.path === focusPath) return n;
-                if (n.kind === 'directory' && n.children) {
-                    for (const cn of n.children) {
-                        const found = findNode(cn);
-                        if (found) return found;
+            // Handle pending focus - RECURSIVE search from targetNode
+            let nodeToFocus: FileSystemNodeModel | undefined = undefined;
+            if (focusPath) {
+                const findNode = (n: FileSystemNodeModel): FileSystemNodeModel | undefined => {
+                    if (n.path === focusPath) return n;
+                    if (n.kind === 'directory' && n.children) {
+                        for (const cn of n.children) {
+                            const found = findNode(cn);
+                            if (found) return found;
+                        }
+                    }
+                }
+                nodeToFocus = findNode(targetNode);
+            }
+            if (nodeToFocus) {
+                runInAction(() => {
+                    this._highlightedPath = nodeToFocus.path;
+                });
+
+                if (focusTarget === 'sidebar') {
+                    if (nodeToFocus.kind === 'directory' || !openFile) {
+                        nodeToFocus.scheduleFocusTreeItem();
+                    } else {
+                        // If it's a file and we are opening it, usually editor gets focus unless we explicitly want sidebar
+                        nodeToFocus.scheduleFocusTreeItem();
+                    }
+                }
+
+                if (openFile && nodeToFocus.kind === 'file') {
+                    // Only focus tree item if specifically requested for sidebar
+                    const focusNode = focusTarget === 'sidebar';
+                    await this.openFileInEditor(nodeToFocus, { focusNode, updateHighlight: true });
+
+                    if (focusTarget === 'editor') {
+                        editorStore.focusEditor();
+                    }
+                } else if (focusTarget === 'editor' && nodeToFocus.kind === 'file') {
+                    // Ensure editor is focused even if not 'opening' (already open?)
+                    // Pass false to focusNode because we handle editor focus explicitly
+                    await this.openFileInEditor(nodeToFocus, { focusNode: false, updateHighlight: true });
+                    editorStore.focusEditor();
+                }
+            }
+
+            if (this.currentFileNode) {
+                // We need to do this because the existing currentFileNode may now no longer be in the tree
+                const fileNode = await this.findNodeByHandle(this.currentFileHandle);
+                if (fileNode) {
+                    // Ensure we only reload/re-bind if the file is actually within the scope of what we refreshed.
+                    // If we refreshed a subdirectory, and the file is outside, we shouldn't touch it.
+                    const isRelevant = targetNode.isRoot || fileNode.path.startsWith(targetNode.path + '/');
+                    if (isRelevant) {
+                        runInAction(() => {
+                            this._currentFileNode = fileNode as FileNodeModel;
+                            // Only move highlight if we didn't explicitly focus something else
+                            if (!focusPath) {
+                                this._highlightedPath = fileNode.path;
+                            }
+                        });
+                        // Always reload content but DON'T override highlight if we are focusing a specific path (e.g. directory refresh)
+                        await this.openFileInEditor(fileNode as FileNodeModel, { focusNode: false, updateHighlight: !focusPath });
                     }
                 }
             }
-            nodeToFocus = findNode(targetNode);
         }
-        if (nodeToFocus) {
+        finally {
             runInAction(() => {
-                this._highlightedPath = nodeToFocus.path;
-            });
-
-            if (focusTarget === 'sidebar') {
-                if (nodeToFocus.kind === 'directory' || !openFile) {
-                    nodeToFocus.scheduleFocusTreeItem();
-                } else {
-                    // If it's a file and we are opening it, usually editor gets focus unless we explicitly want sidebar
-                    nodeToFocus.scheduleFocusTreeItem();
-                }
-            }
-
-            if (openFile && nodeToFocus.kind === 'file') {
-                // Only focus tree item if specifically requested for sidebar
-                const focusNode = focusTarget === 'sidebar';
-                await this.openFileInEditor(nodeToFocus, { focusNode, updateHighlight: true });
-
-                if (focusTarget === 'editor') {
-                    editorStore.focusEditor();
-                }
-            } else if (focusTarget === 'editor' && nodeToFocus.kind === 'file') {
-                // Ensure editor is focused even if not 'opening' (already open?)
-                // Pass false to focusNode because we handle editor focus explicitly
-                await this.openFileInEditor(nodeToFocus, { focusNode: false, updateHighlight: true });
-                editorStore.focusEditor();
-            }
-        }
-
-        if (this.currentFileNode) {
-            // We need to do this because the existing currentFileNode may now no longer be in the tree
-            const fileNode = await this.findNodeByHandle(this.currentFileHandle);
-            if (fileNode) {
-                // Ensure we only reload/re-bind if the file is actually within the scope of what we refreshed.
-                // If we refreshed a subdirectory, and the file is outside, we shouldn't touch it.
-                const isRelevant = targetNode.isRoot || fileNode.path.startsWith(targetNode.path + '/');
-                if (isRelevant) {
-                    runInAction(() => {
-                        this._currentFileNode = fileNode as FileNodeModel;
-                        // Only move highlight if we didn't explicitly focus something else
-                        if (!focusPath) {
-                            this._highlightedPath = fileNode.path;
-                        }
-                    });
-                    // Always reload content but DON'T override highlight if we are focusing a specific path (e.g. directory refresh)
-                    await this.openFileInEditor(fileNode as FileNodeModel, { focusNode: false, updateHighlight: !focusPath });
-                }
-            }
+                this._isRefreshing = false;
+            })
         }
     }
 

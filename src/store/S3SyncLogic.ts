@@ -322,6 +322,34 @@ export async function saveBaseRecord(rootNode: DirNodeLike, relativePath: string
     }
 }
 
+/**
+ * Helper to write base metadata records for tests.
+ * Writes .index.json files in the appropriate directories.
+ * Overwrites existing files.
+ */
+export async function writeBaseMetadata(rootHandle: FileSystemDirectoryHandle, s3Prefix: string, ...records: BaseVersionRecord[]) {
+    const byDir = new Map<string, Record<string, BaseVersionRecord>>();
+
+    for (const record of records) {
+        const relativePath = record.key.substring(s3Prefix.length);
+        const dir = directoryPath(relativePath);
+        const name = fileName(relativePath);
+
+        if (!byDir.has(dir)) {
+            byDir.set(dir, {});
+        }
+        byDir.get(dir)![name] = record;
+    }
+
+    for (const [dir, dirRecords] of byDir) {
+        const metaFilePath = `${S3Paths.baseMetaDir}${dir}.index.json`;
+        const fileHandle = await createFileAtPath(rootHandle, metaFilePath);
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(dirRecords, null, 2));
+        await writable.close();
+    }
+}
+
 
 async function readRecords<T>(metaDir: FileSystemDirectoryHandle) {
     const recordsByPath = new Map<string, T>();

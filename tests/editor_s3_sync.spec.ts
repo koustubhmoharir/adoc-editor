@@ -21,14 +21,19 @@ prefix = "test-prefix"
 
 test.afterEach(async ({ page }) => {
     if (await page.getByTestId('exit-sync-button').isVisible()) {
-        await page.getByTestId('exit-sync-button').click();
+        await exitSyncMode(page);
     }
-})
+});
+
+async function exitSyncMode(page: Page) {
+    await page.getByTestId('exit-sync-button').click();
+    await expect(page.getByTestId('sidebar')).toHaveAttribute('data-refreshing', 'false');
+}
 
 async function loadDirectoryAndEnterSyncMode(page: Page) {
     // If in Sync Mode, exit first
     if (await page.getByTestId('exit-sync-button').isVisible()) {
-        await page.getByTestId('exit-sync-button').click();
+        await exitSyncMode(page);
     }
     else if (await page.getByTestId('empty-open-directory-button').isVisible()) {
         // Load directory
@@ -213,7 +218,7 @@ test('should delete remote file when local file is deleted', async ({ page, fsSe
     // Delete local file
     // To delete a file mid-test, we should use the UI or evaluate script.
 
-    await page.getByTestId('exit-sync-button').click();
+    await exitSyncMode(page);
 
     // Delete root file
     const fileItem = getFileItem(page, 'file.txt');
@@ -330,7 +335,7 @@ test('should preserve UUID when renaming local file', async ({ page, fsSetup, s3
     await completeSync(page);
 
     // 1. Rename local root file
-    await page.getByTestId('exit-sync-button').click();
+    await exitSyncMode(page);
 
     const fileItem = getFileItem(page, 'file.txt');
     const input = await triggerRename(page, fileItem);
@@ -396,7 +401,6 @@ test('should rename local file when remote file is renamed', async ({ page, fsSe
     s3Setup.addTextVersion('test-prefix/renamed-remote.txt', 'Move Me', { uuid });
 
     // Sync Again
-    await page.getByTestId('exit-sync-button').click();
     await loadDirectoryAndEnterSyncMode(page);
 
     // Note: The UI currently displays the item using the local path if it exists.
@@ -410,9 +414,9 @@ test('should rename local file when remote file is renamed', async ({ page, fsSe
 
     await completeSync(page);
 
-    // Verify Local State
-    await page.getByTestId('exit-sync-button').click();
+    await exitSyncMode(page);
 
+    // Verify Local State
     // Check old file gone
     await expect(getFileItem(page, 'file.txt')).not.toBeVisible();
 
@@ -439,7 +443,6 @@ test('should move local file when remote file is moved', async ({ page, fsSetup,
     s3Setup.addTextVersion('test-prefix/subdir/moved.txt', 'Move Me To Subdir', { uuid, syncVersion: 1 });
 
     // Sync
-    await page.getByTestId('exit-sync-button').click();
     await loadDirectoryAndEnterSyncMode(page);
 
     // Expected item is at local path 'file.txt'
@@ -449,16 +452,10 @@ test('should move local file when remote file is moved', async ({ page, fsSetup,
     await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.None);
 
     await completeSync(page);
-    await page.getByTestId('exit-sync-button').click();
+    await exitSyncMode(page);
 
     // Verify Local
-    const root = getDirectoryItem(page, '');
-    await root.click();
-    await expect(root).toHaveAttribute('data-selected', 'true');
-    await page.keyboard.press('F5');
-
     await expect(getFileItem(page, 'file.txt')).not.toBeVisible();
-
     await expect(getFileItem(page, 'subdir/moved.txt')).toBeVisible();
 });
 
@@ -480,7 +477,6 @@ test('should rename local file and update content when remote file is renamed an
     s3Setup.addTextVersion('test-prefix/renamed-changed.txt', 'New Content', { uuid, syncVersion: syncVersion + 1 });
 
     // Sync
-    await page.getByTestId('exit-sync-button').click();
     await loadDirectoryAndEnterSyncMode(page);
 
     const syncItem = getSyncItemByPath(page, 'file.txt');
@@ -491,9 +487,9 @@ test('should rename local file and update content when remote file is renamed an
     await expect(syncItem).toHaveAttribute('data-content-action', SyncContentAction.CopyRemoteToLocal);
 
     await completeSync(page);
+    await exitSyncMode(page);
 
     // Verify Local
-    await page.getByTestId('exit-sync-button').click();
     await expect(getFileItem(page, 'file.txt')).not.toBeVisible();
 
     await expect(getFileItem(page, 'renamed-changed.txt')).toBeVisible();
@@ -596,8 +592,9 @@ test('should report conflict when moved locally and remotely (Sync Mode)', async
     const uuid = remoteVersion?.metadata?.uuid;
     expect(uuid).toBeDefined();
 
+    await exitSyncMode(page);
+
     // Local Move: file.txt -> local-moved.txt
-    await page.getByTestId('exit-sync-button').click();
 
     const fileItem = getFileItem(page, 'file.txt');
     await expect(fileItem).toBeVisible();
@@ -630,7 +627,7 @@ test('should resolve move conflict in Mirror Local mode', async ({ page, fsSetup
     const remoteVersion = s3Setup.getLatestVersion('test-prefix/file.txt');
     const uuid = remoteVersion?.metadata?.uuid;
 
-    await page.getByTestId('exit-sync-button').click();
+    await exitSyncMode(page);
     
     // Local Move
     const fileItem = getFileItem(page, 'file.txt');
@@ -668,7 +665,7 @@ test('should resolve move conflict in Mirror Remote mode', async ({ page, fsSetu
     const remoteVersion = s3Setup.getLatestVersion('test-prefix/file.txt');
     const uuid = remoteVersion?.metadata?.uuid;
 
-    await page.getByTestId('exit-sync-button').click();
+    await exitSyncMode(page);
     
     // Local Move
     const fileItem = getFileItem(page, 'file.txt');
@@ -688,13 +685,7 @@ test('should resolve move conflict in Mirror Remote mode', async ({ page, fsSetu
     await expect(item).toHaveAttribute('data-path-action', 'UseRemotePath');
 
     await completeSync(page);
-    await page.getByTestId('exit-sync-button').click();
-
-    // Force refresh local
-    const root = getDirectoryItem(page, '');
-    await root.click();
-    await expect(root).toHaveAttribute('data-selected', 'true');
-    await page.keyboard.press('F5');
+    await exitSyncMode(page);
     
     // Verify Local: remote-moved.txt VISIBLE
     await expect(getFileItem(page, 'remote-moved.txt')).toBeVisible();
