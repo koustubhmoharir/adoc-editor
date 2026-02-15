@@ -2,7 +2,7 @@ import { action, observable, runInAction } from "mobx";
 import { DirectoryNodeModel } from "./FileSystemModels";
 import { S3Store } from "./S3Store";
 import { S3SyncDiffStore } from "./S3SyncDiffStore";
-import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, updateDirectoryUuidMap, saveBaseRecord, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges, isConcurrencyError, refreshRemoteRecord, getDirectoryAtPath, getFileAtPath, createDirectoryAtPath } from "./S3SyncLogic";
+import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, updateDirectoryUuidMap, saveBaseRecord, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges, isConcurrencyError, refreshRemoteRecord, getDirectoryAtPath, getFileAtPath, createDirectoryAtPath, S3Paths } from "./S3SyncLogic";
 import { traceLog } from "../utils/trace";
 import { dialog } from "../components/Dialog";
 
@@ -286,7 +286,7 @@ export class S3SyncStore {
         // It is possible that base path and local path are different
         const localRelPath = item.relativePath(prefix);
         const baseRelPath = item.base.key.substring(prefix.length);
-        const basePath = `.adoc-editor/s3b/${baseRelPath}`;
+        const basePath = `${S3Paths.baseContentDir}${baseRelPath}`;
         const localName = fileName(localRelPath);
         const localDirPath = directoryPath(localRelPath);
 

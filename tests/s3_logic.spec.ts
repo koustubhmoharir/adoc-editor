@@ -1,6 +1,6 @@
 
 import { test, expect } from '@playwright/test';
-import { scanAndCalculateStatus, DirNodeLike, FileStatus, SyncContentAction, SyncPathAction, createDirectoryAtPath } from '../src/store/S3SyncLogic';
+import { scanAndCalculateStatus, DirNodeLike, FileStatus, SyncContentAction, SyncPathAction, createDirectoryAtPath, S3Paths } from '../src/store/S3SyncLogic';
 import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from './helpers/mock_fs_handles';
 import { MockS3Client } from './helpers/mock_s3_client';
 import { S3SyncSettings } from '../src/file_system/S3SyncSettings';
@@ -127,7 +127,7 @@ test('Unchanged File (Matches Base)', async () => {
 
     // Local
     rootHandle.addFile('file.txt', content);
-    const s3MetaDir = rootHandle.addDirectory('.s3');
+    const s3MetaDir = rootHandle.addDirectory(S3Paths.s3DirName);
     s3MetaDir.addFile('uuids.json', JSON.stringify({ 'file.txt': UUID_1 }));
 
 
@@ -168,7 +168,7 @@ test('Conflict (Both Changed)', async () => {
 
     // Local: Changed
     rootHandle.addFile('file.txt', 'local change');
-    const s3MetaDir = rootHandle.addDirectory('.s3');
+    const s3MetaDir = rootHandle.addDirectory(S3Paths.s3DirName);
     s3MetaDir.addFile('uuids.json', JSON.stringify({ 'file.txt': UUID_1 }));
 
     // Remote: Changed

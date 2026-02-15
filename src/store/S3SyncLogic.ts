@@ -4,6 +4,16 @@ import { Sha256 } from "@aws-crypto/sha256-browser";
 import { S3SyncSettings } from "../file_system/S3SyncSettings";
 import { traceLog } from "../utils/trace";
 
+export const S3Paths = {
+    appDirName: '.adoc-editor',
+    baseContentDir: '.adoc-editor/s3b/',
+    baseMetaDir: '.adoc-editor/s3m/',
+    metaCacheDir: '.adoc-editor/s3mc/',
+    remoteContentDir: '.adoc-editor/s3r/',
+    s3DirName: '.s3',
+    ignoreConfigPath: '.adoc-editor/ignore.toml'
+} as const;
+
 /**
  * Information about an object version in s3
  */
@@ -168,21 +178,19 @@ async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<
     const scan = async (dirNode: DirNodeLike, currentPath: string) => {
         const uuids = await readUuids(dirNode.handle);
         // 1. Unconditionally check for .adoc-editor/ignore.toml in this directory (on disk)
-        try {
-            const configDir = await dirNode.handle.getDirectoryHandle('.adoc-editor');
-            const ignoreFileHandle = await configDir.getFileHandle('ignore.toml');
+        // This file may be present at any level and it is important to sync it to ensure that the same ignore rules apply to all devices
+        const ignoreFileHandle = await tryGetFileAtPath(dirNode.handle, S3Paths.ignoreConfigPath)
+        if (ignoreFileHandle) {
             const ignoreFile = await ignoreFileHandle.getFile();
-            const ignorePath = `${currentPath}.adoc-editor/ignore.toml`;
+            const ignorePath = `${currentPath}${S3Paths.ignoreConfigPath}`;
             filesByPath.set(ignorePath, {
-                uuid: uuids['.adoc-editor/ignore.toml'],
+                uuid: uuids[S3Paths.ignoreConfigPath],
                 key: s3Prefix + ignorePath,
                 contentLength: ignoreFile.size,
                 lastModified: new Date(ignoreFile.lastModified).toISOString(),
                 handle: ignoreFileHandle,
                 sha256: undefined
             });
-        } catch {
-            // ignore if not found
         }
 
         // 2. Iterate children (model)
@@ -190,7 +198,7 @@ async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<
             for (const child of dirNode.children) {
                 const entryPath = `${currentPath}${child.name}`;
 
-                if (child.name === '.adoc-editor' || child.name === '.s3') {
+                if (child.name === S3Paths.appDirName || child.name === S3Paths.s3DirName) {
                     continue;
                 }
 
@@ -244,10 +252,10 @@ export async function updateDirectoryUuidMap(dirHandle: FileSystemDirectoryHandl
 
     let s3Dir;
     if (changesEntries.length > 0) {
-        s3Dir = await createDirectoryAtPath(dirHandle, '.s3');
+        s3Dir = await createDirectoryAtPath(dirHandle, S3Paths.s3DirName);
     }
     else {
-        s3Dir = await tryGetDirectoryAtPath(dirHandle, '.s3');
+        s3Dir = await tryGetDirectoryAtPath(dirHandle, S3Paths.s3DirName);
         if (!s3Dir) return uuids;
     }
 
@@ -299,9 +307,9 @@ export async function updateDirectoryUuidMap(dirHandle: FileSystemDirectoryHandl
 export async function saveBaseRecord(rootNode: DirNodeLike, relativePath: string, update: Partial<BaseVersionRecord>) {
     const name = fileName(relativePath);
     const dir = directoryPath(relativePath);
-    
+
     // Lock handling would be ideal here but skipping for now
-    const fileHandle = await getFileAtPath(rootNode.handle, `.adoc-editor/s3m/${dir}.index.json`);
+    const fileHandle = await getFileAtPath(rootNode.handle, `${S3Paths.baseMetaDir}${dir}.index.json`);
     const file = await fileHandle.getFile();
     const text = await file.text();
     const records = JSON.parse(text);
@@ -484,7 +492,7 @@ async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: 
 }
 
 function remoteCachePath(relativePath: string, version: string): string {
-    return `.adoc-editor/s3r/${relativePath}.${version}`;
+    return `${S3Paths.remoteContentDir}${relativePath}.${version}`;
 }
 
 export async function loadRemoteFileFromCache(rootHandle: FileSystemDirectoryHandle, relativePath: string, version: string): Promise<FileSystemFileHandle | null> {
@@ -704,13 +712,13 @@ export async function scanAndCalculateStatus(rootNode: DirNodeLike, s3Client: S3
 
     // 2. Read Base State
     traceLog("Reading base state...");
-    const baseRecordsByPath = await readRecords<BaseVersionRecord>(await createDirectoryAtPath(rootNode.handle, '.adoc-editor/s3m/'));
+    const baseRecordsByPath = await readRecords<BaseVersionRecord>(await createDirectoryAtPath(rootNode.handle, S3Paths.baseMetaDir));
     traceLog(`Found ${baseRecordsByPath.size} items in base state.`);
 
     // 3. List Remote Objects & Persist State
     traceLog(`Listing objects in bucket: ${settings.bucket} (prefix: ${s3Prefix})`);
 
-    const remoteRecordsByPath = await fetchRemoteRecords(s3Client, s3Prefix, settings.bucket, await createDirectoryAtPath(rootNode.handle, '.adoc-editor/s3mc/'), baseRecordsByPath);
+    const remoteRecordsByPath = await fetchRemoteRecords(s3Client, s3Prefix, settings.bucket, await createDirectoryAtPath(rootNode.handle, S3Paths.metaCacheDir), baseRecordsByPath);
 
     // 4. Compute Actions
     traceLog("Calculating diff...");
@@ -1441,7 +1449,7 @@ export async function executeSyncItem(
 
         if (item.remoteStatus === FileStatus.Unchanged && item.base) {
             const baseRelPath = item.base.key.substring(prefix.length);
-            const basePath = `.adoc-editor/s3b/${baseRelPath}`;
+            const basePath = `${S3Paths.baseContentDir}${baseRelPath}`;
             const baseHandle = await tryGetFileAtPath(rootHandle, basePath);
             if (baseHandle) {
                 sourceHandle = baseHandle;
@@ -1645,7 +1653,7 @@ export async function flushPendingChanges(
 ) {
     // 1. Update .adoc-editor/s3m/ base metadata records
     if (pending.baseRecords.size > 0) {
-        const baseMetaDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/');
+        const baseMetaDir = await createDirectoryAtPath(rootHandle, S3Paths.baseMetaDir);
 
         // Group by directory
         const byDir = new Map<string, Map<string, BaseVersionRecord | null>>();
@@ -1687,7 +1695,7 @@ export async function flushPendingChanges(
 
     // 2. Write base files at .adoc-editor/s3b/<relativePath>
     if (pending.baseFileWrites.size > 0) {
-        const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3b/');
+        const baseDir = await createDirectoryAtPath(rootHandle, S3Paths.baseContentDir);
         for (const [relPath, sourceHandle] of pending.baseFileWrites) {
             const targetHandle = await createFileAtPath(baseDir, relPath);
             const sourceFile = await sourceHandle.getFile();
@@ -1698,7 +1706,7 @@ export async function flushPendingChanges(
 
     // 3. Delete base files from .adoc-editor/s3b/
     if (pending.baseFileDeletes.length > 0) {
-        const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3b/');
+        const baseDir = await createDirectoryAtPath(rootHandle, S3Paths.baseContentDir);
         for (const relPath of pending.baseFileDeletes) {
             const dir = directoryPath(relPath);
             const name = fileName(relPath);
