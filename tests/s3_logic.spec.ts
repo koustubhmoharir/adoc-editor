@@ -1,8 +1,9 @@
 
 import { test, expect } from '@playwright/test';
-import { scanAndCalculateStatus, DirNodeLike, FileStatus, SyncContentAction, SyncPathAction } from '../src/store/S3SyncLogic';
+import { scanAndCalculateStatus, DirNodeLike, FileStatus, SyncContentAction, SyncPathAction, createDirectoryAtPath } from '../src/store/S3SyncLogic';
 import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from './helpers/mock_fs_handles';
 import { MockS3Client } from './helpers/mock_s3_client';
+import { S3SyncSettings } from '../src/file_system/S3SyncSettings';
 
 import { createHash } from 'crypto';
 
@@ -49,10 +50,7 @@ const UUID_BASE = 'f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f809102';
 const UUID_NESTED = '07b8c9d0-e1f2-4a3b-4c5d-6e7f80910213';
 const UUID_ROOT = '18c9d0e1-f2a3-4b4c-5d6e-7f8091021324';
 
-let rootHandle: MockFileSystemDirectoryHandle;
-let rootNode: DirNodeLike;
-let s3Client: MockS3Client;
-const settings = {
+const settings: Readonly<S3SyncSettings> = {
     bucket: 'test-bucket',
     prefix: 'test-prefix/',
     region: 'us-east-1',
@@ -62,25 +60,22 @@ const settings = {
     device_name: 'test-device'
 };
 
-test.beforeEach(async () => {
-    rootHandle = new MockFileSystemDirectoryHandle('root');
-    s3Client = new MockS3Client();
-    // Setup empty .s3 directory structure
-    const s3Dir = rootHandle.addDirectory('.s3');
-    s3Dir.addDirectory('m');
-    s3Dir.addDirectory('mc');
-});
-
 test('Empty local and remote should return empty status', async () => {
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
     expect(status).toEqual([]);
 });
 
 test('New Local File (No Base)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     rootHandle.addFile('new.txt', 'test content');
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -90,13 +85,16 @@ test('New Local File (No Base)', async () => {
 });
 
 test('New Remote File (No Base)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     s3Client.addTextVersion('test-prefix/remote.txt', 'remote content', {
         uuid: UUID_REMOTE,
         syncVersion: 1,
         deviceName: 'other-device',
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -106,9 +104,11 @@ test('New Remote File (No Base)', async () => {
 });
 
 test('Unchanged File (Matches Base)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const content = 'test';
     const hash = computeHash(content);
 
@@ -127,7 +127,7 @@ test('Unchanged File (Matches Base)', async () => {
 
     // Local
     rootHandle.addFile('file.txt', content);
-    const s3MetaDir = rootHandle.getEntry('.s3') as MockFileSystemDirectoryHandle;
+    const s3MetaDir = rootHandle.addDirectory('.s3');
     s3MetaDir.addFile('uuids.json', JSON.stringify({ 'file.txt': UUID_1 }));
 
 
@@ -138,7 +138,7 @@ test('Unchanged File (Matches Base)', async () => {
     // Optimization: if key & version match base, we reuse base logic, so we don't need S3 metadata here if fetchRemoteRecords optimizes it.
     // But let's verify optimization works (no head request made if version matches).
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -148,16 +148,18 @@ test('Unchanged File (Matches Base)', async () => {
 });
 
 test('Conflict (Both Changed)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'old-hash',
+        sha256: computeHash('old-content'),
         contentLength: 10,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
@@ -166,7 +168,7 @@ test('Conflict (Both Changed)', async () => {
 
     // Local: Changed
     rootHandle.addFile('file.txt', 'local change');
-    const s3MetaDir = rootHandle.getEntry('.s3') as MockFileSystemDirectoryHandle;
+    const s3MetaDir = rootHandle.addDirectory('.s3');
     s3MetaDir.addFile('uuids.json', JSON.stringify({ 'file.txt': UUID_1 }));
 
     // Remote: Changed
@@ -175,7 +177,7 @@ test('Conflict (Both Changed)', async () => {
         syncVersion: 2,
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -183,6 +185,9 @@ test('Conflict (Both Changed)', async () => {
 });
 
 test('Both New (Conflict)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Local: New
     rootHandle.addFile('file.txt', 'local new');
 
@@ -192,7 +197,7 @@ test('Both New (Conflict)', async () => {
         syncVersion: 1,
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -200,16 +205,18 @@ test('Both New (Conflict)', async () => {
 });
 
 test('Local Deleted (Remote Unchanged)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'hash',
+        sha256: computeHash('test'),
         contentLength: 4,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
@@ -223,7 +230,7 @@ test('Local Deleted (Remote Unchanged)', async () => {
         versionId: 'v1',
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -234,9 +241,11 @@ test('Local Deleted (Remote Unchanged)', async () => {
 });
 
 test('Remote Deleted (Local Unchanged)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const content = 'test';
     const hash = computeHash(content);
     const baseRecord = {
@@ -254,13 +263,13 @@ test('Remote Deleted (Local Unchanged)', async () => {
 
     // Local: Unchanged
     rootHandle.addFile('file.txt', content);
-    const s3MetaDir = rootHandle.getEntry('.s3') as MockFileSystemDirectoryHandle;
+    const s3MetaDir = rootHandle.addDirectory('.s3');
     s3MetaDir.addFile('uuids.json', JSON.stringify({ 'file.txt': UUID_1 }));
 
 
     // Remote: Deleted (no version in list)
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -271,16 +280,18 @@ test('Remote Deleted (Local Unchanged)', async () => {
 });
 
 test('Local Modified vs Remote Deleted (Conflict)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'hash',
+        sha256: computeHash('original'),
         contentLength: 4,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
@@ -292,7 +303,7 @@ test('Local Modified vs Remote Deleted (Conflict)', async () => {
 
     // Remote: Deleted
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -300,16 +311,18 @@ test('Local Modified vs Remote Deleted (Conflict)', async () => {
 });
 
 test('Remote Modified vs Local Deleted (Conflict)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'hash',
+        sha256: computeHash('original'),
         contentLength: 4,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
@@ -324,7 +337,7 @@ test('Remote Modified vs Local Deleted (Conflict)', async () => {
         syncVersion: 2,
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -332,9 +345,11 @@ test('Remote Modified vs Local Deleted (Conflict)', async () => {
 });
 
 test('Local Move', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const content = 'test';
     const hash = computeHash(content);
     const baseRecord = {
@@ -352,7 +367,7 @@ test('Local Move', async () => {
 
     // Local: Moved to new.txt (and same content 'test')
     rootHandle.addFile('new.txt', content);
-    const s3MetaDir = rootHandle.getEntry('.s3') as MockFileSystemDirectoryHandle;
+    const s3MetaDir = rootHandle.addDirectory('.s3');
     s3MetaDir.addFile('uuids.json', JSON.stringify({ 'new.txt': UUID_1 }));
 
     // Remote: Unchanged (old.txt exists)
@@ -360,7 +375,7 @@ test('Local Move', async () => {
         versionId: 'v1',
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -370,9 +385,11 @@ test('Local Move', async () => {
 });
 
 test('Remote Move', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const content = 'test';
     const hash = computeHash(content);
     const baseRecord = {
@@ -390,7 +407,7 @@ test('Remote Move', async () => {
 
     // Local: Unchanged (old.txt)
     rootHandle.addFile('old.txt', content);
-    const s3MetaDir = rootHandle.getEntry('.s3') as MockFileSystemDirectoryHandle;
+    const s3MetaDir = rootHandle.addDirectory('.s3');
     s3MetaDir.addFile('uuids.json', JSON.stringify({ 'old.txt': UUID_1 }));
 
     // Remote: Moved to new.txt
@@ -400,7 +417,7 @@ test('Remote Move', async () => {
         versionId: 'v1',
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -410,9 +427,11 @@ test('Remote Move', async () => {
 });
 
 test('Fast Check (Hash Match)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const content = 'test';
     const hash = computeHash(content);
     const baseRecord = {
@@ -433,7 +452,7 @@ test('Fast Check (Hash Match)', async () => {
 
     // Remote: Deleted
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -446,9 +465,11 @@ test('Fast Check (Hash Match)', async () => {
 });
 
 test('Local Changed (Remote Unchanged)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const content = 'test';
     const hash = computeHash(content);
     const baseRecord = {
@@ -472,7 +493,7 @@ test('Local Changed (Remote Unchanged)', async () => {
         versionId: 'v1',
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -482,9 +503,11 @@ test('Local Changed (Remote Unchanged)', async () => {
 });
 
 test('Both Moved (Path Conflict)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const content = 'test';
     const hash = computeHash(content);
     const baseRecord = {
@@ -502,7 +525,7 @@ test('Both Moved (Path Conflict)', async () => {
 
     // Local: Moved to local.txt
     rootHandle.addFile('local.txt', content);
-    const s3MetaDir = rootHandle.getEntry('.s3') as MockFileSystemDirectoryHandle;
+    const s3MetaDir = rootHandle.addDirectory('.s3');
     s3MetaDir.addFile('uuids.json', JSON.stringify({ 'local.txt': UUID_1 }));
 
     // Remote: Moved to remote.txt
@@ -512,7 +535,7 @@ test('Both Moved (Path Conflict)', async () => {
         versionId: 'v1',
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -520,16 +543,18 @@ test('Both Moved (Path Conflict)', async () => {
 });
 
 test('Both Deleted', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'hash',
+        sha256: computeHash('original'),
         contentLength: 4,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
@@ -539,7 +564,7 @@ test('Both Deleted', async () => {
     // Local: Deleted
     // Remote: Deleted
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -547,9 +572,11 @@ test('Both Deleted', async () => {
 });
 
 test('Remote Reverted', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
@@ -573,7 +600,7 @@ test('Remote Reverted', async () => {
         versionId: 'v1',
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -582,9 +609,11 @@ test('Remote Reverted', async () => {
 });
 
 test('Remote Unknown (No SyncVer)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
@@ -607,7 +636,7 @@ test('Remote Unknown (No SyncVer)', async () => {
         // NO syncVersion
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -616,9 +645,11 @@ test('Remote Unknown (No SyncVer)', async () => {
 });
 
 test('Remote Unknown (Hash Mismatch, Same SyncVer)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
@@ -641,7 +672,7 @@ test('Remote Unknown (Hash Mismatch, Same SyncVer)', async () => {
         syncVersion: 1,
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -650,10 +681,13 @@ test('Remote Unknown (Hash Mismatch, Same SyncVer)', async () => {
 });
 
 test('New Remote File (Nested, No Metadata) triggers getOrCreateDirectory', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Remote: Unsynced file in subfolder (no metadata)
     s3Client.addTextVersion('test-prefix/nested/remote.txt', 'nested content');
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -662,6 +696,9 @@ test('New Remote File (Nested, No Metadata) triggers getOrCreateDirectory', asyn
 });
 
 test('Nested Sync Root Ignored', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Local: subfolder which is a sync root
     const nested = rootHandle.addDirectory('nested');
     nested.addFile('file.txt', 'ignored');
@@ -687,13 +724,16 @@ test('Nested Sync Root Ignored', async () => {
 });
 
 test('Ignore File (ignore.toml)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Local: ignore.toml present
     const ignoreDir = rootHandle.addDirectory('.adoc-editor');
     ignoreDir.addFile('ignore.toml', 'some config');
 
     // S3 Sync should INCLUDE ignore.toml in the listing
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -701,10 +741,13 @@ test('Ignore File (ignore.toml)', async () => {
 });
 
 test('Local Files in Subdirectories', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     const subdir = await rootHandle.getDirectoryHandle('subdir', { create: true }) as unknown as MockFileSystemDirectoryHandle;
     subdir.addFile('subfile.txt', 'sub-content');
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -713,6 +756,9 @@ test('Local Files in Subdirectories', async () => {
 });
 
 test('Verify Caching of HEAD requests (Second scan uses cache)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Remote file with NO metadata in List response (mock default)
     s3Client.addTextVersion('test-prefix/remote.txt', 'some content');
     // HeadObject will be called to fetch metadata
@@ -726,7 +772,7 @@ test('Verify Caching of HEAD requests (Second scan uses cache)', async () => {
     }) as any;
 
     // First Scan
-    rootNode = await toSyncNodeLike(rootHandle);
+    let rootNode = await toSyncNodeLike(rootHandle);
     await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     // Expect List + Head = 2 calls
@@ -742,16 +788,18 @@ test('Verify Caching of HEAD requests (Second scan uses cache)', async () => {
 });
 
 test('Match Logic Step 2 (Path Match, Missing UUID)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Base: Has UUID
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'hash-1',
+        sha256: computeHash('old-content'),
         contentLength: 4,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
@@ -761,7 +809,7 @@ test('Match Logic Step 2 (Path Match, Missing UUID)', async () => {
     // Remote: Matches Path, but NO metadata (so no UUID)
     s3Client.addTextVersion('test-prefix/file.txt', 'some content');
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -772,47 +820,31 @@ test('Match Logic Step 2 (Path Match, Missing UUID)', async () => {
 });
 
 test('Match Logic Step 3 (Hash Match, Missing UUID, Different Path)', async () => {
-    // Base: UUID_1, 'common-hash'
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
+    const someContent = 'test-content-for-hash';
+    const contentHash = computeHash(someContent);
+
+    // Base: UUID_1, hash matches content
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/old.txt',
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'common-hash',
+        sha256: contentHash,
         contentLength: 10,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
     };
     baseDir.addFile('.index.json', JSON.stringify({ 'old.txt': baseRecord }));
 
-    // Remote: Path B, NO UUID, Match Hash 'common-hash'
-    // The new MockS3Client computes real checksums. We need to use an etag/version that doesn't match base
-    // so HeadObject is called. Since there's no metadata, uuid will be ''.
-    // But we need the SHA256 returned by HeadObject to be 'common-hash' for the match.
-    // With the new MockS3Client, SHA256 is computed from content. We need content that hashes to 'common-hash'.
-    // This is infeasible with real hashes. Instead, we override the mock's HeadObject behavior.
-    // Actually, the test relied on the old mock returning metadata['sha256'] as ChecksumSHA256.
-    // The new MockS3Client computes checksums from content. We need a different approach.
-    // We can still spy on send to override HeadObject for this specific key.
-
-    const someContent = 'test-content-for-hash';
+    // Remote: Path B, NO UUID, Match Hash 'common-hash' (via content match)
     s3Client.addTextVersion('test-prefix/new.txt', someContent);
 
-    // Override the send method to return custom sha256 for the HeadObject call
-    const originalSend = s3Client.send.bind(s3Client);
-    s3Client.send = (async (command: any) => {
-        if (command.constructor.name === 'HeadObjectCommand' && command.input.Key === 'test-prefix/new.txt') {
-            const result = await originalSend(command);
-            result.ChecksumSHA256 = 'common-hash';
-            return result;
-        }
-        return originalSend(command);
-    }) as any;
-
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -821,9 +853,11 @@ test('Match Logic Step 3 (Hash Match, Missing UUID, Different Path)', async () =
 });
 
 test('Local Unchanged + Remote Changed', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Base
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const content = 'v1-content';
     const hash1 = computeHash(content);
 
@@ -849,7 +883,7 @@ test('Local Unchanged + Remote Changed', async () => {
         syncVersion: 2,
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -859,10 +893,11 @@ test('Local Unchanged + Remote Changed', async () => {
 });
 
 test('Verify readRecords recursion (nested base/remote cache)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup: Create a nested structure in base metadata
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
-    const subdir = baseDir.addDirectory('nested');
+    const subdir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/nested') as unknown as MockFileSystemDirectoryHandle;
 
     const baseRecord = {
         uuid: UUID_NESTED,
@@ -870,7 +905,7 @@ test('Verify readRecords recursion (nested base/remote cache)', async () => {
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'hash-n',
+        sha256: computeHash('content-n'),
         contentLength: 10,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
@@ -878,7 +913,7 @@ test('Verify readRecords recursion (nested base/remote cache)', async () => {
     subdir.addFile('.index.json', JSON.stringify({ 'file.txt': baseRecord }));
 
     // Trigger scan
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     // If recursion works, base record should be loaded
@@ -889,9 +924,11 @@ test('Verify readRecords recursion (nested base/remote cache)', async () => {
 });
 
 test('Verify writeRemoteRecordsCache merging', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup: Pre-populate remote cache with an existing record
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const metaCacheDir = s3Dir.getEntry('mc') as MockFileSystemDirectoryHandle;
+    const metaCacheDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3mc/') as unknown as MockFileSystemDirectoryHandle;
 
     const existingRecord = {
         uuid: UUID_1,
@@ -899,7 +936,7 @@ test('Verify writeRemoteRecordsCache merging', async () => {
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'hash-1',
+        sha256: computeHash('existing content'),
         contentLength: 10,
         lastModified: new Date().toISOString()
     };
@@ -915,7 +952,7 @@ test('Verify writeRemoteRecordsCache merging', async () => {
     });
 
     // Trigger scan
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     // Verify cache file contains BOTH records
@@ -930,6 +967,9 @@ test('Verify writeRemoteRecordsCache merging', async () => {
 });
 
 test('Empty S3 Prefix', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Setup: empty prefix settings
     const emptyPrefixSettings = { ...settings, prefix: '' };
 
@@ -939,7 +979,7 @@ test('Empty S3 Prefix', async () => {
         syncVersion: 1,
     });
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, emptyPrefixSettings);
 
     expect(status).toHaveLength(1);
@@ -947,16 +987,21 @@ test('Empty S3 Prefix', async () => {
 });
 
 test('Identical Hash but Different UUID', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
+    const commonContent = 'some content';
+    const commonHash = computeHash(commonContent);
+
     // Base: UUID_1
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'common-hash',
+        sha256: commonHash,
         contentLength: 10,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
@@ -964,23 +1009,12 @@ test('Identical Hash but Different UUID', async () => {
     baseDir.addFile('.index.json', JSON.stringify({ 'file.txt': baseRecord }));
 
     // Remote: UUID_2, but MATCHING hash
-    s3Client.addTextVersion('test-prefix/file.txt', 'some content', {
+    s3Client.addTextVersion('test-prefix/file.txt', commonContent, {
         uuid: UUID_2,
         syncVersion: 1,
     });
 
-    // Override send to return matching hash
-    const originalSend = s3Client.send.bind(s3Client);
-    s3Client.send = (async (command: any) => {
-        if (command.constructor.name === 'HeadObjectCommand' && command.input.Key === 'test-prefix/file.txt') {
-            const result = await originalSend(command);
-            result.ChecksumSHA256 = 'common-hash';
-            return result;
-        }
-        return originalSend(command);
-    }) as any;
-
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     // They have the same path.
@@ -999,10 +1033,13 @@ test('Identical Hash but Different UUID', async () => {
 });
 
 test('Missing Metadata (UUID/SyncVersion) in HeadObject response', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Remote file with NO metadata
     s3Client.addTextVersion('test-prefix/no-meta.txt', 'no metadata file');
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     expect(status).toHaveLength(1);
@@ -1012,16 +1049,18 @@ test('Missing Metadata (UUID/SyncVersion) in HeadObject response', async () => {
 });
 
 test('Local UUID Mismatch (Same Path) - Should NOT match', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Base Record: path matching local, but has specific UUID
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_BASE,
         key: 'test-prefix/conflict.txt',
         version: 'v1',
         syncVersion: 1,
         deviceName: 'dev',
-        sha256: 'hash-common',
+        sha256: computeHash('content'),
         contentLength: 10,
         lastModifiedLocal: new Date().toISOString(),
         compressionMethod: ''
@@ -1029,12 +1068,12 @@ test('Local UUID Mismatch (Same Path) - Should NOT match', async () => {
     baseDir.addFile('.index.json', JSON.stringify({ 'conflict.txt': baseRecord }));
 
     // Local File: Same path, but DIFFERENT UUID
-    const s3LocalDir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
+    const s3LocalDir = rootHandle.addDirectory('.s3');
     s3LocalDir.addFile('uuids.json', JSON.stringify({ 'conflict.txt': UUID_LOCAL }));
 
     rootHandle.addFile('conflict.txt', 'some content');
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     // Step 2 (Path Match) checks: !br.uuid || !lr.uuid || br.uuid === lr.uuid
@@ -1052,9 +1091,11 @@ test('Local UUID Mismatch (Same Path) - Should NOT match', async () => {
 });
 
 test('Local UUID Mismatch (Different Path, Same Hash) - Should NOT match', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Base Record
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
 
     const sameContent = 'same-content';
     const sameContentHash = computeHash(sameContent);
@@ -1073,12 +1114,12 @@ test('Local UUID Mismatch (Different Path, Same Hash) - Should NOT match', async
     baseDir.addFile('.index.json', JSON.stringify({ 'old.txt': baseRecord }));
 
     // Local File: Different path, same content (hash), DIFFERENT UUID
-    const s3LocalDir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
+    const s3LocalDir = rootHandle.addDirectory('.s3');
     s3LocalDir.addFile('uuids.json', JSON.stringify({ 'new.txt': UUID_LOCAL }));
 
     rootHandle.addFile('new.txt', sameContent);
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     // Step 3: Hash matches (real hash). UUID check: UUID_BASE !== UUID_LOCAL. Should FAIL matching.
@@ -1094,9 +1135,11 @@ test('Local UUID Mismatch (Different Path, Same Hash) - Should NOT match', async
 });
 
 test('Local Hash Match (Different Path) - Missing Base UUID (Should Match)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+
     // Base: Hash-X, No UUID
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
 
     const sharedContentHash = computeHash('shared-content');
 
@@ -1114,11 +1157,11 @@ test('Local Hash Match (Different Path) - Missing Base UUID (Should Match)', asy
     baseDir.addFile('.index.json', JSON.stringify({ 'base-no-uuid.txt': baseRecord }));
 
     // Local: Hash-X, Has UUID
-    const s3LocalDir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
+    const s3LocalDir = rootHandle.addDirectory('.s3');
     s3LocalDir.addFile('uuids.json', JSON.stringify({ 'local-moved.txt': UUID_LOCAL }));
     rootHandle.addFile('local-moved.txt', 'shared-content');
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     // Step 3 (Hash): Matches.
@@ -1130,9 +1173,12 @@ test('Local Hash Match (Different Path) - Missing Base UUID (Should Match)', asy
 });
 
 test('Local Hash Match (Different Path) - Missing Local UUID (Should Match)', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const s3Client = new MockS3Client();
+    const settings = { bucket: 'test-bucket', prefix: 'test-prefix/', region: 'us-east-1', identity_pool_id: 'id', authority: 'auth', client_id: 'client', device_name: 'test-device' };
+
     // Base: Hash-X, Has UUID
-    const s3Dir = await rootHandle.getDirectoryHandle('.s3') as unknown as MockFileSystemDirectoryHandle;
-    const baseDir = s3Dir.getEntry('m') as MockFileSystemDirectoryHandle;
+    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
 
     const sharedContentHash = computeHash('shared-content');
     const baseRecord = {
@@ -1152,7 +1198,7 @@ test('Local Hash Match (Different Path) - Missing Local UUID (Should Match)', as
     // No uuids.json entry for this file
     rootHandle.addFile('local-fresh.txt', 'shared-content');
 
-    rootNode = await toSyncNodeLike(rootHandle);
+    const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
     // Match

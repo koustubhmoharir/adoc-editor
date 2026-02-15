@@ -1,7 +1,7 @@
 import { observable, action, computed, runInAction } from 'mobx';
 import * as monaco from 'monaco-editor';
 import { EffectAwareModel } from './EffectAwareModel';
-import { DiffViewMode, FileSyncStatus, getFileHandle } from './S3SyncLogic';
+import { DiffViewMode, FileSyncStatus, getFileAtPath } from './S3SyncLogic';
 import type { S3SyncStore } from './S3SyncStore';
 import { createRef } from 'react';
 import { langIdFromFileName } from './EditorStore';
@@ -296,7 +296,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
     }
 
     /**
-     * Load base content from .adoc-editor/s3/base directory
+     * Load base content from .s3/base directory
      */
     private async loadBaseContent(key: string): Promise<string | null> {
         const rootNode = this._syncStore.directoryNode;
@@ -305,19 +305,9 @@ export class S3SyncDiffStore extends EffectAwareModel {
         // Get relative path from the key
         const relativePath = key.startsWith(prefix) ? key.substring(prefix.length) : key;
 
-        // Navigate to .adoc-editor/s3/base/<relativePath>
-        const basePath = `.adoc-editor/s3/base/${relativePath}`;
-
-        try {
-            // Try to get the file handle from the root directory
-            const handle = await getFileHandle(rootNode.handle, basePath);
-            if (handle) {
-                const file = await handle.getFile();
-                return await file.text();
-            }
-        } catch (e) {
-            console.error(`Failed to load base content for ${basePath}`, e);
-        }
-        return null;
+        // Try to get the file handle from the root directory
+        const handle = await getFileAtPath(rootNode.handle, `.adoc-editor/s3b/${relativePath}`);
+        const file = await handle.getFile();
+        return await file.text();
     }
 }

@@ -73,7 +73,7 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
             </div>
             <div className={styles.itemList}>
                 {!statusItems && (
-                    <div className={styles.loadingState}>
+                    <div className={styles.loadingState} data-testid='s3sync-scanning'>
                         <i className="fa-solid fa-spinner fa-spin" />
                         <span>Scanning files...</span>
                     </div>
@@ -100,6 +100,8 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
                             data-uuid={item.base?.uuid ?? item.remote?.uuid ?? ''}
                             data-content-action={item.contentAction}
                             data-path-action={item.pathAction}
+                            data-content-conflict={item.isContentConflict ? true : undefined}
+                            data-path-conflict={item.isPathConflict ? true : undefined}
                             data-selected={isSelected}
                             title={item.relativePath(prefix)}
                         >

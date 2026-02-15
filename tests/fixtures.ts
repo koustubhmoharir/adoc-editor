@@ -144,10 +144,10 @@ function enableTestLogging(page: Page) {
     page.on('console', msg => {
         const t = msg.type();
         if (t === 'error') {
-            console.error(`BROWSER: ${msg.text()}`);
+            console.error(`BROWSER: [ERROR] ${msg.text()}`);
         }
         else if (t === 'warning') {
-            console.warn(`BROWSER: ${msg.text()}`);
+            console.warn(`BROWSER: [WARNING] ${msg.text()}`);
         }
         else if (process.env.DEBUG_TESTS) {
             console.log(`BROWSER: ${msg.text()}`);

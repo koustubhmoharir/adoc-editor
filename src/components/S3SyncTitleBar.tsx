@@ -29,6 +29,7 @@ export const S3SyncTitleBar = observer(({ store }: { store: S3SyncStore }) => {
                         value={store.syncMode}
                         onChange={(e) => store.setSyncMode(e.target.value as SyncMode)}
                         disabled={isSyncing}
+                        data-testid="sync-mode-select"
                     >
                         <option value={SyncMode.Sync}>Sync</option>
                         <option value={SyncMode.MirrorLocal}>Mirror Local</option>

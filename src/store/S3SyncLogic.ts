@@ -74,39 +74,76 @@ function pathToDirAndFileName(path: string) {
     return ['', path];
 }
 
-export async function getDirectoryHandle(dir: FileSystemDirectoryHandle, path: string, options?: { create?: boolean }) {
-    if (!path) return dir;
-    let curPath = ''
-    const dirNames = path.split('/').filter(Boolean);
+export async function createDirectoryAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemDirectoryHandle> {
+    return (await _getDirectoryHandle(rootHandle, path, { create: true }))!;
+}
+
+export async function getDirectoryAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemDirectoryHandle> {
+    return (await _getDirectoryHandle(rootHandle, path, { optional: false }))!;
+}
+
+export async function tryGetDirectoryAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemDirectoryHandle | null> {
+    return await _getDirectoryHandle(rootHandle, path, { optional: true });
+}
+
+async function _getDirectoryHandle(dir: FileSystemDirectoryHandle, path: string, options?: { create?: boolean; optional?: boolean }) {
+    if (!path || path === '/') return dir;
+    let curPath = '';
+    const parts = path.split('/').filter(Boolean);
     const createOptions = { create: options?.create ?? false };
-    for (const name of dirNames) {
+    const optional = options?.optional ?? false;
+    for (const name of parts) {
         try {
             dir = await dir.getDirectoryHandle(name, createOptions);
             curPath += `${name}/`;
         }
-        catch {
-            console.error(`Could not get or create directory ${name} at ${curPath}`);
-            return undefined;
+        catch (e) {
+            if (createOptions.create || !optional) {
+                throw Error(`Could not create directory ${name} at ${curPath}`, { cause: e });
+            }
+            return null;
         }
     }
     return dir;
 }
 
-export async function getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string, options?: { create?: boolean }): Promise<FileSystemFileHandle | null> {
-    const parts = path.split('/').filter(p => p.length > 0);
+export async function createFileAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle> {
+    return (await _getFileHandle(rootHandle, path, { create: true }))!;
+}
+
+export async function getFileAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle> {
+    return (await _getFileHandle(rootHandle, path, { optional: false }))!;
+}
+
+export async function tryGetFileAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
+    return await _getFileHandle(rootHandle, path, { optional: true });
+}
+
+async function _getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string, options?: { create?: boolean; optional?: boolean }): Promise<FileSystemFileHandle | null> {
+    let curPath = ''
+    const parts = path.split('/').filter(Boolean);
     let currentDir = rootHandle;
     const createOptions = { create: options?.create ?? false };
+    const optional = options?.optional ?? false;
     for (let i = 0; i < parts.length - 1; i++) {
+        const name = parts[i];
         try {
-            currentDir = await currentDir.getDirectoryHandle(parts[i], createOptions);
-        } catch {
+            currentDir = await currentDir.getDirectoryHandle(name, createOptions);
+            curPath += `${name}/`;
+        } catch (e) {
+            if (createOptions.create || !optional) {
+                throw Error(`Could not create directory ${name} at ${curPath}`, { cause: e });
+            }
             return null;
         }
     }
 
     try {
         return await currentDir.getFileHandle(parts[parts.length - 1], createOptions);
-    } catch {
+    } catch (e) {
+        if (createOptions.create || !optional) {
+            throw Error(`Could not create file at ${path}`, { cause: e });
+        }
         return null;
     }
 }
@@ -194,9 +231,9 @@ export async function readUuids(dirHandle: FileSystemDirectoryHandle) {
 
 
 /**
- * Updates the uuid map for a directory by reading all uuids.*.json files, merging them, applying changes,
- * and writing a single new uuids.<uuid>.json file. Old files are deleted.
- * @param dirHandle Handle to the directory containing the files (not the .s3 directory itself)
+ * Updates the uuid map for a directory by reading all .s3/uuids.*.json files, merging them, applying changes,
+ * and writing a single new .s3/uuids.<uuid>.json file. Old files are deleted.
+ * @param dirHandle Handle to the directory containing the files (not the .s3 directory within it)
  * @param changes Map of filename to uuid. If uuid is null, the entry is removed.
  */
 export async function updateDirectoryUuidMap(dirHandle: FileSystemDirectoryHandle, changes: Record<string, string | null>) {
@@ -206,28 +243,26 @@ export async function updateDirectoryUuidMap(dirHandle: FileSystemDirectoryHandl
     const uuids: Record<string, string> = Object.create(null);
 
     let s3Dir;
-    try {
-        s3Dir = await dirHandle.getDirectoryHandle('.s3', { create: changesEntries.length > 0 });
+    if (changesEntries.length > 0) {
+        s3Dir = await createDirectoryAtPath(dirHandle, '.s3');
     }
-    catch { }
-    if (!s3Dir) return uuids;
+    else {
+        s3Dir = await tryGetDirectoryAtPath(dirHandle, '.s3');
+        if (!s3Dir) return uuids;
+    }
 
     // 1. Read existing UUIDs
     const filesToDelete: string[] = [];
 
     // TODO: protect with lock
-    try {
-        for await (const entry of s3Dir.values()) {
-            if (entry.kind === 'file' && entry.name.startsWith('uuids.') && entry.name.endsWith('.json')) {
-                filesToDelete.push(entry.name);
-                try {
-                    const file = await entry.getFile();
-                    const text = await file.text();
-                    Object.assign(uuids, JSON.parse(text));
-                } catch { }
-            }
+    for await (const entry of s3Dir.values()) {
+        if (entry.kind === 'file' && entry.name.startsWith('uuids.') && entry.name.endsWith('.json')) {
+            filesToDelete.push(entry.name);
+            const file = await entry.getFile();
+            const text = await file.text();
+            Object.assign(uuids, JSON.parse(text));
         }
-    } catch { }
+    }
 
     // 2. Apply changes
     for (const [name, uuid] of changesEntries) {
@@ -249,9 +284,7 @@ export async function updateDirectoryUuidMap(dirHandle: FileSystemDirectoryHandl
         // 4. Delete old files
         for (const name of filesToDelete) {
             if (name !== newFileName) {
-                try {
-                    await s3Dir.removeEntry(name);
-                } catch { }
+                await s3Dir.removeEntry(name);
             }
         }
     }
@@ -260,43 +293,24 @@ export async function updateDirectoryUuidMap(dirHandle: FileSystemDirectoryHandl
 }
 
 /**
- * Updates a specific base record in the .s3/m metadata store.
+ * Updates a specific base record in the .adoc-editor/s3m/<relativeDir>/.index.json metadata store.
  * used to update lastModifiedLocal after a restore/revert to avoid full re-hash.
  */
 export async function saveBaseRecord(rootNode: DirNodeLike, relativePath: string, update: Partial<BaseVersionRecord>) {
-    const parent = directoryPath(relativePath);
     const name = fileName(relativePath);
+    const dir = directoryPath(relativePath);
+    
+    // Lock handling would be ideal here but skipping for now
+    const fileHandle = await getFileAtPath(rootNode.handle, `.adoc-editor/s3m/${dir}.index.json`);
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    const records = JSON.parse(text);
 
-    try {
-        const s3Dir = await rootNode.handle.getDirectoryHandle('.s3');
-        const baseMetaDir = await s3Dir.getDirectoryHandle('m');
-
-        const dirHandle = await getDirectoryHandle(baseMetaDir, parent);
-        if (!dirHandle) return; // Should not happen if base record exists
-
-        // Lock handling would be ideal here but skipping for now as per instructions/current arch
-
-        let fileHandle: FileSystemFileHandle;
-        let records: Record<string, BaseVersionRecord>;
-
-        try {
-            fileHandle = await dirHandle.getFileHandle('.index.json');
-            const file = await fileHandle.getFile();
-            const text = await file.text();
-            records = JSON.parse(text);
-        } catch {
-            return; // If index doesn't exist, we can't update a record that should be there
-        }
-
-        if (records.hasOwnProperty(name)) {
-            Object.assign(records[name], update);
-            const writable = await fileHandle.createWritable();
-            await writable.write(JSON.stringify(records, null, 2));
-            await writable.close();
-        }
-
-    } catch (e) {
-        console.error("Failed to save base record", e);
+    if (records.hasOwnProperty(name)) {
+        Object.assign(records[name], update);
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(records, null, 2));
+        await writable.close();
     }
 }
 
@@ -470,36 +484,23 @@ async function fetchRemoteRecords(s3Client: S3Client, s3Prefix: string, bucket: 
 }
 
 function remoteCachePath(relativePath: string, version: string): string {
-    return `.adoc-editor/s3/r/${relativePath}.${version}`;
+    return `.adoc-editor/s3r/${relativePath}.${version}`;
 }
 
 export async function loadRemoteFileFromCache(rootHandle: FileSystemDirectoryHandle, relativePath: string, version: string): Promise<FileSystemFileHandle | null> {
-    try {
-        return await getFileHandle(rootHandle, remoteCachePath(relativePath, version)) ?? null;
-    } catch {
-        // Cache miss
-    }
-    return null;
+    return await tryGetFileAtPath(rootHandle, remoteCachePath(relativePath, version)) ?? null;
 }
 
 export async function saveRemoteFileToCache(rootHandle: FileSystemDirectoryHandle, relativePath: string, version: string, stream: ReadableStream<Uint8Array>): Promise<FileSystemFileHandle | null> {
-    try {
-        const handle = await getFileHandle(rootHandle, remoteCachePath(relativePath, version), { create: true });
-        if (handle) {
-            const writable = await handle.createWritable();
-            await stream.pipeTo(writable);
-            return handle;
-        }
-    } catch (e) {
-        console.error(`Failed to cache remote content at ${relativePath}`, e);
-    }
-    return null;
+    const handle = await createFileAtPath(rootHandle, remoteCachePath(relativePath, version));
+    const writable = await handle.createWritable();
+    await stream.pipeTo(writable);
+    return handle;
 }
 
 async function writeRemoteRecordsCache(newRemoteRecordsByDir: Map<string, Record<string, S3VersionRecord>>, metaCacheDir: FileSystemDirectoryHandle) {
     for (const [dir, dirRecords] of newRemoteRecordsByDir.entries()) {
-        const dirHandle = await getDirectoryHandle(metaCacheDir, dir, { create: true });
-        if (!dirHandle) continue;
+        const dirHandle = await createDirectoryAtPath(metaCacheDir, dir);
         let fileHandle: FileSystemFileHandle | undefined = undefined;
         let final = dirRecords;
         // TODO: Protect the code below with a "lock"
@@ -515,12 +516,9 @@ async function writeRemoteRecordsCache(newRemoteRecordsByDir: Map<string, Record
         catch {
             fileHandle = await dirHandle.getFileHandle('.index.json', { create: true });
         }
-        try {
-            const writable = await fileHandle.createWritable();
-            await writable.write(JSON.stringify(final, null, 2));
-            await writable.close();
-        }
-        catch { }
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(final, null, 2));
+        await writable.close();
     }
 }
 
@@ -697,34 +695,22 @@ async function matchRecords(
     return statusItems;
 }
 
-export async function scanAndCalculateStatus(rootNode: DirNodeLike, s3Client: S3Client, settings: S3SyncSettings) {
+export async function scanAndCalculateStatus(rootNode: DirNodeLike, s3Client: S3Client, settings: Readonly<S3SyncSettings>) {
     const s3Prefix = settings.prefix || '';
 
     // 1. Scan Local Files
     const localFiles = await scanLocalFiles(rootNode, s3Prefix);
     traceLog(`Found ${localFiles.size} local files.`);
 
-    let s3Dir: FileSystemDirectoryHandle;
-    let baseMetaDir: FileSystemDirectoryHandle;
-    let metaCacheDir: FileSystemDirectoryHandle;
-    try {
-        s3Dir = await rootNode.handle.getDirectoryHandle('.s3', { create: true });
-        baseMetaDir = await s3Dir.getDirectoryHandle('m', { create: true });
-        metaCacheDir = await s3Dir.getDirectoryHandle('mc', { create: true });
-    } catch (e) {
-        traceLog("No existing base state found (or failed to read).");
-        return [];
-    }
-
     // 2. Read Base State
     traceLog("Reading base state...");
-    const baseRecordsByPath = await readRecords<BaseVersionRecord>(baseMetaDir);
+    const baseRecordsByPath = await readRecords<BaseVersionRecord>(await createDirectoryAtPath(rootNode.handle, '.adoc-editor/s3m/'));
     traceLog(`Found ${baseRecordsByPath.size} items in base state.`);
 
     // 3. List Remote Objects & Persist State
     traceLog(`Listing objects in bucket: ${settings.bucket} (prefix: ${s3Prefix})`);
 
-    const remoteRecordsByPath = await fetchRemoteRecords(s3Client, s3Prefix, settings.bucket, metaCacheDir, baseRecordsByPath);
+    const remoteRecordsByPath = await fetchRemoteRecords(s3Client, s3Prefix, settings.bucket, await createDirectoryAtPath(rootNode.handle, '.adoc-editor/s3mc/'), baseRecordsByPath);
 
     // 4. Compute Actions
     traceLog("Calculating diff...");
@@ -757,14 +743,42 @@ export enum SyncContentAction {
     DeleteLocal = "DeleteLocal",
 }
 
+/**
+ * Returns the parent directory path of the input path.
+ * If the parent is the root an empty string is returned.
+ * If not, the result has a trailing slash.
+ * This behavior enables concatenation of a file name to the result without a slash.
+ * An exception is thrown if the input path is already a root.
+ * @param path A file or directory path. Trailing slashes are ignored.
+ * @returns Parent directory path (empty string for root or with a trailing slash for non-root)
+ */
 export function directoryPath(path: string): string {
+    path = path.replace(/\/+$/, ''); //remove trailing slashes
+    if (path === '') {
+        throw new Error(`Already a root path. path:  ${path}`);
+    }
     const lastSlash = path.lastIndexOf('/');
-    return lastSlash >= 0 ? path.substring(0, lastSlash) : '';
+    if (lastSlash >= 0) {
+        return path.substring(0, lastSlash + 1);
+    }
+    else {
+        return '';
+    }
 }
 
-export function fileName(path: string): string {
+/**
+ * Returns the last segment of the input path
+ * @param path A file or directory path. Trailing slashes are ignored.
+ * @returns 
+ */
+export function fileName(path: string, allowEmpty = false): string {
+    path = path.replace(/\/+$/, ''); //remove trailing slashes
     const lastSlash = path.lastIndexOf('/');
-    return lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+    const name = lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+    if (!allowEmpty && !name) {
+        throw new Error('Expected a non-empty name');
+    }
+    return name;
 }
 
 export enum SyncMode {
@@ -1108,9 +1122,9 @@ export class FileSyncStatus {
 export interface PendingChanges {
     /** relativePath → new BaseVersionRecord, or null to delete the record */
     baseRecords: Map<string, BaseVersionRecord | null>;
-    /** relativePath → FileSystemFileHandle to copy content from for .s3/b/<relativePath> */
+    /** relativePath → FileSystemFileHandle to copy content from for .adoc-editor.s3b/<relativePath> */
     baseFileWrites: Map<string, FileSystemFileHandle>;
-    /** relativePaths to delete from .s3/b/ */
+    /** relativePaths to delete from .adoc-editor.s3b/ */
     baseFileDeletes: string[];
     /** dirPath (relative, e.g. "" or "sub/dir") → Record<fileName, uuid | null> */
     uuidChanges: Map<string, Record<string, string | null>>;
@@ -1377,11 +1391,14 @@ export async function executeSyncItem(
             const newLocalPath = targetPath;
             const newDir = directoryPath(newLocalPath);
             const newName = fileName(newLocalPath);
-            const dirHandle = await getDirectoryHandle(rootHandle, newDir, { create: true });
+            const dirHandle = await createDirectoryAtPath(rootHandle, newDir);
             if (dirHandle) {
                 const handle = item.local.handle as any;
                 if (typeof handle.move === 'function') {
                     await handle.move(dirHandle, newName);
+                }
+                else {
+                    throw new Error('move is not supported');
                 }
             }
             // Update uuid maps for the move
@@ -1424,8 +1441,8 @@ export async function executeSyncItem(
 
         if (item.remoteStatus === FileStatus.Unchanged && item.base) {
             const baseRelPath = item.base.key.substring(prefix.length);
-            const basePath = `.s3/b/${baseRelPath}`;
-            const baseHandle = await getFileHandle(rootHandle, basePath);
+            const basePath = `.adoc-editor/s3b/${baseRelPath}`;
+            const baseHandle = await tryGetFileAtPath(rootHandle, basePath);
             if (baseHandle) {
                 sourceHandle = baseHandle;
                 traceLog(`CopyRemoteToLocal: restoring from base file for ${targetPath}`);
@@ -1450,20 +1467,15 @@ export async function executeSyncItem(
             const oldLocalPath = item.local.key.substring(prefix.length);
             const oldDir = directoryPath(oldLocalPath);
             const oldName = fileName(oldLocalPath);
-            const oldDirHandle = await getDirectoryHandle(rootHandle, oldDir);
-            if (oldDirHandle) {
-                try { await oldDirHandle.removeEntry(oldName); } catch { }
-            }
+            const oldDirHandle = await getDirectoryAtPath(rootHandle, oldDir);
+            await oldDirHandle.removeEntry(oldName);
             addUuidChange(pending, oldDir, oldName, null);
         }
 
         // Stream source to local file at targetPath
         const newDir = directoryPath(targetPath);
         const newName = fileName(targetPath);
-        const dirHandle = await getDirectoryHandle(rootHandle, newDir, { create: true });
-        if (!dirHandle) {
-            throw new Error(`Could not create directory for ${targetPath}`);
-        }
+        const dirHandle = await createDirectoryAtPath(rootHandle, newDir);
         const fileHandle = await dirHandle.getFileHandle(newName, { create: true });
         const sourceFile = await sourceHandle.getFile();
         const writable = await fileHandle.createWritable();
@@ -1541,10 +1553,8 @@ export async function executeSyncItem(
             const localPath = item.local.key.substring(prefix.length);
             const dir = directoryPath(localPath);
             const name = fileName(localPath);
-            const dirHandle = await getDirectoryHandle(rootHandle, dir);
-            if (dirHandle) {
-                await dirHandle.removeEntry(name);
-            }
+            const dirHandle = await getDirectoryAtPath(rootHandle, dir);
+            await dirHandle.removeEntry(name);
             addUuidChange(pending, dir, name, null);
         }
 
@@ -1591,11 +1601,14 @@ export async function executeSyncItem(
             const localPath = item.local!.key.substring(prefix.length);
             const newDir = directoryPath(targetPath);
             const newName = fileName(targetPath);
-            const dirHandle = await getDirectoryHandle(rootHandle, newDir, { create: true });
+            const dirHandle = await createDirectoryAtPath(rootHandle, newDir);
             if (dirHandle) {
                 const handle = item.local!.handle as any;
                 if (typeof handle.move === 'function') {
                     await handle.move(dirHandle, newName);
+                }
+                else {
+                    throw new Error('move is not supported');
                 }
             }
             // Update uuid maps
@@ -1630,17 +1643,9 @@ export async function flushPendingChanges(
     rootHandle: FileSystemDirectoryHandle,
     pending: PendingChanges,
 ) {
-    let s3Dir: FileSystemDirectoryHandle;
-    try {
-        s3Dir = await rootHandle.getDirectoryHandle('.s3', { create: true });
-    } catch {
-        console.error('Failed to access .s3 directory for metadata flush');
-        return;
-    }
-
-    // 1. Update .s3/m/ base metadata records
+    // 1. Update .adoc-editor/s3m/ base metadata records
     if (pending.baseRecords.size > 0) {
-        const baseMetaDir = await s3Dir.getDirectoryHandle('m', { create: true });
+        const baseMetaDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/');
 
         // Group by directory
         const byDir = new Map<string, Map<string, BaseVersionRecord | null>>();
@@ -1655,99 +1660,69 @@ export async function flushPendingChanges(
         }
 
         for (const [dir, changes] of byDir) {
+            const dirHandle = await createDirectoryAtPath(baseMetaDir, dir);
+
+            let records: Record<string, BaseVersionRecord> = Object.create(null);
             try {
-                const dirHandle = await getDirectoryHandle(baseMetaDir, dir, { create: true });
-                if (!dirHandle) continue;
+                const fh = await dirHandle.getFileHandle('.index.json');
+                const file = await fh.getFile();
+                const text = await file.text();
+                records = JSON.parse(text);
+            } catch { }
 
-                let records: Record<string, BaseVersionRecord> = Object.create(null);
-                try {
-                    const fh = await dirHandle.getFileHandle('.index.json');
-                    const file = await fh.getFile();
-                    const text = await file.text();
-                    records = JSON.parse(text);
-                } catch { }
-
-                for (const [name, record] of changes) {
-                    if (record === null) {
-                        delete records[name];
-                    } else {
-                        records[name] = record;
-                    }
+            for (const [name, record] of changes) {
+                if (record === null) {
+                    delete records[name];
+                } else {
+                    records[name] = record;
                 }
-
-                const fh = await dirHandle.getFileHandle('.index.json', { create: true });
-                const writable = await fh.createWritable();
-                await writable.write(JSON.stringify(records, null, 2));
-                await writable.close();
-            } catch (e) {
-                console.error(`Failed to update metadata for directory ${dir}`, e);
             }
+
+            const fh = await dirHandle.getFileHandle('.index.json', { create: true });
+            const writable = await fh.createWritable();
+            await writable.write(JSON.stringify(records, null, 2));
+            await writable.close();
         }
     }
 
-    // 2. Write base files at .s3/b/<relativePath>
+    // 2. Write base files at .adoc-editor/s3b/<relativePath>
     if (pending.baseFileWrites.size > 0) {
-        const baseDir = await s3Dir.getDirectoryHandle('b', { create: true });
+        const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3b/');
         for (const [relPath, sourceHandle] of pending.baseFileWrites) {
-            try {
-                const targetHandle = await getFileHandle(baseDir, relPath, { create: true });
-                if (!targetHandle) continue;
-                const sourceFile = await sourceHandle.getFile();
-                const writable = await targetHandle.createWritable();
-                await sourceFile.stream().pipeTo(writable);
-            } catch (e) {
-                console.error(`Failed to write base file for ${relPath}`, e);
-            }
+            const targetHandle = await createFileAtPath(baseDir, relPath);
+            const sourceFile = await sourceHandle.getFile();
+            const writable = await targetHandle.createWritable();
+            await sourceFile.stream().pipeTo(writable);
         }
     }
 
-    // 3. Delete base files from .s3/b/
+    // 3. Delete base files from .adoc-editor/s3b/
     if (pending.baseFileDeletes.length > 0) {
-        let baseDir: FileSystemDirectoryHandle | undefined;
-        try {
-            baseDir = await s3Dir.getDirectoryHandle('b');
-        } catch { }
-        if (baseDir) {
-            for (const relPath of pending.baseFileDeletes) {
-                try {
-                    const dir = directoryPath(relPath);
-                    const name = fileName(relPath);
-                    const dirHandle = await getDirectoryHandle(baseDir, dir);
-                    if (dirHandle) {
-                        await dirHandle.removeEntry(name);
-                    }
-                } catch (e) {
-                    console.error(`Failed to delete base file for ${relPath}`, e);
-                }
-            }
+        const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3b/');
+        for (const relPath of pending.baseFileDeletes) {
+            const dir = directoryPath(relPath);
+            const name = fileName(relPath);
+            const dirHandle = await getDirectoryAtPath(baseDir, dir);
+            await dirHandle.removeEntry(name);
         }
     }
 
     // 4. Update uuid maps
     for (const [dirPath, changes] of pending.uuidChanges) {
-        try {
-            const dirHandle = await getDirectoryHandle(rootHandle, dirPath);
-            if (dirHandle) {
-                await updateDirectoryUuidMap(dirHandle, changes);
-            }
-        } catch (e) {
-            console.error(`Failed to update uuid map for ${dirPath}`, e);
-        }
+        const dirHandle = await getDirectoryAtPath(rootHandle, dirPath);
+        await updateDirectoryUuidMap(dirHandle, changes);
     }
 
-    // 5. Delete remote cache files from .adoc-editor/s3/r/
+    // 5. Delete remote cache files from .adoc-editor/s3r/
     if (pending.remoteCacheDeletes.length > 0) {
         for (const cachePath of pending.remoteCacheDeletes) {
-            try {
-                const dir = directoryPath(cachePath);
-                const name = fileName(cachePath);
-                const dirHandle = await getDirectoryHandle(rootHandle, dir);
-                if (dirHandle) {
+            const dir = directoryPath(cachePath);
+            const name = fileName(cachePath);
+            const dirHandle = await tryGetDirectoryAtPath(rootHandle, dir);
+            if (dirHandle) {
+                try {
                     await dirHandle.removeEntry(name);
-                }
-            } catch (e) {
-                // Cache file may already be gone, that's fine
-                traceLog(`Failed to delete remote cache file ${cachePath}: ${e}`);
+                } catch { }
             }
         }
     }

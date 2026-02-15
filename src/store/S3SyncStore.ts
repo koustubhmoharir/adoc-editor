@@ -2,7 +2,7 @@ import { action, observable, runInAction } from "mobx";
 import { DirectoryNodeModel } from "./FileSystemModels";
 import { S3Store } from "./S3Store";
 import { S3SyncDiffStore } from "./S3SyncDiffStore";
-import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, getFileHandle, updateDirectoryUuidMap, saveBaseRecord, getDirectoryHandle, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges, isConcurrencyError, refreshRemoteRecord } from "./S3SyncLogic";
+import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, updateDirectoryUuidMap, saveBaseRecord, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges, isConcurrencyError, refreshRemoteRecord, getDirectoryAtPath, getFileAtPath, createDirectoryAtPath } from "./S3SyncLogic";
 import { traceLog } from "../utils/trace";
 import { dialog } from "../components/Dialog";
 
@@ -272,18 +272,9 @@ export class S3SyncStore {
         const parent = directoryPath(relPath);
         const name = fileName(relPath);
 
-        let parentHandle = await getDirectoryHandle(this.directoryNode.handle, parent);
-        if (!parentHandle) {
-            console.error("Could not find parent directory for deletion");
-            return;
-        }
+        let parentHandle = await getDirectoryAtPath(this.directoryNode.handle, parent);
+        await parentHandle.removeEntry(name);
 
-        try {
-            await parentHandle.removeEntry(name);
-        } catch (e) {
-            console.error("Failed to delete file", e);
-            await dialog.alert("Failed to delete file: " + e);
-        }
         await this.updateItemStatus(item, null);
     }
 
@@ -295,28 +286,19 @@ export class S3SyncStore {
         // It is possible that base path and local path are different
         const localRelPath = item.relativePath(prefix);
         const baseRelPath = item.base.key.substring(prefix.length);
-        const basePath = `.s3/b/${baseRelPath}`;
+        const basePath = `.adoc-editor/s3b/${baseRelPath}`;
         const localName = fileName(localRelPath);
         const localDirPath = directoryPath(localRelPath);
 
         try {
             const root = this.directoryNode.handle;
             // Get base file handle
-            const baseHandle = await getFileHandle(root, basePath);
-            if (!baseHandle) {
-                await dialog.alert("Could not find base file to restore from.");
-                return;
-            }
+            const baseHandle = await getFileAtPath(root, basePath);
 
             const file = await baseHandle.getFile();
 
             // Get/Create target parent directory
-            const parentHandle = await getDirectoryHandle(root, localDirPath, { create: true });
-
-            if (!parentHandle) {
-                await dialog.alert("Could not create directory to restore file.");
-                return;
-            }
+            const parentHandle = await createDirectoryAtPath(root, localDirPath);
 
             // Create/Overwrite target file
             const targetHandle = await parentHandle.getFileHandle(localName, { create: true });
@@ -376,61 +358,54 @@ export class S3SyncStore {
         const newParentPath = directoryPath(newRelPath);
 
         const root = this.directoryNode.handle;
-        const oldParentHandle = await getDirectoryHandle(root, oldParentPath);
+        const oldParentHandle = await getDirectoryAtPath(root, oldParentPath);
 
         // 1. Ensure target directory (base path) exists
-        const targetDir = await getDirectoryHandle(root, newParentPath, { create: true });
+        const targetDir = await createDirectoryAtPath(root, newParentPath);
 
         if (!oldParentHandle || !targetDir) {
             await dialog.alert("Could not access directory.");
             return;
         }
-        try {
-            // 2. Move file
-            const handle = item.local.handle as any;
-            if (typeof handle.move === 'function') {
-                await handle.move(targetDir, newName);
-            } else {
-                await dialog.alert("your browser does not support moving files. Please use Chrome or Edge.");
-                return;
-            }
-
-            // 3. Update UUID maps
-            if (oldParentPath === newParentPath) {
-                // Rename in same directory
-                await updateDirectoryUuidMap(oldParentHandle, {
-                    [oldName]: null,
-                    [newName]: item.base.uuid
-                });
-            } else {
-                // Move to different directory
-                await updateDirectoryUuidMap(oldParentHandle, { [oldName]: null });
-                await updateDirectoryUuidMap(targetDir, { [newName]: item.base.uuid });
-            }
-
-            // 4. Update Status
-            // Get new file stats from the *same* handle (it points to the moved file now)
-            const file = await item.local.handle.getFile();
-
-            const newLocal: LocalFileRecord = {
-                uuid: item.base.uuid,
-                key: item.base.key,
-                contentLength: file.size,
-                lastModified: new Date(file.lastModified).toISOString(),
-                handle: item.local.handle,
-                sha256: item.local.sha256 // undo move just moves the file. The content is preserved (so sha256 of local is same as old local).
-            };
-
-            // Update base record metadata
-            item.base.lastModifiedLocal = newLocal.lastModified;
-            await saveBaseRecord(this.directoryNode, newRelPath, { lastModifiedLocal: newLocal.lastModified });
-
-            await this.updateItemStatus(item, newLocal);
-
-        } catch (e) {
-            console.error("Failed to undo move", e);
-            await dialog.alert("Failed to undo move: " + e);
+        // 2. Move file
+        const handle = item.local.handle as any;
+        if (typeof handle.move === 'function') {
+            await handle.move(targetDir, newName);
+        } else {
+            await dialog.alert("your browser does not support moving files. Please use Chrome or Edge.");
+            return;
         }
 
+        // 3. Update UUID maps
+        if (oldParentPath === newParentPath) {
+            // Rename in same directory
+            await updateDirectoryUuidMap(oldParentHandle, {
+                [oldName]: null,
+                [newName]: item.base.uuid
+            });
+        } else {
+            // Move to different directory
+            await updateDirectoryUuidMap(oldParentHandle, { [oldName]: null });
+            await updateDirectoryUuidMap(targetDir, { [newName]: item.base.uuid });
+        }
+
+        // 4. Update Status
+        // Get new file stats from the *same* handle (it points to the moved file now)
+        const file = await item.local.handle.getFile();
+
+        const newLocal: LocalFileRecord = {
+            uuid: item.base.uuid,
+            key: item.base.key,
+            contentLength: file.size,
+            lastModified: new Date(file.lastModified).toISOString(),
+            handle: item.local.handle,
+            sha256: item.local.sha256 // undo move just moves the file. The content is preserved (so sha256 of local is same as old local).
+        };
+
+        // Update base record metadata
+        item.base.lastModifiedLocal = newLocal.lastModified;
+        await saveBaseRecord(this.directoryNode, newRelPath, { lastModifiedLocal: newLocal.lastModified });
+
+        await this.updateItemStatus(item, newLocal);
     }
 }

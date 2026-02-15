@@ -1,7 +1,7 @@
 import { test, expect, helpers } from './fixtures';
 import { completeRename, loadInitialDirectory, openContextMenu, triggerRename } from './helpers/sidebar_helpers';
 import { getDirectoryItem, getFileItem, getSyncItemByPath } from './helpers/locators';
-import { SyncContentAction } from '../src/store/S3SyncLogic';
+import { SyncContentAction, SyncMode, SyncPathAction } from '../src/store/S3SyncLogic';
 import { Page } from '@playwright/test';
 
 test.beforeEach(async ({ fsSetup, s3Setup }) => {
@@ -30,7 +30,7 @@ async function loadDirectoryAndEnterSyncMode(page: Page) {
     if (await page.getByTestId('exit-sync-button').isVisible()) {
         await page.getByTestId('exit-sync-button').click();
     }
-    else {
+    else if (await page.getByTestId('empty-open-directory-button').isVisible()) {
         // Load directory
         await loadInitialDirectory(page, 's3-project');
     }
@@ -42,7 +42,7 @@ async function loadDirectoryAndEnterSyncMode(page: Page) {
 
     // Verify Sync UI opens and shows the new file
     await expect(page.getByTestId('s3sync-title-bar')).toBeVisible();
-    await expect(page.getByTestId('s3sync-sidebar')).toBeVisible();
+    await expect(page.getByTestId('s3sync-scanning')).not.toBeVisible();
 }
 
 async function completeSync(page: Page, expectedMessage: string = 'Sync complete') {
@@ -85,11 +85,13 @@ test('should upload new local file to S3', async ({ page, fsSetup, s3Setup }) =>
     expect(uploaded).toBeDefined();
     expect(uploaded?.content.toString('utf-8')).toBe('Hello S3');
     expect(uploaded?.isLatest).toBe(true);
+    expect(uploaded?.metadata?.syncversion).toBe('1');
 
     const uploadedNested = s3Setup.getLatestVersion('test-prefix/subdir/nested.txt');
     expect(uploadedNested).toBeDefined();
     expect(uploadedNested?.content.toString('utf-8')).toBe('Hello Nested S3');
     expect(uploadedNested?.isLatest).toBe(true);
+    expect(uploadedNested?.metadata?.syncversion).toBe('1');
 });
 
 test('should upload local changes to S3', async ({ page, fsSetup, s3Setup }) => {
@@ -122,9 +124,12 @@ test('should upload local changes to S3', async ({ page, fsSetup, s3Setup }) => 
     // Verify Upload
     const uploaded = s3Setup.getLatestVersion('test-prefix/file.txt');
     expect(uploaded?.content.toString('utf-8')).toBe('Version 2');
+    // Version 1 was initial sync. Version 2 is update.
+    expect(uploaded?.metadata?.syncversion).toBe('2');
 
     const uploadedNested = s3Setup.getLatestVersion('test-prefix/subdir/nested.txt');
     expect(uploadedNested?.content.toString('utf-8')).toBe('Nested Version 2');
+    expect(uploadedNested?.metadata?.syncversion).toBe('2');
 });
 
 test('should download remote changes to local', async ({ page, fsSetup, s3Setup }) => {
@@ -333,7 +338,7 @@ test('should preserve UUID when renaming local file', async ({ page, fsSetup, s3
 
     // 2. Rename local nested file
     // Need to expand directory first if not visible (it should be visible from initial load)
-    const nestedItem = getFileItem(page, 'subdir/nested.txt'); 
+    const nestedItem = getFileItem(page, 'subdir/nested.txt');
     const nestedInput = await triggerRename(page, nestedItem);
     await completeRename(page, nestedInput, 'renamed-nested.txt', 'enter');
 
@@ -362,6 +367,7 @@ test('should preserve UUID when renaming local file', async ({ page, fsSetup, s3
     const newRemote = s3Setup.getLatestVersion('test-prefix/renamed-file.txt');
     expect(newRemote).toBeDefined();
     expect(newRemote?.content.toString('utf-8')).toBe('Rename Me');
+    expect(newRemote?.metadata?.syncversion).toBe('1');
 
     const oldNestedRemote = s3Setup.getLatestVersion('test-prefix/subdir/nested.txt');
     expect(oldNestedRemote).toBeUndefined();
@@ -369,6 +375,7 @@ test('should preserve UUID when renaming local file', async ({ page, fsSetup, s3
     const newNestedRemote = s3Setup.getLatestVersion('test-prefix/subdir/renamed-nested.txt');
     expect(newNestedRemote).toBeDefined();
     expect(newNestedRemote?.content.toString('utf-8')).toBe('Rename Nested Me');
+    expect(newNestedRemote?.metadata?.syncversion).toBe('1');
 });
 
 test('should rename local file when remote file is renamed', async ({ page, fsSetup, s3Setup }) => {
@@ -449,7 +456,7 @@ test('should move local file when remote file is moved', async ({ page, fsSetup,
     await root.click();
     await expect(root).toHaveAttribute('data-selected', 'true');
     await page.keyboard.press('F5');
-    
+
     await expect(getFileItem(page, 'file.txt')).not.toBeVisible();
 
     await expect(getFileItem(page, 'subdir/moved.txt')).toBeVisible();
@@ -492,4 +499,206 @@ test('should rename local file and update content when remote file is renamed an
     await expect(getFileItem(page, 'renamed-changed.txt')).toBeVisible();
     const content = fsSetup.readFile('s3-project', 'renamed-changed.txt');
     expect(content).toBe('New Content');
+});
+
+test('should mirror local state to remote', async ({ page, fsSetup, s3Setup }) => {
+    // Setup:
+    // Local: to-upload.txt, conflict.txt (v2)
+    // Remote: to-delete.txt, conflict.txt (v1)
+
+    fsSetup.createFile('s3-project', 'to-upload.txt', 'Local Only');
+    fsSetup.createFile('s3-project', 'conflict.txt', 'Version 2');
+
+    s3Setup.seed([]);
+    s3Setup.addTextVersion('test-prefix/to-delete.txt', 'Remote Only');
+    // Establish conflict.txt on remote with different content/version
+    s3Setup.addTextVersion('test-prefix/conflict.txt', 'Version 1');
+
+    await loadDirectoryAndEnterSyncMode(page);
+
+    // Select Mirror Local
+    await page.getByTestId('sync-mode-select').selectOption(SyncMode.MirrorLocal);
+
+    // Verify Actions
+    // to-upload.txt -> CopyLocalToRemote
+    const uploadItem = getSyncItemByPath(page, 'to-upload.txt');
+    await expect(uploadItem).toHaveAttribute('data-content-action', SyncContentAction.CopyLocalToRemote);
+
+    // to-delete.txt -> DeleteRemote (since it's not local)
+    const deleteItem = getSyncItemByPath(page, 'to-delete.txt');
+    await expect(deleteItem).toHaveAttribute('data-content-action', SyncContentAction.DeleteRemote);
+
+    // conflict.txt -> CopyLocalToRemote (local wins)
+    const conflictItem = getSyncItemByPath(page, 'conflict.txt');
+    await expect(conflictItem).toHaveAttribute('data-content-action', SyncContentAction.CopyLocalToRemote);
+
+    await completeSync(page);
+
+    // Verify Remote State
+    const remoteUpload = s3Setup.getLatestVersion('test-prefix/to-upload.txt');
+    expect(remoteUpload).toBeDefined();
+
+    const remoteDelete = s3Setup.getLatestVersion('test-prefix/to-delete.txt');
+    expect(remoteDelete).toBeUndefined();
+
+    const remoteConflict = s3Setup.getLatestVersion('test-prefix/conflict.txt');
+    expect(remoteConflict?.content.toString('utf-8')).toBe('Version 2');
+});
+
+test('should mirror remote state to local', async ({ page, fsSetup, s3Setup }) => {
+    // Setup:
+    // Local: to-delete.txt, conflict.txt (v1)
+    // Remote: to-download.txt, conflict.txt (v2)
+
+    fsSetup.createFile('s3-project', 'to-delete.txt', 'Local Only');
+    fsSetup.createFile('s3-project', 'conflict.txt', 'Version 1');
+
+    s3Setup.seed([]);
+    s3Setup.addTextVersion('test-prefix/to-download.txt', 'Remote Only');
+    s3Setup.addTextVersion('test-prefix/conflict.txt', 'Version 2');
+
+    await loadDirectoryAndEnterSyncMode(page);
+
+    // Select Mirror Remote
+    await page.getByTestId('sync-mode-select').selectOption(SyncMode.MirrorRemote);
+
+    // Verify Actions
+    // to-download.txt -> CopyRemoteToLocal
+    const downloadItem = getSyncItemByPath(page, 'to-download.txt');
+    await expect(downloadItem).toHaveAttribute('data-content-action', SyncContentAction.CopyRemoteToLocal);
+
+    // to-delete.txt -> DeleteLocal (since it's not remote)
+    const deleteItem = getSyncItemByPath(page, 'to-delete.txt');
+    await expect(deleteItem).toHaveAttribute('data-content-action', SyncContentAction.DeleteLocal);
+
+    // conflict.txt -> CopyRemoteToLocal (remote wins)
+    const conflictItem = getSyncItemByPath(page, 'conflict.txt');
+    await expect(conflictItem).toHaveAttribute('data-content-action', SyncContentAction.CopyRemoteToLocal);
+
+    await completeSync(page);
+
+    // Verify Local State
+    expect(fsSetup.exists('s3-project', 'to-download.txt')).toBe(true);
+    expect(fsSetup.exists('s3-project', 'to-delete.txt')).toBe(false);
+    expect(fsSetup.readFile('s3-project', 'conflict.txt')).toBe('Version 2');
+});
+
+test('should report conflict when moved locally and remotely (Sync Mode)', async ({ page, fsSetup, s3Setup }) => {
+    fsSetup.createFile('s3-project', 'file.txt', 'Original Content');
+    s3Setup.seed([]);
+
+    // Initial Sync to establish UUID
+    await loadDirectoryAndEnterSyncMode(page);
+    await completeSync(page);
+
+    // Get UUID
+    const remoteVersion = s3Setup.getLatestVersion('test-prefix/file.txt');
+    const uuid = remoteVersion?.metadata?.uuid;
+    expect(uuid).toBeDefined();
+
+    // Local Move: file.txt -> local-moved.txt
+    await page.getByTestId('exit-sync-button').click();
+
+    const fileItem = getFileItem(page, 'file.txt');
+    await expect(fileItem).toBeVisible();
+
+    const input = await triggerRename(page, fileItem);
+    await completeRename(page, input, 'local-moved.txt', 'enter');
+
+    // Remote Move: file.txt -> remote-moved.txt
+    await s3Setup.deleteObject('test-prefix/file.txt');
+    s3Setup.addTextVersion('test-prefix/remote-moved.txt', 'Original Content', { uuid, syncVersion: 1 });
+
+    // Sync
+    await loadDirectoryAndEnterSyncMode(page);
+
+    // Select Sync Mode (default)
+    // We expect a Path Conflict.
+
+    const localItem = getSyncItemByPath(page, 'local-moved.txt');
+    expect(localItem).toHaveAttribute('data-path-conflict');
+});
+
+test('should resolve move conflict in Mirror Local mode', async ({ page, fsSetup, s3Setup }) => {
+    fsSetup.createFile('s3-project', 'file.txt', 'Original Content');
+    s3Setup.seed([]);
+
+    // Initial Sync
+    await loadDirectoryAndEnterSyncMode(page);
+    await completeSync(page);
+
+    const remoteVersion = s3Setup.getLatestVersion('test-prefix/file.txt');
+    const uuid = remoteVersion?.metadata?.uuid;
+
+    await page.getByTestId('exit-sync-button').click();
+    
+    // Local Move
+    const fileItem = getFileItem(page, 'file.txt');
+    const input = await triggerRename(page, fileItem);
+    await completeRename(page, input, 'local-moved.txt', 'enter');
+
+    // Remote Move
+    await s3Setup.deleteObject('test-prefix/file.txt');
+    s3Setup.addTextVersion('test-prefix/remote-moved.txt', 'Original Content', { uuid, syncVersion: 1 });
+
+    // Sync
+    await loadDirectoryAndEnterSyncMode(page);
+    await page.getByTestId('sync-mode-select').selectOption(SyncMode.MirrorLocal);
+
+    // Expect: UseLocalPath
+    const localItem = getSyncItemByPath(page, 'local-moved.txt');
+    await expect(localItem).toBeVisible();
+    await expect(localItem).toHaveAttribute('data-path-action', SyncPathAction.UseLocalPath);
+
+    await completeSync(page);
+
+    // Verify Remote: remote-moved.txt gone, local-moved.txt exists.
+    expect(s3Setup.getLatestVersion('test-prefix/remote-moved.txt')).toBeUndefined();
+    expect(s3Setup.getLatestVersion('test-prefix/local-moved.txt')).toBeDefined();
+});
+
+test('should resolve move conflict in Mirror Remote mode', async ({ page, fsSetup, s3Setup }) => {
+    fsSetup.createFile('s3-project', 'file.txt', 'Original Content');
+    s3Setup.seed([]);
+
+    // Initial Sync
+    await loadDirectoryAndEnterSyncMode(page);
+    await completeSync(page);
+
+    const remoteVersion = s3Setup.getLatestVersion('test-prefix/file.txt');
+    const uuid = remoteVersion?.metadata?.uuid;
+
+    await page.getByTestId('exit-sync-button').click();
+    
+    // Local Move
+    const fileItem = getFileItem(page, 'file.txt');
+    const input = await triggerRename(page, fileItem);
+    await completeRename(page, input, 'local-moved.txt', 'enter');
+
+    // Remote Move
+    await s3Setup.deleteObject('test-prefix/file.txt');
+    s3Setup.addTextVersion('test-prefix/remote-moved.txt', 'Original Content', { uuid, syncVersion: 1 });
+
+    // Sync
+    await loadDirectoryAndEnterSyncMode(page);
+    await page.getByTestId('sync-mode-select').selectOption(SyncMode.MirrorRemote);
+
+    let item = getSyncItemByPath(page, 'local-moved.txt');
+    await expect(item).toBeVisible();
+    await expect(item).toHaveAttribute('data-path-action', 'UseRemotePath');
+
+    await completeSync(page);
+    await page.getByTestId('exit-sync-button').click();
+
+    // Force refresh local
+    const root = getDirectoryItem(page, '');
+    await root.click();
+    await expect(root).toHaveAttribute('data-selected', 'true');
+    await page.keyboard.press('F5');
+    
+    // Verify Local: remote-moved.txt VISIBLE
+    await expect(getFileItem(page, 'remote-moved.txt')).toBeVisible();
+
+    // Verify Local: local-moved.txt NOT VISIBLE (deleted/renamed)
+    await expect(getFileItem(page, 'local-moved.txt')).not.toBeVisible();
 });

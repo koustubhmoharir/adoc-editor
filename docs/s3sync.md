@@ -39,9 +39,9 @@ A `.s3/uuids.<dir_uuid>.json` file will be maintained within each directory bein
 
 ## Sync Data and Metadata
 
-For each file, the last synced (also called base) content is maintained at `.s3/b/<relativePath>` within the sync root directory (b stands for base). To save space, the content may be compressed for files where compression is likely to be useful. Storing the content enables local reverts / restores which are critical for offline work.
+For each file, the last synced (also called base) content is maintained at `.adoc-editor/s3b/<relativePath>` within the sync root directory (b stands for base). To save space, the content may be compressed for files where compression is likely to be useful. Storing the content enables local reverts / restores which are critical for offline work.
 
-Metadata for the last synced version is maintained within a `.s3/m/<parentDirectoryRelativePath>.index.json` (m stands for metadata, parentDirectoryRelativePath is empty or ends with a slash) that contains metadata for all files in a directory (non-recursive). A single file is used per directory to avoid creating a large number of small files. The content can be read into indexed db, modified there, and then written back to disk at the end of a sync operation.
+Metadata for the last synced version is maintained within a `.adoc-editor/s3m/<parentDirectoryRelativePath>.index.json` (m stands for metadata, parentDirectoryRelativePath is empty or ends with a slash) that contains metadata for all files in a directory (non-recursive). A single file is used per directory to avoid creating a large number of small files. The content can be read into indexed db, modified there, and then written back to disk at the end of a sync operation.
 Metadata contains
 - versionId: object version in S3
 - uuid: stored / retrieved from object metadata `x-amz-meta-uuid`. This may not always be present. Even if present, it is possible that objects at two different keys / paths have the same uuid if external tools are used to work with the S3 bucket.
@@ -64,9 +64,9 @@ To perform status detection for a directory, a ListObjectsV2 request is made to 
 - contentLength: size if present in the response
 - lastModified: if present in the response
 
-If the versionId matches the versionId for the same relative path within `.s3/m/<parentDirectoryRelativePath>.index.json`, all metadata fields are copied from this json if they are not present in the response. This is safe because content and metadata are immutable for an object version in S3. If the json does not exist or the relative path is not found within it or the versionId does not match, the file `.s3/mc/<parentDirectoryRelativePath>.index.json` is tried (mc stands for metadata cache). If that also fails, a head request is made to get the values for these fields, and the file `.s3/mc/<parentDirectoryRelativePath>.index.json` is updated to improve the likelihood of finding metadata in the cache for the next sync in the event that this sync is interrupted, cancelled, or only partially completed. The `.s3/mc/<parentDirectoryRelativePath>.index.json` should also be read into indexed db, updated there, and then written back at the end of a scan.
+If the versionId matches the versionId for the same relative path within `.adoc-editor/s3m/<parentDirectoryRelativePath>.index.json`, all metadata fields are copied from this json if they are not present in the response. This is safe because content and metadata are immutable for an object version in S3. If the json does not exist or the relative path is not found within it or the versionId does not match, the file `.adoc-editor/s3mc/<parentDirectoryRelativePath>.index.json` is tried (mc stands for metadata cache). If that also fails, a head request is made to get the values for these fields, and the file `.adoc-editor/s3mc/<parentDirectoryRelativePath>.index.json` is updated to improve the likelihood of finding metadata in the cache for the next sync in the event that this sync is interrupted, cancelled, or only partially completed. The `.adoc-editor/s3mc/<parentDirectoryRelativePath>.index.json` should also be read into indexed db, updated there, and then written back at the end of a scan.
 
-To perform status detection for a single file, a head request is made to S3 to get the values for all these fields and the caches in the description above are updated if necessary. If sha256 is missing and the file is not too large, the object is downloaded at `.s3/r/<relativePath>` and the hash is calculated. The calculated hash is stored in `.s3/mc/<parentDirectoryRelativePath>.index.json`. If the file is large, the status detection logic will operate without the hash and the user can choose to download the file explicitly.
+To perform status detection for a single file, a head request is made to S3 to get the values for all these fields and the caches in the description above are updated if necessary. If sha256 is missing and the file is not too large, the object is downloaded at `.adoc-editor/s3r/<relativePath>` and the hash is calculated. The calculated hash is stored in `.adoc-editor/s3mc/<parentDirectoryRelativePath>.index.json`. If the file is large, the status detection logic will operate without the hash and the user can choose to download the file explicitly.
 
 ### Base vs Remote Matching
 
@@ -208,7 +208,7 @@ Uploads a local file to S3, with an optimization for unchanged local content.
 
 Downloads (or restores) remote content to the local file system.
 
-1. **Source selection**: If the remote is unchanged from the base, the base file at `.s3/b/<relativePath>` is used as the source (avoiding a network download). If the base file is missing or the remote has changed, the content is downloaded from S3 and cached at `.adoc-editor/s3/r/<relativePath>.<versionId>`.
+1. **Source selection**: If the remote is unchanged from the base, the base file at `.adoc-editor/s3b/<relativePath>` is used as the source (avoiding a network download). If the base file is missing or the remote has changed, the content is downloaded from S3 and cached at `.adoc-editor/s3r/<relativePath>.<versionId>`.
 2. **Old local cleanup**: If the local file existed at a different path, the old file is deleted and UUID maps are updated.
 3. **Streaming write**: The source file content is streamed to the target local file path.
 4. **S3 key move**: If the path action requires the S3 key to change, a CopyObject + DeleteObject is performed. The CopyObject uses `IfNoneMatch: *` on the destination.
@@ -245,15 +245,15 @@ If an item has a base record but both local and remote are gone (content action 
 
 To avoid frequent file I/O during sync, all metadata changes are accumulated in a `PendingChanges` object during item processing and flushed to disk in a single batch at the end:
 
-1. **Base metadata records** (`.s3/m/<dir>/.index.json`): Updated per directory, reading the existing index, applying changes (upserts and deletes), and writing back.
-2. **Base file writes** (`.s3/b/<relativePath>`): Source file handles are streamed to the target path.
-3. **Base file deletes** (`.s3/b/<relativePath>`): Entries removed.
+1. **Base metadata records** (`.adoc-editor/s3m/<dir>/.index.json`): Updated per directory, reading the existing index, applying changes (upserts and deletes), and writing back.
+2. **Base file writes** (`.adoc-editor/s3b/<relativePath>`): Source file handles are streamed to the target path.
+3. **Base file deletes** (`.adoc-editor/s3b/<relativePath>`): Entries removed.
 4. **UUID map updates**: Per-directory `.s3/uuids.<dir_uuid>.json` files are updated.
-5. **Remote cache cleanup** (`.adoc-editor/s3/r/<relativePath>.<versionId>`): Cached remote files for synced items are deleted after sync.
+5. **Remote cache cleanup** (`.adoc-editor/s3r/<relativePath>.<versionId>`): Cached remote files for synced items are deleted after sync.
 
 ### Remote Content Caching
 
-Remote content is cached at `.adoc-editor/s3/r/<relativePath>.<versionId>`. The version ID is appended to prevent serving stale cached content when the remote version changes. Cache files are:
+Remote content is cached at `.adoc-editor/s3r/<relativePath>.<versionId>`. The version ID is appended to prevent serving stale cached content when the remote version changes. Cache files are:
 
 - Created when downloading remote content for preview (diff editor) or for CopyRemoteToLocal.
 - Deleted during the batch flush after a sync operation completes.
