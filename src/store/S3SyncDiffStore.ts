@@ -1,4 +1,4 @@
-import { observable, action, computed, runInAction } from 'mobx';
+import { observable, action, runInAction } from 'mobx';
 import * as monaco from 'monaco-editor';
 import { EffectAwareModel } from './EffectAwareModel';
 import { DiffViewMode, FileSyncStatus, getFileAtPath } from './S3SyncLogic';
@@ -66,62 +66,6 @@ export class S3SyncDiffStore extends EffectAwareModel {
             this._diffEditor.dispose();
             this._diffEditor = null;
         }
-    }
-
-    private _monacoDisposables: monaco.IDisposable[] = [];
-
-    // Computed: content for single pane (read-only)
-    @computed
-    get singlePaneContent(): string | null {
-        switch (this.currentView) {
-            case 'single-base':
-            case '3way':
-                return this._baseContent;
-            case 'single-local':
-                return this._localContent;
-            case 'single-remote':
-                return this._remoteContent;
-            default:
-                return null;
-        }
-    }
-
-    // Computed: original content for diff (left side, read-only)
-    @computed
-    get diffOriginalContent(): string | null {
-        switch (this.currentView) {
-            case 'base-local':
-            case 'base-remote':
-                return this._baseContent;
-            case 'remote-local':
-            case '3way':
-                return this._remoteContent;
-            default:
-                return null;
-        }
-    }
-
-    // Computed: modified content for diff (right side, editable if local)
-    @computed
-    get diffModifiedContent(): string | null {
-        switch (this.currentView) {
-            case 'base-local':
-            case 'remote-local':
-            case '3way':
-                return this._localContent;
-            case 'base-remote':
-                return this._remoteContent;
-            default:
-                return null;
-        }
-    }
-
-    // Computed: whether the diff modified side is editable (only when local)
-    @computed
-    get isDiffModifiedEditable(): boolean {
-        return this.currentView === 'base-local' ||
-            this.currentView === 'remote-local' ||
-            this.currentView === '3way';
     }
 
     @action
@@ -245,8 +189,6 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
     @action.bound
     dispose() {
-        this._monacoDisposables.forEach(d => d.dispose());
-        this._monacoDisposables = [];
         this._disposeSingleEditor();
         this._disposeDiffEditor();
     }
@@ -288,11 +230,6 @@ export class S3SyncDiffStore extends EffectAwareModel {
     @action.bound
     setSinglePaneHeight(height: number) {
         this.singlePaneHeight = Math.max(10, Math.min(90, height));
-    }
-
-    @action.bound
-    updateLocalContent(content: string) {
-        this._localContent = content;
     }
 
     /**
