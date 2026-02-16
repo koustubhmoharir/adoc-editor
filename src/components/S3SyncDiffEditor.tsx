@@ -86,6 +86,7 @@ export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }
                 <div
                     className={styles.singlePane}
                     style={{ height: store.diffPaneDetails ? `${store.singlePaneHeight}%` : undefined, flexGrow: store.diffPaneDetails ? undefined : 1, flexShrink: 0 }}
+                    data-testid="s3sync-single-pane"
                 >
                     {renderPaneContent(store.singlePaneDetails, store.singleEditorRef)}
                 </div>
@@ -94,7 +95,7 @@ export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }
                 <ResizeHandle direction="horizontal" onResize={handleResize!} />
             }
             {store.diffPaneDetails &&
-                <div className={styles.diffPane} style={{ flex: 1 }}>
+                <div className={styles.diffPane} style={{ flex: 1 }} data-testid="s3sync-diff-pane">
                     {renderPaneContent(store.diffPaneDetails, store.diffEditorRef)}
                 </div>
             }

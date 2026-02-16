@@ -872,7 +872,7 @@ test('should enable save button on changes and update synced status', async ({ p
     await completeSync(page);
 
     fsSetup.createFile('s3-project', 'file.txt', 'Base Content1'); // Change local file for item to be visible
-    
+
     await loadDirectoryAndEnterSyncMode(page);
     // 3. Open Editor
     const fileItem = getSyncItemByPath(page, 'file.txt');
@@ -902,4 +902,84 @@ test('should enable save button on changes and update synced status', async ({ p
 
     // Verify file no longer shows up
     await expect(fileItem).not.toBeVisible();
+});
+
+test('should allow switching between all diff views and display correct content', async ({ page, fsSetup, s3Setup }) => {
+    // 1. Setup - Local v1
+    fsSetup.createFile('s3-project', 'file.txt', 'Local v1');
+    s3Setup.seed([]);
+
+    // 2. Initial Sync - Base=Local v1, Remote=Local v1
+    await loadDirectoryAndEnterSyncMode(page);
+    await completeSync(page);
+
+    // 3. Create Conflict
+    // Modify Local -> Local v2
+    fsSetup.createFile('s3-project', 'file.txt', 'Local v2');
+
+    // Modify Remote -> Remote v2 (Simulate s3 change)
+    s3Setup.addTextVersion('test-prefix/file.txt', 'Remote v2');
+
+    // Reload to refresh sync status
+    await loadDirectoryAndEnterSyncMode(page);
+
+    // 4. Open Editor
+    const fileItem = getSyncItemByPath(page, 'file.txt');
+    await fileItem.click();
+
+    // 5. Ensure Remote Downloaded
+    // Switch to single-remote to check/trigger download
+    const viewBtn = page.getByTestId('diff-view-button');
+    await viewBtn.click();
+    await page.getByTestId('diff-view-option-single-remote').click();
+
+    // Check if download needed
+    const downloadBtn = page.getByTestId('download-remote-btn');
+    await downloadBtn.click();
+    await expect(downloadBtn).not.toBeVisible();
+
+    const singlePane = page.getByTestId('s3sync-single-pane');
+    // 6. Verify Views
+
+    // VIEW: single-remote
+    // Already there. Expect "Remote v2"
+    await expect(singlePane.locator('.view-lines')).toContainText('Remote v2');
+
+    // VIEW: single-local
+    await viewBtn.click();
+    await page.getByTestId('diff-view-option-single-local').click();
+    await expect(singlePane.locator('.view-lines')).toContainText('Local v2');
+
+    // VIEW: single-base
+    await viewBtn.click();
+    await page.getByTestId('diff-view-option-single-base').click();
+    await expect(singlePane.locator('.view-lines')).toContainText('Local v1');
+
+    // VIEW: base-local (Diff: Base -> Local)
+    await viewBtn.click();
+    await page.getByTestId('diff-view-option-base-local').click();
+
+    const diffPane = page.getByTestId('s3sync-diff-pane')
+    await expect(diffPane.locator('.editor.original .view-lines')).toContainText('Local v1');
+    await expect(diffPane.locator('.editor.modified .view-lines')).toContainText('Local v2');
+
+    // VIEW: base-remote (Diff: Base -> Remote)
+    await viewBtn.click();
+    await page.getByTestId('diff-view-option-base-remote').click();
+    await expect(diffPane.locator('.editor.original .view-lines')).toContainText('Local v1');
+    await expect(diffPane.locator('.editor.modified .view-lines')).toContainText('Remote v2');
+
+    // VIEW: remote-local (Diff: Remote -> Local)
+    await viewBtn.click();
+    await page.getByTestId('diff-view-option-remote-local').click();
+    await expect(diffPane.locator('.editor.original .view-lines')).toContainText('Remote v2');
+    await expect(diffPane.locator('.editor.modified .view-lines')).toContainText('Local v2');
+
+    // VIEW: 3way (Top: Base, Bottom: Diff Remote->Local)
+    await viewBtn.click();
+    await page.getByTestId('diff-view-option-3way').click();
+
+    await expect(singlePane.locator('.view-lines')).toContainText('Local v1');
+    await expect(diffPane.locator('.editor.original .view-lines')).toContainText('Remote v2');
+    await expect(diffPane.locator('.editor.modified .view-lines')).toContainText('Local v2');
 });
