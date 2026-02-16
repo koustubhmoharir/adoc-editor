@@ -2,7 +2,7 @@ import { test, expect, helpers } from './fixtures';
 import { completeRename, loadInitialDirectory, openContextMenu, triggerRename } from './helpers/sidebar_helpers';
 import { getDirectoryItem, getFileItem, getSyncItemByPath } from './helpers/locators';
 import { SyncContentAction, SyncMode, SyncPathAction } from '../src/store/S3SyncLogic';
-import { Page } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 
 test.beforeEach(async ({ fsSetup, s3Setup }) => {
     s3Setup.cleanup();
@@ -904,6 +904,34 @@ test('should enable save button on changes and update synced status', async ({ p
     await expect(fileItem).not.toBeVisible();
 });
 
+
+// Helper to verify editability behavior
+async function verifyEditable(page: Page, paneLocator: Locator, isEditable: boolean) {
+    const viewLines = paneLocator.locator('.view-lines');
+    // Use a unique text for check
+    const testText = 'EDIT_CHECK';
+
+    // Ensure focused by clicking the visible content area
+    await viewLines.first().click();
+    // Move to end to avoid messing up existing text if editable
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type(testText);
+
+    if (isEditable) {
+        await expect(viewLines).toContainText(testText);
+        // Revert changes to keep state clean for next checks
+        // Note: Control+Z might undo previous edits if not careful, but here we just undo the 'EDIT_CHECK'
+        // However, sync model might persist. 
+        // Better to delete range? Or Backspace.
+        for (let i = 0; i < testText.length; i++) {
+            await page.keyboard.press('Backspace');
+        }
+        await expect(viewLines).not.toContainText(testText);
+    } else {
+        await expect(viewLines).not.toContainText(testText);
+    }
+}
+
 test('should allow switching between all diff views and display correct content', async ({ page, fsSetup, s3Setup }) => {
     // 1. Setup - Local v1
     fsSetup.createFile('s3-project', 'file.txt', 'Local v1');
@@ -939,47 +967,67 @@ test('should allow switching between all diff views and display correct content'
     await expect(downloadBtn).not.toBeVisible();
 
     const singlePane = page.getByTestId('s3sync-single-pane');
+    const diffPane = page.getByTestId('s3sync-diff-pane');
+
     // 6. Verify Views
 
     // VIEW: single-remote
     // Already there. Expect "Remote v2"
     await expect(singlePane.locator('.view-lines')).toContainText('Remote v2');
+    await verifyEditable(page, singlePane, false);
 
     // VIEW: single-local
     await viewBtn.click();
     await page.getByTestId('diff-view-option-single-local').click();
     await expect(singlePane.locator('.view-lines')).toContainText('Local v2');
+    await verifyEditable(page, singlePane, true);
 
     // VIEW: single-base
     await viewBtn.click();
     await page.getByTestId('diff-view-option-single-base').click();
     await expect(singlePane.locator('.view-lines')).toContainText('Local v1');
+    await verifyEditable(page, singlePane, false);
 
     // VIEW: base-local (Diff: Base -> Local)
     await viewBtn.click();
     await page.getByTestId('diff-view-option-base-local').click();
 
-    const diffPane = page.getByTestId('s3sync-diff-pane')
     await expect(diffPane.locator('.editor.original .view-lines')).toContainText('Local v1');
+    await verifyEditable(page, diffPane.locator('.editor.original'), false);
+
     await expect(diffPane.locator('.editor.modified .view-lines')).toContainText('Local v2');
+    await verifyEditable(page, diffPane.locator('.editor.modified'), true);
 
     // VIEW: base-remote (Diff: Base -> Remote)
     await viewBtn.click();
     await page.getByTestId('diff-view-option-base-remote').click();
+
     await expect(diffPane.locator('.editor.original .view-lines')).toContainText('Local v1');
+    await verifyEditable(page, diffPane.locator('.editor.original'), false);
+
     await expect(diffPane.locator('.editor.modified .view-lines')).toContainText('Remote v2');
+    await verifyEditable(page, diffPane.locator('.editor.modified'), false);
 
     // VIEW: remote-local (Diff: Remote -> Local)
     await viewBtn.click();
     await page.getByTestId('diff-view-option-remote-local').click();
+
     await expect(diffPane.locator('.editor.original .view-lines')).toContainText('Remote v2');
+    await verifyEditable(page, diffPane.locator('.editor.original'), false);
+
     await expect(diffPane.locator('.editor.modified .view-lines')).toContainText('Local v2');
+    await verifyEditable(page, diffPane.locator('.editor.modified'), true);
 
     // VIEW: 3way (Top: Base, Bottom: Diff Remote->Local)
     await viewBtn.click();
     await page.getByTestId('diff-view-option-3way').click();
 
     await expect(singlePane.locator('.view-lines')).toContainText('Local v1');
+    await verifyEditable(page, singlePane, false);
+
     await expect(diffPane.locator('.editor.original .view-lines')).toContainText('Remote v2');
+    await verifyEditable(page, diffPane.locator('.editor.original'), false);
+
     await expect(diffPane.locator('.editor.modified .view-lines')).toContainText('Local v2');
+    await verifyEditable(page, diffPane.locator('.editor.modified'), true);
 });
