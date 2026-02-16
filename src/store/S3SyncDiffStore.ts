@@ -31,6 +31,12 @@ export class S3SyncDiffStore extends EffectAwareModel {
     private _localContent: string | null = null;
     private _remoteContent: string | null = null;
 
+    private _disposers: monaco.IDisposable[] = [];
+
+    get isDirty() {
+        return this._singleAltVersionId !== this._singleSavedAltVersionId || this._diffAltVersionId !== this._diffSavedAltVersionId;
+    }
+
     // Current view mode
     @observable private accessor _currentView: DiffViewMode | null = null;
     get currentView() { return this._currentView; }
@@ -39,6 +45,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
     @observable.ref private accessor _singlePaneDetails: Readonly<{
         isBinary: boolean;
+        editable: boolean;
         content: string | null;
         langId: string | null;
         loadBinary: () => void;
@@ -50,6 +57,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
     @observable.ref private accessor _diffPaneDetails: Readonly<{
         isBinary: boolean;
+        editable: boolean;
         originalContent: string | null;
         modifiedContent: string | null;
         langId: string | null;
@@ -70,6 +78,8 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
     // Editor instances - managed by store
     private _singleEditor: monaco.editor.IStandaloneCodeEditor | null = null;
+    @observable private accessor _singleAltVersionId: number | null = null;
+    @observable private accessor _singleSavedAltVersionId: number | null = null;
     private _disposeSingleEditor() {
         if (this._singleEditor) {
             this._singleEditor.dispose();
@@ -78,6 +88,8 @@ export class S3SyncDiffStore extends EffectAwareModel {
     }
 
     private _diffEditor: monaco.editor.IDiffEditor | null = null;
+    @observable private accessor _diffAltVersionId: number | null = null;
+    @observable private accessor _diffSavedAltVersionId: number | null = null;
     private _disposeDiffEditor() {
         if (this._diffEditor) {
             this._diffEditor.dispose();
@@ -86,9 +98,25 @@ export class S3SyncDiffStore extends EffectAwareModel {
     }
 
     @action
+    async save() {
+        let model: monaco.editor.ITextModel | null = null;
+        if (this._singlePaneDetails?.editable && this._singleEditor) {
+            model = this._singleEditor.getModel();
+        }
+        else if (this._diffPaneDetails?.editable && this._diffEditor) {
+            model = this._diffEditor.getModifiedEditor().getModel();
+        }
+        if (!model || !this._syncItem) return;
+        const content = model.getValue();
+        await this._syncStore.saveLocalFile(this._syncItem, content);
+    }
+
+    @action
     async loadContent(item: FileSyncStatus | null) {
         this._isLoading = true;
         this._syncItem = item;
+        this._singleAltVersionId = this._singleSavedAltVersionId = null;
+        this._diffAltVersionId = this._diffSavedAltVersionId = null;
 
         await this._loadLocalContent(false);
 
@@ -108,6 +136,8 @@ export class S3SyncDiffStore extends EffectAwareModel {
                 this._diffPaneDetails = null;
                 this._disposeSingleEditor();
                 this._disposeDiffEditor();
+                this._disposers.forEach(d => d.dispose());
+                this._disposers.length = 0;
             }
         });
     }
@@ -201,6 +231,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
         if (this._showSinglePane && this._syncItem) {
             if (this._currentView === '3way' || this._currentView === 'single-base') {
                 this._singlePaneDetails = {
+                    editable: false,
                     content: this._baseContent,
                     langId: langIdFromFileName(this._syncItem.base!.key),
                     isBinary: this._isBaseBinary,
@@ -209,6 +240,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
             }
             else if (this._currentView === 'single-local') {
                 this._singlePaneDetails = {
+                    editable: true,
                     content: this._localContent,
                     langId: langIdFromFileName(this._syncItem.local!.key),
                     isBinary: this._isLocalBinary,
@@ -217,6 +249,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
             }
             else if (this._currentView === 'single-remote') {
                 this._singlePaneDetails = {
+                    editable: false,
                     content: this._remoteContent,
                     langId: langIdFromFileName(this._syncItem.remote!.key),
                     isBinary: this._isRemoteBinary,
@@ -229,6 +262,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
         if (this._showDiffPane && this._syncItem) {
             if (this._currentView === '3way' || this._currentView === 'remote-local') {
                 this._diffPaneDetails = {
+                    editable: true,
                     originalContent: this._remoteContent,
                     modifiedContent: this._localContent,
                     langId: langIdFromFileName(this._syncItem.local?.handle.name ?? ''),
@@ -242,6 +276,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
             }
             else if (this._currentView === 'base-local') {
                 this._diffPaneDetails = {
+                    editable: true,
                     originalContent: this._baseContent,
                     modifiedContent: this._localContent,
                     langId: langIdFromFileName(this._syncItem.local?.handle.name ?? ''),
@@ -254,6 +289,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
             }
             else if (this._currentView === 'base-remote') {
                 this._diffPaneDetails = {
+                    editable: false,
                     originalContent: this._baseContent,
                     modifiedContent: this._remoteContent,
                     langId: langIdFromFileName(this._syncItem.remote?.key ?? ''),
@@ -270,6 +306,8 @@ export class S3SyncDiffStore extends EffectAwareModel {
             if (dispose) {
                 this._disposeSingleEditor();
                 this._disposeDiffEditor();
+                this._disposers.forEach(d => d.dispose());
+                this._disposers.length = 0;
             }
             this.initializeSingleEditor();
             this.initializeDiffEditor();
@@ -284,11 +322,16 @@ export class S3SyncDiffStore extends EffectAwareModel {
             this._singleEditor = monaco.editor.create(this.singleEditorRef.current, {
                 value: this._singlePaneDetails.content,
                 language: this._singlePaneDetails.langId!,
-                readOnly: this._currentView !== 'single-local',
+                readOnly: !this._singlePaneDetails.editable,
                 automaticLayout: true,
                 minimap: { enabled: false },
                 wordWrap: 'on'
             });
+            const model = this._singleEditor.getModel()!;
+            this._singleAltVersionId = this._singleSavedAltVersionId = model.getAlternativeVersionId();
+            if (this._singlePaneDetails.editable) {
+                this._disposers.push(model.onDidChangeContent(action((_e) => { this._singleAltVersionId = model.getAlternativeVersionId(); })));
+            }
         }
     }
 
@@ -300,7 +343,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
         const modifiedModel = monaco.editor.createModel(this._diffPaneDetails.modifiedContent!, this._diffPaneDetails.langId!);
 
         this._diffEditor = monaco.editor.createDiffEditor(this.diffEditorRef.current, {
-            readOnly: this._currentView !== '3way' && !this._currentView?.endsWith('-local'),
+            readOnly: !this._diffPaneDetails.editable,
             automaticLayout: true,
             renderSideBySide: true,
             originalEditable: false,
@@ -310,12 +353,19 @@ export class S3SyncDiffStore extends EffectAwareModel {
             original: originalModel,
             modified: modifiedModel,
         });
+
+        this._diffAltVersionId = this._diffSavedAltVersionId = modifiedModel.getAlternativeVersionId();
+        if (this._diffPaneDetails.editable) {
+            this._disposers.push(modifiedModel.onDidChangeContent(action((_e) => { this._diffAltVersionId = modifiedModel.getAlternativeVersionId(); })));
+        }
     }
 
     @action.bound
     dispose() {
         this._disposeSingleEditor();
         this._disposeDiffEditor();
+        this._disposers.forEach(d => d.dispose());
+        this._disposers.length = 0;
     }
 
     @action.bound

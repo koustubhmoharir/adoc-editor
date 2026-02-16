@@ -36,10 +36,17 @@ export const viewButton = style({
     border: 'none',
     borderRadius: '4px',
     color: vars.color.text,
-    cursor: 'pointer',
     fontSize: '13px',
-    ':hover': {
-        backgroundColor: vars.color.hoverBackground,
+    cursor: 'not-allowed',
+    opacity: 0.5, // Initially disabled state
+    selectors: {
+        '&:not(:disabled)': {
+            opacity: 1,
+            cursor: 'pointer'
+        },
+        '&:not(:disabled):hover': {
+            backgroundColor: vars.color.hoverBackground
+        }
     }
 });
 
@@ -79,10 +86,17 @@ export const actionButton = style({
     color: vars.color.text,
     border: `1px solid ${vars.color.border}`,
     borderRadius: '4px',
-    cursor: 'pointer',
     fontSize: '12px',
-    ':hover': {
-        backgroundColor: vars.color.hoverBackground,
+    cursor: 'not-allowed',
+    opacity: 0.5, // Initially disabled state
+    selectors: {
+        '&:not(:disabled)': {
+            opacity: 1,
+            cursor: 'pointer'
+        },
+        '&:not(:disabled):hover': {
+            backgroundColor: vars.color.hoverBackground
+        }
     }
 });
 

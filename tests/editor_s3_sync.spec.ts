@@ -861,3 +861,64 @@ test('should handle binary files', async ({ page, fsSetup, s3Setup }) => {
     // Message should disappear
     await expect(message).not.toBeVisible();
 });
+
+test('should enable save button on changes and update synced status', async ({ page, fsSetup, s3Setup }) => {
+    // 1. Setup
+    fsSetup.createFile('s3-project', 'file.txt', 'Base Content');
+    s3Setup.seed([]);
+
+    // 2. Initial Sync
+    await loadDirectoryAndEnterSyncMode(page);
+    await completeSync(page);
+    
+    await loadDirectoryAndEnterSyncMode(page);
+    // 3. Open Editor
+    const fileItem = getSyncItemByPath(page, 'file.txt');
+    await fileItem.click();
+
+    // 4. Verify Save is Disabled
+    const saveBtn = page.getByTestId('save-button');
+    await expect(saveBtn).toBeVisible();
+    await expect(saveBtn).toBeDisabled();
+
+    // 5. Edit Content
+    const editor = page.getByTestId('s3sync-diff-editor');
+    await editor.locator('.monaco-editor').first().click();
+    await page.keyboard.press('Control+Home');
+    await page.keyboard.press('End');
+    await page.keyboard.type(' With Changes');
+
+    // 6. Verify Save is Enabled
+    await expect(saveBtn).toBeEnabled();
+
+    // 7. Click Save
+    await saveBtn.click();
+
+    // 8. Verify Save is Disabled (saved)
+    await expect(saveBtn).toBeDisabled();
+
+    // 9. Verify Content Action Updated
+    // Changed content -> should become CopyLocalToRemote (Upload)
+    await expect(fileItem).toHaveAttribute('data-content-action', SyncContentAction.CopyLocalToRemote);
+
+    // 10. Verify Content on Disk (Local)
+    const content = fsSetup.readFile('s3-project', 'file.txt');
+    expect(content).toBe('Base Content With Changes');
+
+    // 11. Revert Changes (Edit back to original)
+    await editor.locator('.monaco-editor').last().click();
+    // Select all and type original
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('Base Content');
+
+    // Save again
+    await expect(saveBtn).toBeEnabled();
+    await saveBtn.click();
+    await expect(saveBtn).toBeDisabled();
+
+    const content2 = fsSetup.readFile('s3-project', 'file.txt');
+    expect(content2).toBe('Base Content');
+
+    // 12. Verify Content Action reset to None (matches base)
+    await expect(fileItem).toHaveAttribute('data-content-action', SyncContentAction.None);
+});

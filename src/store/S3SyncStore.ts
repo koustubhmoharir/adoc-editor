@@ -336,6 +336,40 @@ export class S3SyncStore {
     }
 
     @action.bound
+    async saveLocalFile(item: FileSyncStatus, content: string) {
+        if (!item.local?.handle) {
+            return;
+        }
+
+        try {
+            const writable = await item.local.handle.createWritable();
+            await writable.write(content);
+            await writable.close();
+
+            // Get new stats
+            const file = await item.local.handle.getFile();
+            const lastModifiedLocal = new Date(file.lastModified).toISOString();
+
+            // Construct New Local Record
+            const newLocal: LocalFileRecord = {
+                ...item.local,
+                contentLength: file.size,
+                lastModified: lastModifiedLocal,
+                // Note: We don't recalculate SHA256 here synchronously as it might be expensive.
+                sha256: undefined
+            };
+
+            // We do NOT update base record or UUIDs.
+
+            await this.updateItemStatus(item, newLocal);
+
+        } catch (e) {
+            console.error("Failed to save file", e);
+            await dialog.alert("Failed to save file: " + e);
+        }
+    }
+
+    @action.bound
     async revertLocalFile(item: FileSyncStatus) {
         if (!item.base) return;
 

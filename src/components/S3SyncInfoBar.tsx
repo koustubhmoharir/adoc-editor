@@ -63,6 +63,18 @@ export const S3SyncInfoBar = observer(({ store }: { store: S3SyncDiffStore; }) =
             </div>
 
             <div className={styles.section}>
+                <button
+                    className={styles.actionButton}
+                    disabled={!store.isDirty || store.isLoading}
+                    onClick={() => store.save()}
+                    data-testid="save-button"
+                >
+                    <i className="fa-solid fa-floppy-disk" style={{ marginRight: '6px' }} />
+                    Save
+                </button>
+            </div>
+
+            <div className={styles.section}>
                 {syncItem.localStatus !== FileStatus.None ?
                     <>
                         <span className={styles.statusLabel}>Local:</span>

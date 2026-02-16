@@ -106,8 +106,8 @@ export const goButton = style({
     backgroundColor: vars.color.background,
     color: vars.color.text,
     fontSize: '14px',
-    cursor: 'pointer',
     fontWeight: 'bold',
+    cursor: 'not-allowed',
     opacity: 0.5, // Initially disabled state
     selectors: {
         '&:not(:disabled)': {

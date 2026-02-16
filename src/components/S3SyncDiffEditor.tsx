@@ -95,7 +95,7 @@ export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }
             }
             {store.diffPaneDetails &&
                 <div className={styles.diffPane} style={{ flex: 1 }}>
-                    {renderPaneContent(store.diffPaneDetails, store.singleEditorRef)}
+                    {renderPaneContent(store.diffPaneDetails, store.diffEditorRef)}
                 </div>
             }
         </div>
