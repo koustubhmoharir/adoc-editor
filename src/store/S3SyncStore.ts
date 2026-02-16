@@ -2,9 +2,10 @@ import { action, observable, runInAction } from "mobx";
 import { DirectoryNodeModel } from "./FileSystemModels";
 import { S3Store } from "./S3Store";
 import { S3SyncDiffStore } from "./S3SyncDiffStore";
-import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, directoryPath, fileName, LocalFileRecord, updateDirectoryUuidMap, saveBaseRecord, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges, isConcurrencyError, refreshRemoteRecord, getDirectoryAtPath, getFileAtPath, createDirectoryAtPath, S3Paths } from "./S3SyncLogic";
+import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, LocalFileRecord, updateDirectoryUuidMap, saveBaseRecord, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges, isConcurrencyError, refreshRemoteRecord, S3Paths } from "./S3SyncLogic";
 import { traceLog } from "../utils/trace";
 import { dialog } from "../components/Dialog";
+import { createDirectoryAtPath, getDirectoryAtPath, getFileAtPath, nameOfPath, parentDirOfPath } from "./FileSystemHelpers";
 
 /**
  * Main store for S3 sync mode, holding all related state.
@@ -269,8 +270,8 @@ export class S3SyncStore {
         const prefix = this.s3Store.settings.prefix || '';
         const relPath = item.relativePath(prefix);
 
-        const parent = directoryPath(relPath);
-        const name = fileName(relPath);
+        const parent = parentDirOfPath(relPath);
+        const name = nameOfPath(relPath);
 
         let parentHandle = await getDirectoryAtPath(this.directoryNode.handle, parent);
         await parentHandle.removeEntry(name);
@@ -287,8 +288,8 @@ export class S3SyncStore {
         const localRelPath = item.relativePath(prefix);
         const baseRelPath = item.base.key.substring(prefix.length);
         const basePath = `${S3Paths.baseContentDir}${baseRelPath}`;
-        const localName = fileName(localRelPath);
-        const localDirPath = directoryPath(localRelPath);
+        const localName = nameOfPath(localRelPath);
+        const localDirPath = parentDirOfPath(localRelPath);
 
         try {
             const root = this.directoryNode.handle;
@@ -352,10 +353,10 @@ export class S3SyncStore {
         const prefix = this.s3Store.settings.prefix;
         const oldRelPath = item.local.key.substring(prefix.length); // Current path
         const newRelPath = item.base.key.substring(prefix.length); // Original (base) path
-        const oldName = fileName(oldRelPath);
-        const newName = fileName(newRelPath);
-        const oldParentPath = directoryPath(oldRelPath);
-        const newParentPath = directoryPath(newRelPath);
+        const oldName = nameOfPath(oldRelPath);
+        const newName = nameOfPath(newRelPath);
+        const oldParentPath = parentDirOfPath(oldRelPath);
+        const newParentPath = parentDirOfPath(newRelPath);
 
         const root = this.directoryNode.handle;
         const oldParentHandle = await getDirectoryAtPath(root, oldParentPath);

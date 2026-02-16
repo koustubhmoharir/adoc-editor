@@ -3,6 +3,7 @@ import { S3Client, ListObjectVersionsCommand, HeadObjectCommand, PutObjectComman
 import { Sha256 } from "@aws-crypto/sha256-browser";
 import { S3SyncSettings } from "../file_system/S3SyncSettings";
 import { traceLog } from "../utils/trace";
+import { createDirectoryAtPath, createFileAtPath, getDirectoryAtPath, getFileAtPath, nameOfPath, parentDirOfPath, tryGetDirectoryAtPath, tryGetFileAtPath } from "./FileSystemHelpers";
 
 export const S3Paths = {
     appDirName: '.adoc-editor',
@@ -82,80 +83,6 @@ function pathToDirAndFileName(path: string) {
         return [path.substring(0, i), path.substring(i + 1)];
     }
     return ['', path];
-}
-
-export async function createDirectoryAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemDirectoryHandle> {
-    return (await _getDirectoryHandle(rootHandle, path, { create: true }))!;
-}
-
-export async function getDirectoryAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemDirectoryHandle> {
-    return (await _getDirectoryHandle(rootHandle, path, { optional: false }))!;
-}
-
-export async function tryGetDirectoryAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemDirectoryHandle | null> {
-    return await _getDirectoryHandle(rootHandle, path, { optional: true });
-}
-
-async function _getDirectoryHandle(dir: FileSystemDirectoryHandle, path: string, options?: { create?: boolean; optional?: boolean }) {
-    if (!path || path === '/') return dir;
-    let curPath = '';
-    const parts = path.split('/').filter(Boolean);
-    const createOptions = { create: options?.create ?? false };
-    const optional = options?.optional ?? false;
-    for (const name of parts) {
-        try {
-            dir = await dir.getDirectoryHandle(name, createOptions);
-            curPath += `${name}/`;
-        }
-        catch (e) {
-            if (createOptions.create || !optional) {
-                throw Error(`Could not create directory ${name} at ${curPath}`, { cause: e });
-            }
-            return null;
-        }
-    }
-    return dir;
-}
-
-export async function createFileAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle> {
-    return (await _getFileHandle(rootHandle, path, { create: true }))!;
-}
-
-export async function getFileAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle> {
-    return (await _getFileHandle(rootHandle, path, { optional: false }))!;
-}
-
-export async function tryGetFileAtPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
-    return await _getFileHandle(rootHandle, path, { optional: true });
-}
-
-async function _getFileHandle(rootHandle: FileSystemDirectoryHandle, path: string, options?: { create?: boolean; optional?: boolean }): Promise<FileSystemFileHandle | null> {
-    let curPath = ''
-    const parts = path.split('/').filter(Boolean);
-    let currentDir = rootHandle;
-    const createOptions = { create: options?.create ?? false };
-    const optional = options?.optional ?? false;
-    for (let i = 0; i < parts.length - 1; i++) {
-        const name = parts[i];
-        try {
-            currentDir = await currentDir.getDirectoryHandle(name, createOptions);
-            curPath += `${name}/`;
-        } catch (e) {
-            if (createOptions.create || !optional) {
-                throw Error(`Could not create directory ${name} at ${curPath}`, { cause: e });
-            }
-            return null;
-        }
-    }
-
-    try {
-        return await currentDir.getFileHandle(parts[parts.length - 1], createOptions);
-    } catch (e) {
-        if (createOptions.create || !optional) {
-            throw Error(`Could not create file at ${path}`, { cause: e });
-        }
-        return null;
-    }
 }
 
 export interface FileNodeLike {
@@ -305,8 +232,8 @@ export async function updateDirectoryUuidMap(dirHandle: FileSystemDirectoryHandl
  * used to update lastModifiedLocal after a restore/revert to avoid full re-hash.
  */
 export async function saveBaseRecord(rootNode: DirNodeLike, relativePath: string, update: Partial<BaseVersionRecord>) {
-    const name = fileName(relativePath);
-    const dir = directoryPath(relativePath);
+    const name = nameOfPath(relativePath);
+    const dir = parentDirOfPath(relativePath);
 
     // Lock handling would be ideal here but skipping for now
     const fileHandle = await getFileAtPath(rootNode.handle, `${S3Paths.baseMetaDir}${dir}.index.json`);
@@ -332,8 +259,8 @@ export async function writeBaseMetadata(rootHandle: FileSystemDirectoryHandle, s
 
     for (const record of records) {
         const relativePath = record.key.substring(s3Prefix.length);
-        const dir = directoryPath(relativePath);
-        const name = fileName(relativePath);
+        const dir = parentDirOfPath(relativePath);
+        const name = nameOfPath(relativePath);
 
         if (!byDir.has(dir)) {
             byDir.set(dir, {});
@@ -780,42 +707,13 @@ export enum SyncContentAction {
 }
 
 /**
- * Returns the parent directory path of the input path.
- * If the parent is the root an empty string is returned.
- * If not, the result has a trailing slash.
- * This behavior enables concatenation of a file name to the result without a slash.
- * An exception is thrown if the input path is already a root.
- * @param path A file or directory path. Trailing slashes are ignored.
- * @returns Parent directory path (empty string for root or with a trailing slash for non-root)
+ * Get base file handle from .s3/base directory
  */
-export function directoryPath(path: string): string {
-    path = path.replace(/\/+$/, ''); //remove trailing slashes
-    if (path === '') {
-        throw new Error(`Already a root path. path:  ${path}`);
-    }
-    const lastSlash = path.lastIndexOf('/');
-    if (lastSlash >= 0) {
-        return path.substring(0, lastSlash + 1);
-    }
-    else {
-        return '';
-    }
+export async function getBaseFileHandle(rootHandle: FileSystemDirectoryHandle, key: string, s3Prefix: string): Promise<FileSystemFileHandle | null> {
+    const relativePath = key.startsWith(s3Prefix) ? key.substring(s3Prefix.length) : key;
+    return await tryGetFileAtPath(rootHandle, `${S3Paths.baseContentDir}${relativePath}`);
 }
 
-/**
- * Returns the last segment of the input path
- * @param path A file or directory path. Trailing slashes are ignored.
- * @returns 
- */
-export function fileName(path: string, allowEmpty = false): string {
-    path = path.replace(/\/+$/, ''); //remove trailing slashes
-    const lastSlash = path.lastIndexOf('/');
-    const name = lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
-    if (!allowEmpty && !name) {
-        throw new Error('Expected a non-empty name');
-    }
-    return name;
-}
 
 export enum SyncMode {
     Sync = "Sync",
@@ -893,7 +791,7 @@ export class FileSyncStatus {
      */
     fileName(prefix: string): string {
         const relPath = this.relativePath(prefix);
-        return fileName(relPath);
+        return nameOfPath(relPath);
     }
 
     /**
@@ -902,7 +800,7 @@ export class FileSyncStatus {
      */
     directoryPath(prefix: string): string {
         const relPath = this.relativePath(prefix);
-        return directoryPath(relPath);
+        return parentDirOfPath(relPath);
     }
 
     private async calculateStatus(prefix: string) {
@@ -911,10 +809,10 @@ export class FileSyncStatus {
             if (this.base.key !== this.remote.key) {
                 const basePath = this.base.key.substring(prefix.length);
                 const remotePath = this.remote.key.substring(prefix.length);
-                const baseDirPath = directoryPath(basePath);
-                const remoteDirPath = directoryPath(remotePath);
-                const baseFileName = fileName(basePath);
-                const remoteFileName = fileName(remotePath);
+                const baseDirPath = parentDirOfPath(basePath);
+                const remoteDirPath = parentDirOfPath(remotePath);
+                const baseFileName = nameOfPath(basePath);
+                const remoteFileName = nameOfPath(remotePath);
                 if (baseDirPath === remoteDirPath) {
                     this._remoteMoveDesc = `Renamed from ${baseFileName} to ${remoteFileName}`;
                 }
@@ -953,10 +851,10 @@ export class FileSyncStatus {
             if (this.base.key !== this.local.key) {
                 const basePath = this.base.key.substring(prefix.length);
                 const localPath = this.local.key.substring(prefix.length);
-                const baseDirPath = directoryPath(basePath);
-                const localDirPath = directoryPath(localPath);
-                const baseFileName = fileName(basePath);
-                const localFileName = fileName(localPath);
+                const baseDirPath = parentDirOfPath(basePath);
+                const localDirPath = parentDirOfPath(localPath);
+                const baseFileName = nameOfPath(basePath);
+                const localFileName = nameOfPath(localPath);
                 if (baseDirPath === localDirPath) {
                     this._localMoveDesc = `Renamed from ${baseFileName} to ${localFileName}`;
                 }
@@ -1425,8 +1323,8 @@ export async function executeSyncItem(
         // If local file is at a different path than target, move it
         if (item.local && item.local.key !== targetKey) {
             const newLocalPath = targetPath;
-            const newDir = directoryPath(newLocalPath);
-            const newName = fileName(newLocalPath);
+            const newDir = parentDirOfPath(newLocalPath);
+            const newName = nameOfPath(newLocalPath);
             const dirHandle = await createDirectoryAtPath(rootHandle, newDir);
             if (dirHandle) {
                 const handle = item.local.handle as any;
@@ -1439,11 +1337,11 @@ export async function executeSyncItem(
             }
             // Update uuid maps for the move
             const oldLocalPath = item.local.key.substring(prefix.length);
-            addUuidChange(pending, directoryPath(oldLocalPath), fileName(oldLocalPath), null);
-            addUuidChange(pending, directoryPath(newLocalPath), newName, uuid);
+            addUuidChange(pending, parentDirOfPath(oldLocalPath), nameOfPath(oldLocalPath), null);
+            addUuidChange(pending, parentDirOfPath(newLocalPath), newName, uuid);
         } else {
             // Ensure uuid is in the map for the current location
-            addUuidChange(pending, directoryPath(targetPath), fileName(targetPath), uuid);
+            addUuidChange(pending, parentDirOfPath(targetPath), nameOfPath(targetPath), uuid);
         }
 
         // Build base record
@@ -1501,16 +1399,16 @@ export async function executeSyncItem(
         // If local exists at a different path from target, delete old local file
         if (item.local && item.local.key !== targetKey) {
             const oldLocalPath = item.local.key.substring(prefix.length);
-            const oldDir = directoryPath(oldLocalPath);
-            const oldName = fileName(oldLocalPath);
+            const oldDir = parentDirOfPath(oldLocalPath);
+            const oldName = nameOfPath(oldLocalPath);
             const oldDirHandle = await getDirectoryAtPath(rootHandle, oldDir);
             await oldDirHandle.removeEntry(oldName);
             addUuidChange(pending, oldDir, oldName, null);
         }
 
         // Stream source to local file at targetPath
-        const newDir = directoryPath(targetPath);
-        const newName = fileName(targetPath);
+        const newDir = parentDirOfPath(targetPath);
+        const newName = nameOfPath(targetPath);
         const dirHandle = await createDirectoryAtPath(rootHandle, newDir);
         const fileHandle = await dirHandle.getFileHandle(newName, { create: true });
         const sourceFile = await sourceHandle.getFile();
@@ -1587,8 +1485,8 @@ export async function executeSyncItem(
         // Delete local file
         if (item.local) {
             const localPath = item.local.key.substring(prefix.length);
-            const dir = directoryPath(localPath);
-            const name = fileName(localPath);
+            const dir = parentDirOfPath(localPath);
+            const name = nameOfPath(localPath);
             const dirHandle = await getDirectoryAtPath(rootHandle, dir);
             await dirHandle.removeEntry(name);
             addUuidChange(pending, dir, name, null);
@@ -1635,8 +1533,8 @@ export async function executeSyncItem(
         } else {
             // UseRemotePath: move local file to match remote path
             const localPath = item.local!.key.substring(prefix.length);
-            const newDir = directoryPath(targetPath);
-            const newName = fileName(targetPath);
+            const newDir = parentDirOfPath(targetPath);
+            const newName = nameOfPath(targetPath);
             const dirHandle = await createDirectoryAtPath(rootHandle, newDir);
             if (dirHandle) {
                 const handle = item.local!.handle as any;
@@ -1648,7 +1546,7 @@ export async function executeSyncItem(
                 }
             }
             // Update uuid maps
-            addUuidChange(pending, directoryPath(localPath), fileName(localPath), null);
+            addUuidChange(pending, parentDirOfPath(localPath), nameOfPath(localPath), null);
             addUuidChange(pending, newDir, newName, uuid);
 
             // Update base record with new key
@@ -1686,8 +1584,8 @@ export async function flushPendingChanges(
         // Group by directory
         const byDir = new Map<string, Map<string, BaseVersionRecord | null>>();
         for (const [relPath, record] of pending.baseRecords) {
-            const dir = directoryPath(relPath);
-            const name = fileName(relPath);
+            const dir = parentDirOfPath(relPath);
+            const name = nameOfPath(relPath);
             let dirMap = byDir.get(dir);
             if (!dirMap) {
                 byDir.set(dir, dirMap = new Map());
@@ -1736,8 +1634,8 @@ export async function flushPendingChanges(
     if (pending.baseFileDeletes.length > 0) {
         const baseDir = await createDirectoryAtPath(rootHandle, S3Paths.baseContentDir);
         for (const relPath of pending.baseFileDeletes) {
-            const dir = directoryPath(relPath);
-            const name = fileName(relPath);
+            const dir = parentDirOfPath(relPath);
+            const name = nameOfPath(relPath);
             const dirHandle = await getDirectoryAtPath(baseDir, dir);
             await dirHandle.removeEntry(name);
         }
@@ -1752,8 +1650,8 @@ export async function flushPendingChanges(
     // 5. Delete remote cache files from .adoc-editor/s3r/
     if (pending.remoteCacheDeletes.length > 0) {
         for (const cachePath of pending.remoteCacheDeletes) {
-            const dir = directoryPath(cachePath);
-            const name = fileName(cachePath);
+            const dir = parentDirOfPath(cachePath);
+            const name = nameOfPath(cachePath);
             const dirHandle = await tryGetDirectoryAtPath(rootHandle, dir);
             if (dirHandle) {
                 try {

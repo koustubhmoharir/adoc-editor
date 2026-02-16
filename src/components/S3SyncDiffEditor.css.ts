@@ -47,15 +47,17 @@ export const loadingState = style({
     color: vars.color.textSecondary,
 });
 
-export const paneLabel = style({
-    position: 'absolute',
-    top: '4px',
-    left: '8px',
-    fontSize: '11px',
-    color: vars.color.textSecondary,
+export const actionButton = style({
+    padding: '6px 12px',
     backgroundColor: vars.color.background,
-    padding: '2px 6px',
+    border: `1px solid ${vars.color.border}`,
     borderRadius: '4px',
-    zIndex: 10,
-    pointerEvents: 'none',
+    cursor: 'pointer',
+    color: vars.color.text,
+    fontSize: '13px',
+    transition: 'all 0.2s',
+    ':hover': {
+        backgroundColor: vars.color.hoverBackground,
+        borderColor: vars.color.textSecondary,
+    }
 });

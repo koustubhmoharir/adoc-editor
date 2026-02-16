@@ -628,7 +628,7 @@ test('should resolve move conflict in Mirror Local mode', async ({ page, fsSetup
     const uuid = remoteVersion?.metadata?.uuid;
 
     await exitSyncMode(page);
-    
+
     // Local Move
     const fileItem = getFileItem(page, 'file.txt');
     const input = await triggerRename(page, fileItem);
@@ -666,7 +666,7 @@ test('should resolve move conflict in Mirror Remote mode', async ({ page, fsSetu
     const uuid = remoteVersion?.metadata?.uuid;
 
     await exitSyncMode(page);
-    
+
     // Local Move
     const fileItem = getFileItem(page, 'file.txt');
     const input = await triggerRename(page, fileItem);
@@ -686,10 +686,82 @@ test('should resolve move conflict in Mirror Remote mode', async ({ page, fsSetu
 
     await completeSync(page);
     await exitSyncMode(page);
-    
+
     // Verify Local: remote-moved.txt VISIBLE
     await expect(getFileItem(page, 'remote-moved.txt')).toBeVisible();
 
     // Verify Local: local-moved.txt NOT VISIBLE (deleted/renamed)
     await expect(getFileItem(page, 'local-moved.txt')).not.toBeVisible();
+});
+
+test('should handle missing remote content', async ({ page, fsSetup, s3Setup }) => {
+    // 1. Setup: Create a file ONLY on S3 (no local file)
+    // We need to ensure a local project directory exists though
+    fsSetup.createDirectory('s3-project', '');
+
+    s3Setup.seed([
+        {
+            key: 'test-prefix/remote-only.txt',
+            content: 'Remote Content',
+            options: {
+                lastModified: new Date(),
+                etag: '"mock-etag-remote-only"',
+                versionId: 'mock-version-remote-only'
+            }
+        }
+    ]);
+
+    await loadDirectoryAndEnterSyncMode(page);
+
+    // Find the item
+    const fileItem = getSyncItemByPath(page, 'remote-only.txt');
+    await expect(fileItem).toBeVisible();
+    await fileItem.click();
+
+    const editor = page.getByTestId('s3sync-diff-editor');
+    await expect(editor).toBeVisible();
+
+    // Check for the "Not Downloaded" message
+    const message = editor.getByTestId('remote-not-downloaded-msg');
+    await expect(message).toBeVisible();
+    await expect(message).toContainText('Remote content not downloaded');
+
+    // Click Download
+    const downloadBtn = editor.getByTestId('download-remote-btn');
+    await expect(downloadBtn).toBeVisible();
+    await downloadBtn.click();
+
+    // Message should disappear
+    await expect(message).not.toBeVisible();
+});
+
+test('should handle binary files', async ({ page, fsSetup, s3Setup }) => {
+    // 1. Setup: Create a binary file locally
+    // Mock binary content by using a buffer with null bytes
+    const binaryContent = Buffer.from([0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x00, 0x57, 0x6f, 0x72, 0x6c, 0x64]); // Hello\0World
+    fsSetup.createFile('s3-project', 'binary.bin', binaryContent);
+
+    s3Setup.seed([]);
+
+    await loadDirectoryAndEnterSyncMode(page);
+
+    const fileItem = getSyncItemByPath(page, 'binary.bin');
+    await expect(fileItem).toBeVisible();
+    await fileItem.click();
+
+    const editor = page.getByTestId('s3sync-diff-editor');
+    await expect(editor).toBeVisible();
+
+    // Should show "Binary File" message for Local pane
+    const message = editor.getByTestId('binary-message');
+    await expect(message).toBeVisible();
+    await expect(message).toContainText('This file is binary');
+
+    // Click "Show as text"
+    const showTextBtn = editor.getByTestId('show-binary-text-btn');
+    await expect(showTextBtn).toBeVisible();
+    await showTextBtn.click();
+
+    // Message should disappear
+    await expect(message).not.toBeVisible();
 });

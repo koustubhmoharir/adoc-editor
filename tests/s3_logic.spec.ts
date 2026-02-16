@@ -1,11 +1,12 @@
 
 import { test, expect } from '@playwright/test';
-import { scanAndCalculateStatus, DirNodeLike, FileStatus, SyncContentAction, SyncPathAction, createDirectoryAtPath, writeBaseMetadata, updateDirectoryUuidMap, S3Paths } from '../src/store/S3SyncLogic';
+import { scanAndCalculateStatus, DirNodeLike, FileStatus, SyncContentAction, SyncPathAction, writeBaseMetadata, updateDirectoryUuidMap, S3Paths } from '../src/store/S3SyncLogic';
 import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from './helpers/mock_fs_handles';
 import { MockS3Client } from './helpers/mock_s3_client';
 import { S3SyncSettings } from '../src/file_system/S3SyncSettings';
 
 import { createHash } from 'crypto';
+import { createDirectoryAtPath } from '../src/store/FileSystemHelpers';
 
 // Enable trace logging only when DEBUG_TESTS is set
 if (process.env.DEBUG_TESTS) {
@@ -281,7 +282,6 @@ test('Local Modified vs Remote Deleted (Conflict)', async () => {
     const s3Client = new MockS3Client();
 
     // Setup Base
-    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
@@ -291,9 +291,10 @@ test('Local Modified vs Remote Deleted (Conflict)', async () => {
         sha256: computeHash('original'),
         contentLength: 4,
         lastModifiedLocal: new Date().toISOString(),
-        compressionMethod: ''
+        compressionMethod: '',
+        etag: 'etag'
     };
-    baseDir.addFile('.index.json', JSON.stringify({ 'file.txt': baseRecord }));
+    await writeBaseMetadata(rootHandle, settings.prefix, baseRecord);
 
     // Local: Modified
     rootHandle.addFile('file.txt', 'modified'); // Changed content/size
@@ -312,7 +313,6 @@ test('Remote Modified vs Local Deleted (Conflict)', async () => {
     const s3Client = new MockS3Client();
 
     // Setup Base
-    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
@@ -322,9 +322,10 @@ test('Remote Modified vs Local Deleted (Conflict)', async () => {
         sha256: computeHash('original'),
         contentLength: 4,
         lastModifiedLocal: new Date().toISOString(),
-        compressionMethod: ''
+        compressionMethod: '',
+        etag: 'etag'
     };
-    baseDir.addFile('.index.json', JSON.stringify({ 'file.txt': baseRecord }));
+    await writeBaseMetadata(rootHandle, settings.prefix, baseRecord);
 
     // Local: Deleted
 
@@ -426,7 +427,6 @@ test('Fast Check (Hash Match)', async () => {
     const s3Client = new MockS3Client();
 
     // Setup Base
-    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const content = 'test';
     const hash = computeHash(content);
     const baseRecord = {
@@ -438,9 +438,10 @@ test('Fast Check (Hash Match)', async () => {
         sha256: hash,
         contentLength: content.length,
         lastModifiedLocal: new Date().toISOString(),
-        compressionMethod: ''
+        compressionMethod: '',
+        etag: 'etag'
     };
-    baseDir.addFile('.index.json', JSON.stringify({ 'old.txt': baseRecord }));
+    await writeBaseMetadata(rootHandle, settings.prefix, baseRecord);
 
     // Local: new.txt with "test", NO UUID
     rootHandle.addFile('new.txt', content);
@@ -541,7 +542,6 @@ test('Both Deleted', async () => {
     const s3Client = new MockS3Client();
 
     // Setup Base
-    const baseDir = await createDirectoryAtPath(rootHandle, '.adoc-editor/s3m/') as unknown as MockFileSystemDirectoryHandle;
     const baseRecord = {
         uuid: UUID_1,
         key: 'test-prefix/file.txt',
@@ -551,9 +551,10 @@ test('Both Deleted', async () => {
         sha256: computeHash('original'),
         contentLength: 4,
         lastModifiedLocal: new Date().toISOString(),
-        compressionMethod: ''
+        compressionMethod: '',
+        etag: 'etag'
     };
-    baseDir.addFile('.index.json', JSON.stringify({ 'file.txt': baseRecord }));
+    await writeBaseMetadata(rootHandle, settings.prefix, baseRecord);
 
     // Local: Deleted
     // Remote: Deleted

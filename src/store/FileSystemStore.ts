@@ -1,4 +1,5 @@
 import { observable, action, runInAction, computed } from "mobx";
+import { isBinaryFile } from './FileSystemHelpers';
 import { get as getDbValue, set as setDbValue, clear as clearAllDbValues } from 'idb-keyval';
 import { Fzf } from 'fzf';
 import { editorStore, langIdFromFileName } from './EditorStore';
@@ -267,7 +268,7 @@ class FileSystemStore extends EffectAwareModel {
         }
 
         await this.pushDbOperation(setDbValue('directoryHandle', handle), 'Failed to persist directory handle:');
-        
+
         const rootHandle = this._rootNode?.handle;
         if (!rootHandle || !await rootHandle.isSameEntry(handle)) {
             runInAction(() => {
@@ -882,11 +883,11 @@ class FileSystemStore extends EffectAwareModel {
         // Default to root if no node provided
         const targetNode = node || this.rootNode;
         if (!targetNode) return;
-        
+
         // Verify permission if root (needed?) or simple check
         // For subdirectories, permission is inherited usually.
         const hasPerm = await this.verifyPermission(targetNode.handle);
-        
+
         if (!hasPerm) return;
         if (this._isRefreshing) {
             return;
@@ -1210,7 +1211,6 @@ class FileSystemStore extends EffectAwareModel {
         const models: FileSystemNodeModel[] = [];
         const parentPath = dirNode.isRoot ? '' : dirNode.path;
 
-        
         await dirNode.readSettings();
 
         for await (const entry of dirNode.handle.values()) {
@@ -1268,21 +1268,7 @@ class FileSystemStore extends EffectAwareModel {
         try {
             const file = await fileHandle.getFile();
 
-            // Check for binary content
-            const slice = file.slice(0, Math.min(file.size, 1024));
-            const buffer = await slice.arrayBuffer();
-            const view = new Uint8Array(buffer);
-
-            let isBinary = false;
-            for (let i = 0; i < view.length; i++) {
-                const byte = view[i];
-                if (byte === 0) {
-                    isBinary = true;
-                    break;
-                }
-            }
-
-            if (isBinary) {
+            if (await isBinaryFile(file)) {
                 const confirm = await dialog.confirm(
                     `The file '${file.name}' appears to be a binary file. Opening it in the editor might display garbage characters or cause the editor to become unresponsive. Do you want to proceed?`,
                     { title: 'Open Binary File?', yesText: 'Open Anyway', noText: 'Cancel' }

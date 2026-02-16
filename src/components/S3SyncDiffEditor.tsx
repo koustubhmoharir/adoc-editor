@@ -9,8 +9,6 @@ import { useScheduledEffects } from '../hooks/useScheduledEffects';
 export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
-    const showSinglePane = store.showSinglePane;
-    const showDiffPane = store.showDiffPane;
     const isLoading = store.isLoading;
 
     // Cleanup on unmount
@@ -32,7 +30,7 @@ export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }
     }
 
     // No selection
-    if (!showSinglePane && !showDiffPane) {
+    if (!store.singlePaneDetails && !store.diffPaneDetails) {
         return (
             <div className={styles.container} data-testid="s3sync-diff-editor">
                 <div className={styles.placeholder}>
@@ -51,25 +49,53 @@ export const S3SyncDiffEditor = observer(({ store }: { store: S3SyncDiffStore; }
         store.setSinglePaneHeight(currentPercent + deltaPercent);
     };
 
+    const renderPaneContent = (details: Readonly<{
+        isBinary: boolean;
+        loadBinary: () => void;
+        download?: () => void;
+    }>, ref: React.RefObject<HTMLDivElement | null>) => {
+
+        if (details.download) {
+            return (
+                <div className={styles.placeholder} data-testid="remote-not-downloaded-msg">
+                    <i className={`fa-solid fa-cloud-arrow-down ${styles.placeholderIcon}`} />
+                    <span>Remote content not downloaded.</span>
+                    {store.syncItem?.remote?.contentLength !== undefined && <span>Size: {store.syncItem.remote.contentLength} bytes</span>}
+                    <button className={styles.actionButton} onClick={details.download} data-testid="download-remote-btn">Download</button>
+                </div>
+            );
+        }
+
+        if (details.isBinary) {
+            return (
+                <div className={styles.placeholder} data-testid="binary-message">
+                    <i className={`fa-solid fa-file-binary ${styles.placeholderIcon}`} />
+                    <span>This file is binary.</span>
+                    <button className={styles.actionButton} onClick={details.loadBinary} data-testid="show-binary-text-btn">Show as text</button>
+                </div>
+            );
+        }
+
+        return <div ref={ref} style={{ width: '100%', height: '100%' }} />;
+    };
+
     return (
         <div className={styles.container} ref={containerRef} data-testid="s3sync-diff-editor">
             <S3SyncInfoBar store={store} />
-            {showSinglePane &&
+            {store.singlePaneDetails &&
                 <div
                     className={styles.singlePane}
-                    style={{ height: showDiffPane ? `${store.singlePaneHeight}%` : undefined, flexGrow: showDiffPane ? undefined : 1, flexShrink: 0 }}
+                    style={{ height: store.diffPaneDetails ? `${store.singlePaneHeight}%` : undefined, flexGrow: store.diffPaneDetails ? undefined : 1, flexShrink: 0 }}
                 >
-                    <span className={styles.paneLabel}>{store.singlePaneLabel}</span>
-                    <div ref={store.singleEditorRef} style={{ width: '100%', height: '100%' }} />
+                    {renderPaneContent(store.singlePaneDetails, store.singleEditorRef)}
                 </div>
             }
-            {showSinglePane && showDiffPane &&
+            {store.singlePaneDetails && store.diffPaneDetails &&
                 <ResizeHandle direction="horizontal" onResize={handleResize!} />
             }
-            {showDiffPane &&
+            {store.diffPaneDetails &&
                 <div className={styles.diffPane} style={{ flex: 1 }}>
-                    <span className={styles.paneLabel}>{store.diffPaneLabel}</span>
-                    <div ref={store.diffEditorRef} style={{ width: '100%', height: '100%' }} />
+                    {renderPaneContent(store.diffPaneDetails, store.singleEditorRef)}
                 </div>
             }
         </div>

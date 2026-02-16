@@ -1,8 +1,9 @@
 import { observable, action, runInAction } from 'mobx';
 import * as monaco from 'monaco-editor';
 import { EffectAwareModel } from './EffectAwareModel';
-import { DiffViewMode, FileSyncStatus, getFileAtPath } from './S3SyncLogic';
+import { DiffViewMode, FileSyncStatus, getBaseFileHandle, loadRemoteFileFromCache } from './S3SyncLogic';
 import type { S3SyncStore } from './S3SyncStore';
+import { isBinaryFile } from './FileSystemHelpers';
 import { createRef } from 'react';
 import { langIdFromFileName } from './EditorStore';
 
@@ -20,26 +21,42 @@ export class S3SyncDiffStore extends EffectAwareModel {
     @observable private accessor _syncItem: FileSyncStatus | null = null;
     get syncItem() { return this._syncItem; }
 
+    private _isBaseBinary = false;
+    private _isLocalBinary = false;
+    private _isRemoteBinary = false;
+    private _isRemoteDownloaded = false;
+
     // Content loaded from files
-    @observable private accessor _baseContent: string | null = null;
-    @observable private accessor _localContent: string | null = null;
-    @observable private accessor _remoteContent: string | null = null;
+    private _baseContent: string | null = null;
+    private _localContent: string | null = null;
+    private _remoteContent: string | null = null;
 
     // Current view mode
     @observable private accessor _currentView: DiffViewMode | null = null;
     get currentView() { return this._currentView; }
 
-    @observable private accessor _showSinglePane = false;
-    get showSinglePane() { return this._showSinglePane; }
+    private _showSinglePane = false;
 
-    @observable private accessor _singlePaneLabel = '';
-    get singlePaneLabel() { return this._singlePaneLabel; }
+    @observable.ref private accessor _singlePaneDetails: Readonly<{
+        isBinary: boolean;
+        content: string | null;
+        langId: string | null;
+        loadBinary: () => void;
+        download?: () => void;
+    }> | null = null;
+    get singlePaneDetails() { return this._singlePaneDetails; }
 
-    @observable private accessor _showDiffPane = false;
-    get showDiffPane() { return this._showDiffPane; }
+    private _showDiffPane = false;
 
-    @observable private accessor _diffPaneLabel = '';
-    get diffPaneLabel() { return this._diffPaneLabel; }
+    @observable.ref private accessor _diffPaneDetails: Readonly<{
+        isBinary: boolean;
+        originalContent: string | null;
+        modifiedContent: string | null;
+        langId: string | null;
+        loadBinary: () => void;
+        download?: () => void;
+    }> | null = null;
+    get diffPaneDetails() { return this._diffPaneDetails; }
 
     // Loading state
     @observable private accessor _isLoading = false;
@@ -73,106 +90,214 @@ export class S3SyncDiffStore extends EffectAwareModel {
         this._isLoading = true;
         this._syncItem = item;
 
-        let baseContent: string | null = null;
-        let localContent: string | null = null;
-        let remoteContent: string | null = null;
+        await this._loadLocalContent(false);
 
-        if (item?.local) {
-            try {
-                const file = await item.local.handle.getFile();
-                localContent = await file.text();
-            } catch (e) {
-                console.error('Failed to load local content', e);
-            }
-        }
+        await this._loadBaseContent(false);
 
-        if (item?.base) {
-            try {
-                baseContent = await this.loadBaseContent(item.base.key);
-            } catch (e) {
-                console.error('Failed to load base content', e);
-            }
-        }
-
-        if (item?.remote) {
-            try {
-                remoteContent = await this._syncStore.s3Store.getObjectContentAsText(this._syncStore.directoryNode.handle, item.remote, { cachedOnly: true });
-            } catch (e) {
-                console.error('Failed to load remote content', e);
-            }
-        }
+        await this._loadRemoteContent(false);
 
         runInAction(() => {
-            this._baseContent = baseContent;
-            this._localContent = localContent;
-            this._remoteContent = remoteContent;
             this._isLoading = false;
             if (item) {
                 this.setView(item.availableDiffViews[0]);
             }
+            else {
+                this._showSinglePane = false;
+                this._singlePaneDetails = null;
+                this._showDiffPane = false;
+                this._diffPaneDetails = null;
+                this._disposeSingleEditor();
+                this._disposeDiffEditor();
+            }
+        });
+    }
+
+    @action.bound
+    private async _downloadRemoteContent() {
+        if (!this.syncItem?.remote) return;
+        this._isLoading = true;
+        try {
+            const handle = await this._syncStore.s3Store.ensureRemoteCached(this._syncStore.directoryNode.handle, this.syncItem.remote);
+            if (handle) {
+                this._isRemoteDownloaded = true;
+                const file = await handle.getFile();
+                this._isRemoteBinary = await isBinaryFile(file);
+                this._remoteContent = this._isRemoteBinary ? null : await file.text();
+                // TODO: Calculate hash and save in metadata cache
+            }
+            else {
+                this._isRemoteDownloaded = false;
+                this._isRemoteBinary = false;
+                this._remoteContent = null;
+            }
+        } catch (e) {
+            console.error("Failed to download remote content", e);
+        } finally {
+            runInAction(() => {
+                this._isLoading = false;
+                this._refreshView(false);
+            });
+        }
+    }
+
+    private _wrapLoader(loader: () => Promise<void>) {
+        return action(async () => {
+            this._isLoading = true;
+            try {
+                await loader();
+            } finally {
+                runInAction(() => {
+                    this._refreshView(false);
+                    this._isLoading = false;
+                });
+            }
+        });
+    }
+
+    private async _loadLocalContent(forceText: boolean) {
+        if (this.syncItem?.local) {
+            const file = await this.syncItem.local.handle.getFile();
+            this._isLocalBinary = forceText ? false : await isBinaryFile(file);
+            this._localContent = this._isLocalBinary ? null : await file.text();
+        }
+        else {
+            this._isLocalBinary = false;
+            this._localContent = null;
+        }
+    }
+
+    private async _loadBaseContent(forceText: boolean) {
+        if (this.syncItem?.base) {
+            const handle = await getBaseFileHandle(this._syncStore.directoryNode.handle, this.syncItem.base.key, this.prefix);
+            const file = await handle!.getFile();
+            this._isBaseBinary = forceText ? false : await isBinaryFile(file);
+            this._baseContent = this._isBaseBinary ? null : await file.text();
+        }
+        else {
+            this._isBaseBinary = false;
+            this._baseContent = null;
+        }
+    }
+
+    private async _loadRemoteContent(forceText: boolean) {
+        if (this.syncItem?.remote) {
+            const relativePath = this.syncItem.remote.key.substring(this.prefix.length);
+            const cachedHandle = await loadRemoteFileFromCache(this._syncStore.directoryNode.handle, relativePath, this.syncItem!.remote!.version);
+            if (cachedHandle) {
+                this._isRemoteDownloaded = true;
+                const file = await cachedHandle.getFile();
+                this._isRemoteBinary = forceText ? false : await isBinaryFile(file);
+                this._remoteContent = this._isRemoteBinary ? null : await file.text();
+                return;
+            }
+        }
+        this._isRemoteDownloaded = false;
+        this._isRemoteBinary = false;
+        this._remoteContent = null;
+    }
+
+    private _refreshView(dispose: boolean) {
+        this._singlePaneDetails = null;
+        if (this._showSinglePane && this._syncItem) {
+            if (this._currentView === '3way' || this._currentView === 'single-base') {
+                this._singlePaneDetails = {
+                    content: this._baseContent,
+                    langId: langIdFromFileName(this._syncItem.base!.key),
+                    isBinary: this._isBaseBinary,
+                    loadBinary: this._wrapLoader(async () => { await this._loadBaseContent(true); })
+                }
+            }
+            else if (this._currentView === 'single-local') {
+                this._singlePaneDetails = {
+                    content: this._localContent,
+                    langId: langIdFromFileName(this._syncItem.local!.key),
+                    isBinary: this._isLocalBinary,
+                    loadBinary: this._wrapLoader(async () => { await this._loadLocalContent(true); })
+                }
+            }
+            else if (this._currentView === 'single-remote') {
+                this._singlePaneDetails = {
+                    content: this._remoteContent,
+                    langId: langIdFromFileName(this._syncItem.remote!.key),
+                    isBinary: this._isRemoteBinary,
+                    loadBinary: this._wrapLoader(async () => { await this._loadRemoteContent(true); }),
+                    download: this._isRemoteDownloaded ? undefined : this._downloadRemoteContent
+                }
+            }
+        }
+        this._diffPaneDetails = null;
+        if (this._showDiffPane && this._syncItem) {
+            if (this._currentView === '3way' || this._currentView === 'remote-local') {
+                this._diffPaneDetails = {
+                    originalContent: this._remoteContent,
+                    modifiedContent: this._localContent,
+                    langId: langIdFromFileName(this._syncItem.local?.handle.name ?? ''),
+                    isBinary: this._isRemoteBinary || this._isLocalBinary,
+                    loadBinary: this._wrapLoader(async () => {
+                        if (this._isLocalBinary) { await this._loadLocalContent(true); }
+                        if (this._isRemoteBinary) { await this._loadRemoteContent(true); }
+                    }),
+                    download: this._isRemoteDownloaded ? undefined : this._downloadRemoteContent
+                };
+            }
+            else if (this._currentView === 'base-local') {
+                this._diffPaneDetails = {
+                    originalContent: this._baseContent,
+                    modifiedContent: this._localContent,
+                    langId: langIdFromFileName(this._syncItem.local?.handle.name ?? ''),
+                    isBinary: this._isBaseBinary || this._isLocalBinary,
+                    loadBinary: this._wrapLoader(async () => {
+                        if (this._isLocalBinary) { await this._loadLocalContent(true); }
+                        if (this._isBaseBinary) { await this._loadBaseContent(true); }
+                    }),
+                };
+            }
+            else if (this._currentView === 'base-remote') {
+                this._diffPaneDetails = {
+                    originalContent: this._baseContent,
+                    modifiedContent: this._remoteContent,
+                    langId: langIdFromFileName(this._syncItem.remote?.key ?? ''),
+                    isBinary: this._isRemoteBinary || this._isBaseBinary,
+                    loadBinary: this._wrapLoader(async () => {
+                        if (this._isRemoteBinary) { await this._loadRemoteContent(true); }
+                        if (this._isBaseBinary) { await this._loadBaseContent(true); }
+                    }),
+                    download: this._isRemoteDownloaded ? undefined : this._downloadRemoteContent
+                };
+            }
+        }
+        this.scheduleEffect(() => {
+            if (dispose) {
+                this._disposeSingleEditor();
+                this._disposeDiffEditor();
+            }
+            this.initializeSingleEditor();
+            this.initializeDiffEditor();
         });
     }
 
     @action.bound
     initializeSingleEditor() {
-        if (!this._syncItem || !this.singleEditorRef.current) return;
+        if (!this._singlePaneDetails || !this.singleEditorRef.current || this._singleEditor) return;
 
-        let value;
-        let langId;
-        if (this._currentView === '3way' || this._currentView === 'single-base') {
-            value = this._baseContent;
-            langId = langIdFromFileName(this._syncItem.base!.key);
+        if (this._singlePaneDetails.content != null) {
+            this._singleEditor = monaco.editor.create(this.singleEditorRef.current, {
+                value: this._singlePaneDetails.content,
+                language: this._singlePaneDetails.langId!,
+                readOnly: this._currentView !== 'single-local',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                wordWrap: 'on'
+            });
         }
-        else if (this._currentView === 'single-local') {
-            value = this._localContent;
-            langId = langIdFromFileName(this._syncItem.local!.key);
-        }
-        else if (this._currentView === 'single-remote') {
-            value = this._remoteContent;
-            langId = langIdFromFileName(this._syncItem.remote!.key);
-        }
-        else {
-            value = null;
-            langId = 'plaintext';
-        }
-        this._singleEditor = monaco.editor.create(this.singleEditorRef.current, {
-            value: value ?? '',
-            language: langId,
-            readOnly: this._currentView !== 'single-local',
-            automaticLayout: true,
-            minimap: { enabled: false },
-            wordWrap: 'on'
-        });
     }
 
     @action.bound
     initializeDiffEditor() {
-        if (!this.syncItem || !this.diffEditorRef.current) return;
+        if (!this._diffPaneDetails || !this.diffEditorRef.current || this._diffEditor) return;
 
-        let originalContent;
-        let modifiedContent;
-        let langId;
-        if (this._currentView === '3way' || this._currentView === 'remote-local') {
-            originalContent = this._remoteContent;
-            modifiedContent = this._localContent;
-            langId = langIdFromFileName(this.syncItem.local?.handle.name ?? '');
-        }
-        else if (this._currentView === 'base-local') {
-            originalContent = this._baseContent;
-            modifiedContent = this._localContent;
-            langId = langIdFromFileName(this.syncItem.local?.handle.name ?? '');
-        }
-        else if (this._currentView === 'base-remote') {
-            originalContent = this._baseContent;
-            modifiedContent = this._remoteContent;
-            langId = langIdFromFileName(this.syncItem.remote?.key ?? '');
-        }
-        else {
-            return;
-        }
-
-        const originalModel = monaco.editor.createModel(originalContent!, langId);
-        const modifiedModel = monaco.editor.createModel(modifiedContent!, langId);
+        const originalModel = monaco.editor.createModel(this._diffPaneDetails.originalContent!, this._diffPaneDetails.langId!);
+        const modifiedModel = monaco.editor.createModel(this._diffPaneDetails.modifiedContent!, this._diffPaneDetails.langId!);
 
         this._diffEditor = monaco.editor.createDiffEditor(this.diffEditorRef.current, {
             readOnly: this._currentView !== '3way' && !this._currentView?.endsWith('-local'),
@@ -200,51 +325,20 @@ export class S3SyncDiffStore extends EffectAwareModel {
         if (mode.startsWith('single-')) {
             this._showSinglePane = true;
             this._showDiffPane = false;
-            this._singlePaneLabel = mode.substring('single-'.length);
-            this._diffPaneLabel = '';
         }
         else if (mode === '3way') {
             this._showSinglePane = true;
             this._showDiffPane = true;
-            this._singlePaneLabel = 'base';
-            this._diffPaneLabel = 'remote-local';
         }
         else {
             this._showSinglePane = false;
             this._showDiffPane = true;
-            this._singlePaneLabel = '';
-            this._diffPaneLabel = mode;
         }
-        this.scheduleEffect(() => {
-            this._disposeSingleEditor();
-            this._disposeDiffEditor();
-            if (this.showSinglePane) {
-                this.initializeSingleEditor();
-            }
-            if (this.showDiffPane) {
-                this.initializeDiffEditor();
-            }
-        });
+        this._refreshView(true);
     }
 
     @action.bound
     setSinglePaneHeight(height: number) {
         this.singlePaneHeight = Math.max(10, Math.min(90, height));
-    }
-
-    /**
-     * Load base content from .s3/base directory
-     */
-    private async loadBaseContent(key: string): Promise<string | null> {
-        const rootNode = this._syncStore.directoryNode;
-        const prefix = this._syncStore.s3Store.settings.prefix || '';
-
-        // Get relative path from the key
-        const relativePath = key.startsWith(prefix) ? key.substring(prefix.length) : key;
-
-        // Try to get the file handle from the root directory
-        const handle = await getFileAtPath(rootNode.handle, `.adoc-editor/s3b/${relativePath}`);
-        const file = await handle.getFile();
-        return await file.text();
     }
 }
