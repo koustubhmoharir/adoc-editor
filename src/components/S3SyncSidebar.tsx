@@ -84,6 +84,9 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
                     </div>
                 )}
                 {(statusItems || []).map((item, index) => {
+                    if (!item.isInteresting) {
+                        return null;
+                    }
                     const fileName = item.fileName(prefix);
                     const directoryPath = item.directoryPath(prefix);
                     const status = getStatusIcon(item);

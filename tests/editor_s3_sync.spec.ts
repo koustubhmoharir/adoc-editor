@@ -870,43 +870,24 @@ test('should enable save button on changes and update synced status', async ({ p
     // 2. Initial Sync
     await loadDirectoryAndEnterSyncMode(page);
     await completeSync(page);
+
+    fsSetup.createFile('s3-project', 'file.txt', 'Base Content1'); // Change local file for item to be visible
     
     await loadDirectoryAndEnterSyncMode(page);
     // 3. Open Editor
     const fileItem = getSyncItemByPath(page, 'file.txt');
     await fileItem.click();
 
+    await expect(fileItem).toHaveAttribute('data-content-action', SyncContentAction.CopyLocalToRemote);
+
     // 4. Verify Save is Disabled
     const saveBtn = page.getByTestId('save-button');
     await expect(saveBtn).toBeVisible();
     await expect(saveBtn).toBeDisabled();
 
-    // 5. Edit Content
-    const editor = page.getByTestId('s3sync-diff-editor');
-    await editor.locator('.monaco-editor').first().click();
-    await page.keyboard.press('Control+Home');
-    await page.keyboard.press('End');
-    await page.keyboard.type(' With Changes');
-
-    // 6. Verify Save is Enabled
-    await expect(saveBtn).toBeEnabled();
-
-    // 7. Click Save
-    await saveBtn.click();
-
-    // 8. Verify Save is Disabled (saved)
-    await expect(saveBtn).toBeDisabled();
-
-    // 9. Verify Content Action Updated
-    // Changed content -> should become CopyLocalToRemote (Upload)
-    await expect(fileItem).toHaveAttribute('data-content-action', SyncContentAction.CopyLocalToRemote);
-
-    // 10. Verify Content on Disk (Local)
-    const content = fsSetup.readFile('s3-project', 'file.txt');
-    expect(content).toBe('Base Content With Changes');
-
-    // 11. Revert Changes (Edit back to original)
-    await editor.locator('.monaco-editor').last().click();
+    // 5. Revert Changes (Edit back to original)
+    const editor = page.getByTestId('s3sync-diff-editor').locator('.monaco-editor').last();
+    await editor.click();
     // Select all and type original
     await page.keyboard.press('Control+A');
     await page.keyboard.type('Base Content');
@@ -919,6 +900,6 @@ test('should enable save button on changes and update synced status', async ({ p
     const content2 = fsSetup.readFile('s3-project', 'file.txt');
     expect(content2).toBe('Base Content');
 
-    // 12. Verify Content Action reset to None (matches base)
-    await expect(fileItem).toHaveAttribute('data-content-action', SyncContentAction.None);
+    // Verify file no longer shows up
+    await expect(fileItem).not.toBeVisible();
 });

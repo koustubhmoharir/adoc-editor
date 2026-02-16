@@ -87,13 +87,7 @@ export class S3SyncStore {
         const prefix = this.s3Store.settings.prefix;
 
         // Filter checked items with actionable content or path actions
-        const items = this._syncStatusItems.filter(item =>
-            item.isChecked && (
-                item.contentAction !== SyncContentAction.None ||
-                item.pathAction !== SyncPathAction.None ||
-                (item.base && !item.local && !item.remote) // base needs to be cleaned up for these items
-            )
-        );
+        const items = this._syncStatusItems.filter(item => item.isChecked && item.isInteresting);
 
         if (items.length === 0) {
             await dialog.alert('No actionable items selected.');
@@ -136,6 +130,7 @@ export class S3SyncStore {
 
         let syncedCount = 0;
         const concurrencyFailedItems: FileSyncStatus[] = [];
+        const succeededItems: FileSyncStatus[] = [];
         try {
             for (let i = 0; i < items.length; i++) {
                 if (this._cancelRequested) {
@@ -152,6 +147,7 @@ export class S3SyncStore {
 
                 try {
                     await executeSyncItem(item, s3Client, rootHandle, settings, pending, ensureRemoteCached);
+                    succeededItems.push(item);
                     syncedCount++;
                 } catch (e) {
                     if (isConcurrencyError(e)) {
@@ -175,37 +171,44 @@ export class S3SyncStore {
             // Re-fetch remote state for items that had concurrency conflicts
             if (concurrencyFailedItems.length > 0) {
                 traceLog(`Re-fetching remote state for ${concurrencyFailedItems.length} concurrency-conflicted items...`);
-                const syncItemTuples: { old: FileSyncStatus; new: FileSyncStatus }[] = [];
-                let newSelItem: FileSyncStatus | undefined = undefined;
-                for (const item of concurrencyFailedItems) {
-                    const remoteKey = item.remote?.key || (prefix + item.relativePath(prefix));
-                    try {
-                        const newRemote = await refreshRemoteRecord(s3Client, settings.bucket, remoteKey);
-                        const newSyncItem = await FileSyncStatus.create(item.base, item.local, newRemote, prefix);
-                        newSyncItem.updateActions(this.syncMode);
-                        syncItemTuples.push({ old: item, new: newSyncItem });
-                        if (this._selectedItem === item) {
-                            newSelItem = newSyncItem;
-                        }
-                    } catch (e) {
-                        console.error(`Failed to refresh remote state for ${remoteKey}:`, e);
+            }
+            const syncItemTuples: { old: FileSyncStatus; new: FileSyncStatus }[] = [];
+            let newSelItem: FileSyncStatus | null | undefined = undefined;
+            for (const item of concurrencyFailedItems) {
+                const remoteKey = item.remote?.key || (prefix + item.relativePath(prefix));
+                try {
+                    const newRemote = await refreshRemoteRecord(s3Client, settings.bucket, remoteKey);
+                    const newSyncItem = await FileSyncStatus.create(item.base, item.local, newRemote, prefix);
+                    newSyncItem.updateActions(this.syncMode);
+                    syncItemTuples.push({ old: item, new: newSyncItem });
+                    if (this._selectedItem === item) {
+                        newSelItem = newSyncItem;
+                    }
+                } catch (e) {
+                    console.error(`Failed to refresh remote state for ${remoteKey}:`, e);
+                }
+            }
+            await runInAction(async () => {
+                for (const item of succeededItems) {
+                    item.syncSucceeded = true;
+                    if (this._selectedItem === item) {
+                        newSelItem = null;
                     }
                 }
-                await runInAction(async () => {
-                    if (this._syncStatusItems) {
-                        for (let i = 0, j = 0; i < this._syncStatusItems.length; i++) {
-                            const item = this._syncStatusItems[i];
-                            if (item === syncItemTuples[j].old) {
-                                this._syncStatusItems[i] = syncItemTuples[j].new;
-                                j++;
-                            }
+                if (this._syncStatusItems?.length) {
+                    for (let i = 0, j = 0; j < syncItemTuples.length; i++) {
+                        const item = this._syncStatusItems[i];
+                        const tuple = syncItemTuples[j];
+                        if (item === tuple.old) {
+                            this._syncStatusItems[i] = syncItemTuples[j].new;
+                            j++;
                         }
                     }
-                    if (newSelItem) {
-                        await this.setSelectedItem(newSelItem);
-                    }
-                });
-            }
+                }
+                if (newSelItem !== undefined) {
+                    await this.setSelectedItem(newSelItem);
+                }
+            });
         } finally {
             // Flush metadata for everything that was synced
             if (syncedCount > 0 || pending.baseRecords.size > 0) {

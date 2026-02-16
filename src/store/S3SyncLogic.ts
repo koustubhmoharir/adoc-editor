@@ -777,6 +777,19 @@ export class FileSyncStatus {
     get isChecked() { return this._isChecked; }
     set isChecked(value) { this._isChecked = value; }
 
+    get isInteresting() {
+        if (this.syncSucceeded) {
+            return false;
+        }
+        return (
+            this.localStatus !== FileStatus.Unchanged ||
+            this.remoteStatus !== FileStatus.Unchanged ||
+            this.localMoved || this.remoteMoved
+        );
+    }
+
+    @observable accessor syncSucceeded = false;
+
     /**
      * Returns the relative path for display, with prefix stripped.
      * Priority: local path > base path > remote path
