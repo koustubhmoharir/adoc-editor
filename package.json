@@ -4,13 +4,14 @@
     "description": "ADoc Editor with Monaco and MobX",
     "type": "module",
     "scripts": {
+        "preinstall": "pnpx only-allow pnpm",
         "start": "node scripts/build.ts --serve --watch --show-tokens",
         "serve": "cross-env PORT=8001 node scripts/build.ts --serve --watch-dirty",
         "rebuild": "cross-env PORT=8001 node scripts/verify_rebuild.ts",
         "build": "node scripts/build.ts",
         "test": "cross-env PORT=8001 node scripts/test_debug.ts",
         "lint": "tsc --noEmit",
-        "coverage": "c8 --reporter=lcov --reporter=text --reporter=json-summary npm run test"
+        "coverage": "c8 --reporter=lcov --reporter=text --reporter=json-summary pnpm run test"
     },
     "keywords": [],
     "author": "",

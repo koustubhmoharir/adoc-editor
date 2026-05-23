@@ -66,7 +66,7 @@ These helpers are available via the `helpers` object:
 - **New Files**: If creating a new file is necessary, it **MUST** start with the prefix `editor_` (e.g. `tests/editor_my_new_feature.spec.ts`).
     - **Reason**: The project convention uses this prefix to group editor functional tests. They can be run collectively via:
     ```bash
-    npm run test -- "tests/editor_*.spec.ts"
+    pnpm run test -- "tests/editor_*.spec.ts"
     ```
 - Within a spec file, do not add a `describe` block unless there is a strong need to do so. A spec file with a single describe block adds no value.
 

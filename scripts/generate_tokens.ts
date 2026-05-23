@@ -39,7 +39,7 @@ export async function generateTokens(files: string[]) {
             const { spawn, execSync } = await import('child_process');
 
             // Start the server
-            const serverProcess = spawn('npm', ['start'], {
+            const serverProcess = spawn('pnpm', ['start'], {
                 detached: true,
                 stdio: 'ignore',
                 shell: true

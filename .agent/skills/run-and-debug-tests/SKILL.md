@@ -12,7 +12,7 @@ This skill outlines how to run the project's Playwright test suite and debug fai
 **ALWAYS** use the following command to run, verify, and debug tests:
 
 ```bash
-npm run test -- [options]
+pnpm run test -- [options]
 ```
 
 This command wraps a custom test runner script (`scripts/test_debug.ts`) that handles:
@@ -21,7 +21,7 @@ This command wraps a custom test runner script (`scripts/test_debug.ts`) that ha
 3.  **Reporting**: Uses appropriate reporters for the context (concise for verification, detailed/JSON for debugging).
 
 > [!CRITICAL]
-> **NEVER** run `npx playwright test` directly.
+> **NEVER** run `pnpm exec playwright test` directly.
 > Doing so bypasses the environment setup, detailed logging, and auto-debug logic.
 
 ## 2. Running Specific Tests
@@ -30,10 +30,10 @@ Pass arguments to Playwright by placing them after the `--` separator.
 
 | Goal | Command |
 | :--- | :--- |
-| **Run All Tests** | `npm run test` |
-| **Run Specific File** | `npm run test -- tests/editor_filesystem.spec.ts` |
-| **Filter by Title** | `npm run test -- -g "rename directory"` |
-| **Headed Mode** | `npm run test -- --headed` |
+| **Run All Tests** | `pnpm run test` |
+| **Run Specific File** | `pnpm run test -- tests/editor_filesystem.spec.ts` |
+| **Filter by Title** | `pnpm run test -- -g "rename directory"` |
+| **Headed Mode** | `pnpm run test -- --headed` |
 
 ## 3. Debugging Failures
 
@@ -79,5 +79,5 @@ If a test fails, check these common pitfalls first:
 ## 4. Best Practices
 
 1.  **Filter First**: Don't run the full suite repeatedly to debug one failure. Use `-g` to focus on the failing case.
-2.  **One Command**: Don't try to construct complex `npx playwright` commands manually. Trust `npm run test`.
+2.  **One Command**: Don't try to construct complex `pnpm exec playwright` commands manually. Trust `pnpm run test`.
 3.  **Read the Logs**: The auto-debug run provides rich information. Look for `BROWSER:` logs to understand the app's internal state at the time of failure.

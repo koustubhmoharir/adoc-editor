@@ -61,12 +61,12 @@ async function main() {
     try {
         if (all) {
             console.log("Running all tests...");
-            execSync('npx playwright test tests/syntax_verification.spec.ts', { stdio: 'inherit' });
+            execSync('pnpm exec playwright test tests/syntax_verification.spec.ts', { stdio: 'inherit' });
         } else {
             const baseName = files[0].replace('.adoc', '');
             console.log(`Running test for ${baseName}...`);
             // Use regex word boundary to match exact test name if possible
-            execSync(`npx playwright test -g "\\b${baseName} Highlighting"`, { stdio: 'inherit' });
+            execSync(`pnpm exec playwright test -g "\\b${baseName} Highlighting"`, { stdio: 'inherit' });
         }
         console.log(`\nSUCCESS: Test data generated and verified.`);
     } catch (e: any) {

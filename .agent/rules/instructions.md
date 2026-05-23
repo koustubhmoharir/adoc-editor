@@ -6,11 +6,11 @@ trigger: always_on
 * Read @../../ARCHITECTURE.md if you have questions about the tech stack and libraries used
 * You **MUST** read the ui-component skill before creating any React component or MobX store. Remember that useEffect is almost completely banned, and makeAutoObservable makes MobX crash in our setup using modern decorators with accessors.
 * You **MUST** read the "editor-test" skill before creating any test cases. Read @../../tests/testing_methodology.md if you have more questions.
-* You **MUST** use the "npm run test" command for running tests. It automatically provides detailed debug information in json format for the first failing test (if any) in a test_failure_debug.txt file. **DO NOT** run playwright commands directly as it will not provide sufficient information.
+* You **MUST** use the "pnpm run test" command for running tests. It automatically provides detailed debug information in json format for the first failing test (if any) in a test_failure_debug.txt file. **DO NOT** run playwright commands directly as it will not provide sufficient information.
 * Read the "run-and-debug-tests" skill for common reasons for test failures.
 * Use the `traceLog` function in the application source liberally to debug test failures. It is safe to retain this in the source as it is automatically removed in production builds.
 * When in planning mode, always create an implementation plan before starting the implementation unless it is very clear that I want you to skip the plan and implement directly.
-* **ALWAYS** run `npx tsc --noEmit` and fix type-checking errors if any *before* you run any tests.
+* **ALWAYS** run `pnpm exec tsc --noEmit` and fix type-checking errors if any *before* you run any tests.
 * **ALWAYS** prefer using the commands in @../../package.json to creating your own commands or using the underlying commands directly.
 * Run tests with a single command invocation for best performance, as the tests share a browser context and page.
 * If I ask you to look for something, look for related terms too. Perform a literal search only if I have specifically used quotes or backticks around a term.

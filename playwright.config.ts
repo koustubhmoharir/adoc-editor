@@ -23,7 +23,7 @@ export default defineConfig({
         },
     ],
     webServer: {
-        command: 'npm run serve',
+        command: 'pnpm run serve',
         url: SERVER_URL,
         reuseExistingServer: true,
     },

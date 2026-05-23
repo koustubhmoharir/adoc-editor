@@ -36,22 +36,22 @@ These tests cover the core verification of the editor's features.
 ## General Testing Utilities
 
 ### Debugging Tests
-Detailed logging (browser console, errors, dialogs) is automatically enabled when a test fails. The `npm run test` command will detect the failure and re-run the *first* failed test in debug mode with full logging. The output of this debug run is saved to `test_failure_debug.txt` for analysis.
+Detailed logging (browser console, errors, dialogs) is automatically enabled when a test fails. The `pnpm run test` command will detect the failure and re-run the *first* failed test in debug mode with full logging. The output of this debug run is saved to `test_failure_debug.txt` for analysis.
 
 To manually run a specific test with arguments (and trigger the auto-debug on failure), pass arguments after `--`:
 
 ```bash
 # Run a specific test case
-npm run test -- -g "full name of test"
+pnpm run test -- -g "full name of test"
 ```
 
 ### Manual Test Execution
 **IMPORTANT:** The test environment runs on **Port 8001** and requires specific environment variables.
-**DO NOT run `npx playwright test` directly.** It will lack the necessary environment configuration and will not produce useful debug output.
+**DO NOT run `pnpm exec playwright test` directly.** It will lack the necessary environment configuration and will not produce useful debug output.
 
 Always use:
 ```bash
-npm run test -- [playwright_args]
+pnpm run test -- [playwright_args]
 ```
 
 ### File System Mocking
@@ -59,7 +59,7 @@ Tests involving file operations use `FsTestSetup` (from `tests/helpers/fs_test_s
 
 ### Visual Debugging
 To inspect the tokenizer or UI state manually:
-1.  Run `npm start`.
+1.  Run `pnpm start`.
 2.  Open `http://localhost:8000/?skip_restore=true` (starts fresh).
 3.  Paste the asciidoc content into the editor.
 4.  Use the **Tokens Visualization** sidebar to inspect token types.
@@ -172,7 +172,7 @@ The syntax verification framework is unique to this project. It compares actual 
 ### Syntax Test Structure
 - **Fixtures Directory**: `tests/fixtures/`
   - Contains `.adoc` files (the input text).
-  - Contains `.json` files (the expected token structure). Note that these files are generated using the `npm run generate-test-data` command. The logic in the scripts/generate_expectations.ts file should be modified when necessary instead of modifying this file directly.
+  - Contains `.json` files (the expected token structure). Note that these files are generated using the `pnpm run generate-test-data` command. The logic in the scripts/generate_expectations.ts file should be modified when necessary instead of modifying this file directly.
   - Contains `-tokens.json` files (generated debug output showing actual tokens).
 
 ### Verification Logic

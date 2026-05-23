@@ -38,7 +38,7 @@ async function run() {
         try { fs.unlinkSync(failureFile); } catch (e) { }
     }
 
-    // 2. Determine npx command
+    // 2. Determine pnpm exec command
     const playwrightCli = path.resolve(
         'node_modules',
         '@playwright',
@@ -51,7 +51,7 @@ async function run() {
     // Check for help
     if (userArgs.includes('--help') || userArgs.includes('-h')) {
         console.log(`
-Usage: npm run test -- [options]
+Usage: pnpm run test -- [options]
 
 Runs all tests using Playwright. If any test fails, re-runs the *first* failure in debug mode.
 
@@ -62,17 +62,17 @@ Options:
   [file]              Run tests in specific file(s)
 
 Examples:
-  npm run test                                      Run all tests
-  npm run test -- -g "rename"                       Run tests with "rename" in title
-  npm run test -- tests/editor_filesystem.spec.ts   Run specific test file
-  npm run test -- --headed                          Run in headed mode
+  pnpm run test                                      Run all tests
+  pnpm run test -- -g "rename"                       Run tests with "rename" in title
+  pnpm run test -- tests/editor_filesystem.spec.ts   Run specific test file
+  pnpm run test -- --headed                          Run in headed mode
 `);
         process.exit(0);
     }
 
     // 3. Run Verify
     // We pass arguments directly to the verify command. 
-    // npm run test-verify -- <args>
+    // pnpm run test-verify -- <args>
     const reporterPath = './scripts/first_fail_reporter.js';
 
     const verifyArgs = [
