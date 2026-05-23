@@ -47,6 +47,9 @@ async function run() {
     );
 
     const userArgs = process.argv.slice(2);
+    if (userArgs.length > 0 && userArgs[0] === '--') {
+        userArgs.shift();
+    }
 
     // Check for help
     if (userArgs.includes('--help') || userArgs.includes('-h')) {
