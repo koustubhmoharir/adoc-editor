@@ -93,7 +93,7 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
 
     getFile(): Promise<FileSystemFileHandle> { throw new Error('Deprecated'); }
     getDirectory(): Promise<FileSystemDirectoryHandle> { throw new Error('Deprecated'); }
-    getEntries(): AsyncIterableIterator<FileSystemFileHandle | FileSystemDirectoryHandle> { throw new Error('Deprecated'); }
+    getEntries(): FileSystemDirectoryHandleAsyncIterator<FileSystemFileHandle | FileSystemDirectoryHandle> { throw new Error('Deprecated'); }
 
     // Helper for tests to access entries synchronously
     getEntry(name: string) {
@@ -144,25 +144,25 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
     }
 
     // Async Iterable iterator for values (handles)
-    async *values(): AsyncIterableIterator<FileSystemDirectoryHandle | FileSystemFileHandle> {
+    async *values(): any {
         for (const entry of this._entries.values()) {
-            yield entry as FileSystemDirectoryHandle | FileSystemFileHandle;
+            yield entry as unknown as FileSystemDirectoryHandle | FileSystemFileHandle;
         }
     }
 
-    async *keys(): AsyncIterableIterator<string> {
+    async *keys(): any {
         for (const key of this._entries.keys()) {
             yield key;
         }
     }
 
-    async *entries(): AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]> {
+    async *entries(): FileSystemDirectoryHandleAsyncIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]> {
         for (const [key, value] of this._entries.entries()) {
             yield [key, value as FileSystemDirectoryHandle | FileSystemFileHandle];
         }
     }
 
-    [Symbol.asyncIterator](): AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]> {
+    [Symbol.asyncIterator](): FileSystemDirectoryHandleAsyncIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]> {
         return this.entries();
     }
 
