@@ -63,6 +63,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
     get name() { return this._name; }
 
     // UI State
+    private _contextMenuRecvd: boolean | null = null;
     @observable protected accessor _isRenaming: boolean = false;
     get isRenaming() { return this._isRenaming; }
     @observable protected accessor _renameValue: string = '';
@@ -218,10 +219,33 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
         }
     }
 
-    @action.bound
-    async handleContextMenu(e: React.MouseEvent) {
+    readonly handlePointerDown = (e: React.MouseEvent) => {
+        if (e.button === 2) {
+            this._contextMenuRecvd = false;
+        }
+    }
+    readonly handlePointerUp = (e: React.MouseEvent) => {
+        if (e.button === 2) {
+            const recvd = this._contextMenuRecvd;
+            this._contextMenuRecvd = null;
+            if (recvd === true) {
+                this._handleContextMenuActual();    
+            }
+        }
+    }
+    readonly handleContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        if (this._contextMenuRecvd == null) {
+            this._handleContextMenuActual();
+        } else {
+            this._contextMenuRecvd = true;
+        }
+    }
+    
+    @action
+    async _handleContextMenuActual() {
+        console.log("context menu");
 
         // We don't check unsaved changes on external files if this is for a directory.
         // Focusing a directory does not touch the editor.
