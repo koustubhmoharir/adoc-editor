@@ -1,5 +1,6 @@
 import { action, observable, runInAction } from "mobx";
 import { DirectoryNodeModel } from "./FileSystemModels";
+import { fileSystemStore } from "./FileSystemStore";
 import { S3Store } from "./S3Store";
 import { S3SyncDiffStore } from "./S3SyncDiffStore";
 import { FileSyncStatus, S3VersionRecord, scanAndCalculateStatus, LocalFileRecord, updateDirectoryUuidMap, saveBaseRecord, SyncMode, SyncContentAction, SyncPathAction, executeSyncItem, flushPendingChanges, PendingChanges, isConcurrencyError, refreshRemoteRecord, S3Paths } from "./S3SyncLogic";
@@ -28,6 +29,9 @@ export class S3SyncStore {
     @observable private accessor _syncStatusItems: FileSyncStatus[] | undefined = undefined;
     get syncStatusItems() { return this._syncStatusItems; }
 
+    @observable private accessor _scanError: string | null = null;
+    get scanError() { return this._scanError; }
+
     @observable accessor syncMode: SyncMode = SyncMode.Sync;
 
     @observable private accessor _isSyncing: boolean = false;
@@ -38,6 +42,8 @@ export class S3SyncStore {
 
     @observable.ref private accessor _syncProgress: Readonly<{ current: number; total: number; currentPath: string; concurrencyErrors: number }> | null = null;
     get syncProgress() { return this._syncProgress; }
+
+    private _requiresIgnoreReview = false;
 
     @action.bound
     setSyncMode(mode: SyncMode) {
@@ -60,11 +66,31 @@ export class S3SyncStore {
      * Start the sync process - scans files and calculates status
      */
     async calculateStatus() {
-        const s3Client = await this.s3Store.ensureClient();
-        if (!s3Client) return;
-        const settings = this.s3Store.settings;
+        await this.setSelectedItem(null);
+        runInAction(() => {
+            this._syncStatusItems = undefined;
+            this._scanError = null;
+        });
         try {
-            const statusItems = await scanAndCalculateStatus(this.directoryNode, s3Client, settings);
+            const s3Client = await this.s3Store.ensureClient();
+            if (!s3Client) {
+                runInAction(() => { this._scanError = 'Could not connect to S3. Check the sync settings and try again.'; });
+                return;
+            }
+            const settings = this.s3Store.settings;
+            // A root refresh rebuilds directory models and their ignore contexts. Resolve the
+            // selected sync root again so this scan uses the current tree generation.
+            if (!await fileSystemStore.refresh()) {
+                runInAction(() => { this._scanError = 'Could not refresh the workspace before scanning. Try refreshing the workspace and scan again.'; });
+                return;
+            }
+            const currentNode = fileSystemStore.directoryNodeAtPath(this.directoryNode.path);
+            if (!currentNode) {
+                traceLog(`Sync root '${this.directoryNode.path}' is no longer traversable under the current .gitignore rules.`);
+                runInAction(() => { this._scanError = 'This sync folder is no longer visible under the current .gitignore rules. Exit sync mode and choose a visible folder.'; });
+                return;
+            }
+            const statusItems = await scanAndCalculateStatus(currentNode, s3Client, settings);
             const prefix = settings.prefix || '';
 
             runInAction(() => {
@@ -75,6 +101,7 @@ export class S3SyncStore {
         } catch (e) {
             console.error("Sync failed", e);
             runInAction(() => {
+                this._scanError = `Sync scan failed: ${e}`;
                 traceLog(`Sync failed: ${e}`);
             });
         }
@@ -83,6 +110,15 @@ export class S3SyncStore {
     @action.bound
     async executeSyncGo() {
         if (!this._syncStatusItems || this._isSyncing) return;
+
+        if (this._requiresIgnoreReview) {
+            this._requiresIgnoreReview = false;
+            await this.calculateStatus();
+            if (!this.scanError) {
+                await dialog.alert('The .gitignore file changed during the previous batch. Sync status has been recalculated; review the updated items before syncing again.');
+            }
+            return;
+        }
 
         const prefix = this.s3Store.settings.prefix;
 
@@ -148,6 +184,10 @@ export class S3SyncStore {
                 try {
                     await executeSyncItem(item, s3Client, rootHandle, settings, pending, ensureRemoteCached);
                     succeededItems.push(item);
+                    const syncedPath = item.relativePath(prefix);
+                    if (syncedPath === '.gitignore' || syncedPath.endsWith('/.gitignore')) {
+                        this._requiresIgnoreReview = true;
+                    }
                     syncedCount++;
                 } catch (e) {
                     if (isConcurrencyError(e)) {

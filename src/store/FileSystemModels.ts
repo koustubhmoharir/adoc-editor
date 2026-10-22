@@ -2,10 +2,9 @@ import { observable, action, runInAction } from "mobx";
 import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
-import { CompiledIgnoreSettings, DEFAULT_COMPILED_SETTINGS, mergeSettings } from '../file_system/IgnoreSettings';
+import { createIgnoreContext, IgnoreContext, isMissingDirectory, loadIgnoreContext } from '../file_system/GitIgnore';
 import { fileSystemStore } from "./FileSystemStore";
 import { areSettingsEqual, defaultS3SyncContent, parseS3SyncSettings } from "../file_system/S3SyncSettings";
-import { parse as parseToml } from 'smol-toml';
 import { S3Store } from "./S3Store";
 import { traceLog } from "../utils/trace";
 import { appStore } from "./AppStore";
@@ -533,7 +532,7 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
         this.children = data.children;
     }
     @observable accessor children: FileSystemNodeModel[] | undefined;
-    effIgnoreSettings: CompiledIgnoreSettings = DEFAULT_COMPILED_SETTINGS;
+    ignoreContext: IgnoreContext = createIgnoreContext('', null, '');
     @observable accessor hasS3SyncConfig: boolean = false;
 
     @action
@@ -590,23 +589,15 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
     }
 
     async readSettings() {
-        // 1. Calculate Settings
-        let ignoreSettings = this.isRoot ? DEFAULT_COMPILED_SETTINGS : (this.parent?.effIgnoreSettings || DEFAULT_COMPILED_SETTINGS);
+        this.ignoreContext = await loadIgnoreContext(this.handle, this.path, this.parent?.ignoreContext ?? null);
 
-        let configDir: FileSystemDirectoryHandle | undefined = undefined;
+        // S3 settings remain independent of gitignore and stay under .adoc-editor.
         try {
-            configDir = await this.handle.getDirectoryHandle('.adoc-editor');
-        } catch (e) {
-            // Ignore missing config
+            const configDir = await this.handle.getDirectoryHandle('.adoc-editor');
+            await this.loadS3SyncSettings(configDir, fileSystemStore.s3Stores);
+        } catch (error) {
+            if (!isMissingDirectory(error)) throw error;
         }
-        if (configDir) {
-            ignoreSettings = await parseIgnoreSettings(configDir, ignoreSettings);
-
-            const s3Stores = fileSystemStore.s3Stores;
-            await this.loadS3SyncSettings(configDir, s3Stores);
-        }
-
-        this.effIgnoreSettings = ignoreSettings;
     }
 
     private async loadS3SyncSettings(configDir: FileSystemDirectoryHandle, s3Stores: Map<string, S3Store>) {
@@ -669,10 +660,13 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
         }
 
         // Refresh to ensure tree is up-to-date for scanning, then start async sync
-        await fileSystemStore.refresh(this);
+        const syncPath = this.path;
+        if (!await fileSystemStore.refresh(this)) return;
+        const refreshedNode = fileSystemStore.directoryNodeAtPath(syncPath);
+        if (!refreshedNode) return;
 
         // Enter sync mode immediately
-        appStore.enterS3SyncMode(this, store);
+        appStore.enterS3SyncMode(refreshedNode, store);
     }
 }
 
@@ -702,16 +696,3 @@ export class ExternalFileModel {
 }
 
 export type FileModel = FileNodeModel | ExternalFileModel;
-
-async function parseIgnoreSettings(configDir: FileSystemDirectoryHandle, baseIgnoreSettings: CompiledIgnoreSettings) {
-    try {
-        const configFile = await configDir.getFileHandle('ignore.toml');
-        const file = await configFile.getFile();
-        const text = await file.text();
-        const localSettings = parseToml(text);
-        baseIgnoreSettings = mergeSettings(baseIgnoreSettings, localSettings as any);
-    } catch (e) {
-        // Ignore missing config
-    }
-    return baseIgnoreSettings;
-}

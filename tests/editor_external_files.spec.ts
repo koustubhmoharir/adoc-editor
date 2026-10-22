@@ -236,23 +236,39 @@ test('should close external file explicitly', async ({ page, fsSetup }) => {
     expect(content).toBe('External Content');
 });
 
-test('should open ignore.toml as external file from context menu', async ({ page }) => {
+test('should create .gitignore with active defaults as an external file', async ({ page, fsSetup }) => {
     // 1. Right click root directory
     const rootItem = page.getByTestId('directory-item').first();
     await rootItem.click({ button: 'right' });
 
-    // 2. Click "Edit ignore.toml"
+    // 2. Open the directory's .gitignore editor
     await expect(page.getByTestId('ctx-edit-ignore')).toBeVisible();
     await page.getByTestId('ctx-edit-ignore').click();
 
     // 3. Verify it opens as external file
-    await expect(page.getByTestId('current-filename')).toHaveText('ignore.toml');
+    await expect(page.getByTestId('current-filename')).toHaveText('.gitignore');
     // It should have the external banner
     await expect(page.getByTestId('external-file-warning')).toBeVisible();
-    // Logic creates default content if new, or opens existing. 
-    // Since we start fresh, it should be new default content.
+    // A new file uses the same active patterns as the in-memory root fallback.
     const content = await helpers.getEditorContent(page);
-    expect(content).toContain('# File and Directory Ignore Settings');
+    expect(content).toContain('node_modules/');
+    expect(content).toContain('*.exe');
+    expect(content).toContain('!.gitignore');
+    expect(fsSetup.exists('work', 'project/.gitignore')).toBe(true);
+    expect(fsSetup.exists('work', 'project/.adoc-editor')).toBe(false);
+});
+
+test('editing an existing .gitignore preserves its text exactly', async ({ page, fsSetup }) => {
+    const existingRules = '# project rules\ncache/\n!important.log  \n';
+    fsSetup.createFile('work', 'project/.gitignore', existingRules);
+
+    const rootItem = page.getByTestId('directory-item').first();
+    await rootItem.click({ button: 'right' });
+    await page.getByTestId('ctx-edit-ignore').click();
+
+    await expect(page.getByTestId('current-filename')).toHaveText('.gitignore');
+    expect(await helpers.getEditorContent(page)).toBe(existingRules);
+    expect(fsSetup.readFile('work', 'project/.gitignore')).toBe(existingRules);
 });
 
 test('should reveal external file location on title click', async ({ page }) => {

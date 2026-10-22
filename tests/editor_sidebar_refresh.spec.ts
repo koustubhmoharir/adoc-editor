@@ -146,6 +146,11 @@ test('Refresh Isolation: Refreshing directory does NOT reload outside file', asy
     const content = await helpers.getEditorContent(page);
     expect(content).toBe('outside content');
 
+    // The open file must bind to the rebuilt tree without reloading its content.
+    await page.getByTestId('current-filename').click();
+    await expect(page.locator('[data-file-path="outside.txt"]')).toBeFocused();
+    expect(await helpers.getEditorContent(page)).toBe('outside content');
+
     // Now do a global refresh (F5 with file selected or root selected)
     // Let's click root
     await getDirectoryItem(page, '').click();

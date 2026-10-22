@@ -2,6 +2,7 @@ import { computed, observable } from "mobx";
 import { S3Client, ListObjectVersionsCommand, HeadObjectCommand, PutObjectCommand, DeleteObjectCommand, CopyObjectCommand } from "@aws-sdk/client-s3";
 import { Sha256 } from "@aws-crypto/sha256-browser";
 import { S3SyncSettings } from "../file_system/S3SyncSettings";
+import { IgnoreContext, isIgnoredEntry, loadIgnoreContext } from "../file_system/GitIgnore";
 import { traceLog } from "../utils/trace";
 import { createDirectoryAtPath, createFileAtPath, getDirectoryAtPath, getFileAtPath, nameOfPath, parentDirOfPath, tryGetDirectoryAtPath, tryGetFileAtPath } from "./FileSystemHelpers";
 
@@ -12,7 +13,7 @@ export const S3Paths = {
     metaCacheDir: '.adoc-editor/s3mc/',
     remoteContentDir: '.adoc-editor/s3r/',
     s3DirName: '.s3',
-    ignoreConfigPath: '.adoc-editor/ignore.toml'
+    ignoreConfigPath: '.gitignore'
 } as const;
 
 /**
@@ -97,21 +98,44 @@ export interface DirNodeLike {
     handle: FileSystemDirectoryHandle;
     children: (DirNodeLike | FileNodeLike)[] | undefined;
     hasS3SyncConfig?: boolean;
+    /** Workspace-relative path, present on the editor's directory models. */
+    path?: string;
+    /** The ignore scope chain captured by the current filesystem scan. */
+    ignoreContext?: IgnoreContext;
 }
 
-async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<Map<string, LocalFileRecord>> {
-    const filesByPath = new Map<string, LocalFileRecord>();
+interface LocalScanResult {
+    filesByPath: Map<string, LocalFileRecord>;
+    ignoredUuids: Set<string>;
+    contextsByPath: Map<string, IgnoreContext>;
+    nestedSyncRootPaths: Set<string>;
+}
 
-    const scan = async (dirNode: DirNodeLike, currentPath: string) => {
+function joinedPath(parent: string, child: string) {
+    if (!child) return parent;
+    if (!parent) return child;
+    return `${parent}/${child}`;
+}
+
+async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<LocalScanResult> {
+    const filesByPath = new Map<string, LocalFileRecord>();
+    const ignoredUuids = new Set<string>();
+    const contextsByPath = new Map<string, IgnoreContext>();
+    const nestedSyncRootPaths = new Set<string>();
+    const workspaceRootPath = rootNode.ignoreContext?.basePath ?? rootNode.path ?? '';
+
+    const scan = async (dirNode: DirNodeLike, currentPath: string, parentContext: IgnoreContext | null) => {
+        const workspacePath = joinedPath(workspaceRootPath, currentPath.replace(/\/$/, ''));
+        const ignoreContext = dirNode.ignoreContext ?? await loadIgnoreContext(dirNode.handle, workspacePath, parentContext);
+        contextsByPath.set(workspacePath, ignoreContext);
         const uuids = await readUuids(dirNode.handle);
-        // 1. Unconditionally check for .adoc-editor/ignore.toml in this directory (on disk)
-        // This file may be present at any level and it is important to sync it to ensure that the same ignore rules apply to all devices
-        const ignoreFileHandle = await tryGetFileAtPath(dirNode.handle, S3Paths.ignoreConfigPath)
+        // Sync each traversed directory's rules file exactly once, even if a rule matches the file itself.
+        const ignoreFileHandle = await tryGetFileAtPath(dirNode.handle, S3Paths.ignoreConfigPath);
         if (ignoreFileHandle) {
             const ignoreFile = await ignoreFileHandle.getFile();
-            const ignorePath = `${currentPath}${S3Paths.ignoreConfigPath}`;
+            const ignorePath = joinedPath(currentPath.replace(/\/$/, ''), S3Paths.ignoreConfigPath);
             filesByPath.set(ignorePath, {
-                uuid: uuids[S3Paths.ignoreConfigPath],
+                uuid: uuids[S3Paths.ignoreConfigPath] ?? '',
                 key: s3Prefix + ignorePath,
                 contentLength: ignoreFile.size,
                 lastModified: new Date(ignoreFile.lastModified).toISOString(),
@@ -120,20 +144,32 @@ async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<
             });
         }
 
+        // Track IDs of excluded local files without opening or hashing their content. A
+        // filtered entry may be absent from the model's child list, so inspect names on disk.
+        for await (const entry of dirNode.handle.values()) {
+            if (entry.kind !== 'file') continue;
+            const entryPath = joinedPath(currentPath.replace(/\/$/, ''), entry.name);
+            if (entry.name !== S3Paths.ignoreConfigPath && isIgnoredEntry(ignoreContext, joinedPath(workspaceRootPath, entryPath), entry.name, false)) {
+                const uuid = uuids[entry.name];
+                if (uuid) ignoredUuids.add(uuid);
+            }
+        }
+
         // 2. Iterate children (model)
         if (dirNode.children) {
             for (const child of dirNode.children) {
-                const entryPath = `${currentPath}${child.name}`;
-
+                const entryPath = joinedPath(currentPath.replace(/\/$/, ''), child.name);
+                const workspaceEntryPath = joinedPath(workspaceRootPath, entryPath);
                 if (child.name === S3Paths.appDirName || child.name === S3Paths.s3DirName) {
                     continue;
                 }
 
                 if (child.kind === 'file') {
+                    if (child.name === S3Paths.ignoreConfigPath || isIgnoredEntry(ignoreContext, workspaceEntryPath, child.name, false)) continue;
                     try {
                         const file = await child.handle.getFile();
                         filesByPath.set(entryPath, {
-                            uuid: uuids[child.name],
+                            uuid: uuids[child.name] ?? '',
                             key: s3Prefix + entryPath,
                             contentLength: file.size,
                             lastModified: new Date(file.lastModified).toISOString(),
@@ -145,16 +181,18 @@ async function scanLocalFiles(rootNode: DirNodeLike, s3Prefix: string): Promise<
                 } else if (child.kind === 'directory') {
                     if (child.hasS3SyncConfig) {
                         traceLog(`Skipping nested sync root: ${entryPath}`);
+                        nestedSyncRootPaths.add(workspaceEntryPath);
                         continue;
                     }
-                    await scan(child, entryPath + '/');
+                    if (isIgnoredEntry(ignoreContext, workspaceEntryPath, child.name, true)) continue;
+                    await scan(child, entryPath, ignoreContext);
                 }
             }
         }
     };
 
-    await scan(rootNode, '');
-    return filesByPath;
+    await scan(rootNode, '', null);
+    return { filesByPath, ignoredUuids, contextsByPath, nestedSyncRootPaths };
 }
 
 /**
@@ -662,7 +700,7 @@ export async function scanAndCalculateStatus(rootNode: DirNodeLike, s3Client: S3
     const s3Prefix = settings.prefix || '';
 
     // 1. Scan Local Files
-    const localFiles = await scanLocalFiles(rootNode, s3Prefix);
+    const { filesByPath: localFiles, ignoredUuids, contextsByPath, nestedSyncRootPaths } = await scanLocalFiles(rootNode, s3Prefix);
     traceLog(`Found ${localFiles.size} local files.`);
 
     // 2. Read Base State
@@ -674,6 +712,43 @@ export async function scanAndCalculateStatus(rootNode: DirNodeLike, s3Client: S3
     traceLog(`Listing objects in bucket: ${settings.bucket} (prefix: ${s3Prefix})`);
 
     const remoteRecordsByPath = await fetchRemoteRecords(s3Client, s3Prefix, settings.bucket, await createDirectoryAtPath(rootNode.handle, S3Paths.metaCacheDir), baseRecordsByPath);
+
+    const workspaceRootPath = rootNode.ignoreContext?.basePath ?? rootNode.path ?? '';
+    const contextForPath = (workspacePath: string): IgnoreContext => {
+        let directoryPath = parentDirOfPath(workspacePath).replace(/\/+$/, '');
+        while (true) {
+            const context = contextsByPath.get(directoryPath);
+            if (context) return context;
+            if (directoryPath === workspaceRootPath || directoryPath === '') break;
+            directoryPath = parentDirOfPath(directoryPath).replace(/\/+$/, '');
+        }
+        // scanLocalFiles always records at least the sync root's context.
+        return contextsByPath.get(workspaceRootPath)!;
+    };
+    const isExcludedRecord = (record: S3VersionRecord | BaseVersionRecord | LocalFileRecord) => {
+        const relativePath = record.key.substring(s3Prefix.length);
+        const workspacePath = joinedPath(workspaceRootPath, relativePath);
+        for (const nestedRootPath of nestedSyncRootPaths) {
+            if (workspacePath === nestedRootPath || workspacePath.startsWith(`${nestedRootPath}/`)) return true;
+        }
+        const context = contextForPath(workspacePath);
+        const name = nameOfPath(workspacePath);
+        return isIgnoredEntry(context, workspacePath, name, false);
+    };
+
+    // If any path in a UUID-linked move is ignored, keep the whole correlated group out of
+    // comparison so the visible half cannot become a delete or an upload.
+    for (const record of [...baseRecordsByPath.values(), ...remoteRecordsByPath.values(), ...localFiles.values()]) {
+        if (record.uuid && isExcludedRecord(record)) ignoredUuids.add(record.uuid);
+    }
+    const filterRecords = <T extends S3VersionRecord | BaseVersionRecord | LocalFileRecord>(records: Map<string, T>) => {
+        for (const [path, record] of records) {
+            if (isExcludedRecord(record) || (record.uuid && ignoredUuids.has(record.uuid))) records.delete(path);
+        }
+    };
+    filterRecords(baseRecordsByPath);
+    filterRecords(remoteRecordsByPath);
+    filterRecords(localFiles);
 
     // 4. Compute Actions
     traceLog("Calculating diff...");

@@ -6,11 +6,7 @@ test.beforeEach(async ({ fsSetup }) => {
     // Setup various file types
     fsSetup.createFile('dir1', 'script.js', 'console.log("hello");');
     fsSetup.createFile('dir1', 'style.css', 'body { color: red; }');
-    fsSetup.createFile('dir1', '.gitignore', 'node_modules');
-    fsSetup.createFile('dir1', '.adoc-editor/ignore.toml',
-        `
-ignore_dot_files = false
-`);
+    fsSetup.createFile('dir1', '.gitignore', '');
 
     // Subdirectory for more structure
     fsSetup.createFile('dir1', 'src/main.ts', 'const x: number = 1;');
@@ -106,12 +102,12 @@ test('Renaming allows changing extension from .adoc', async ({ page, fsSetup }) 
     await expect(page.locator('[data-testid="file-item"][data-file-path="script.ts"]')).toBeVisible();
     expect(fsSetup.exists('dir1', 'script.ts'), 'script.ts exists').toBe(true);
 
-    // Rename .gitignore -> .config
+    // Rename .gitignore -> config and keep verifying the ordinary file rename path.
     const gitignore = page.locator('[data-testid="file-item"][data-file-path=".gitignore"]');
     await gitignore.click();
     await page.keyboard.press('F2');
-    await input.fill('.config');
+    await input.fill('config');
     await page.keyboard.press('Enter');
 
-    await expect(page.locator('[data-testid="file-item"][data-file-path=".config"]')).toBeVisible();
+    await expect(page.locator('[data-testid="file-item"][data-file-path="config"]')).toBeVisible();
 });

@@ -158,7 +158,7 @@ class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
                 await window.__fs_writeFile(childPath, '');
                 return new MockFileSystemFileHandle(name, childPath);
             }
-            throw new Error(`File not found: ${name}`);
+            throw new DOMException(`File not found: ${name}`, 'NotFoundError');
         }
     }
 
@@ -173,7 +173,7 @@ class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
                 await window.__fs_mkdir(childPath);
                 return new MockFileSystemDirectoryHandle(name, childPath);
             }
-            throw new Error(`Directory not found: ${name}`);
+            throw new DOMException(`Directory not found: ${name}`, 'NotFoundError');
         }
     }
 

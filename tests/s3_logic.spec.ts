@@ -6,7 +6,7 @@ import { MockS3Client } from './helpers/mock_s3_client';
 import { S3SyncSettings } from '../src/file_system/S3SyncSettings';
 
 import { createHash } from 'crypto';
-import { createDirectoryAtPath } from '../src/store/FileSystemHelpers';
+import { createDirectoryAtPath, getFileAtPath } from '../src/store/FileSystemHelpers';
 
 // Enable trace logging only when DEBUG_TESTS is set
 if (process.env.DEBUG_TESTS) {
@@ -718,21 +718,135 @@ test('Nested Sync Root Ignored', async () => {
     expect(status).toHaveLength(0); // Should skip the file inside nested
 });
 
-test('Ignore File (ignore.toml)', async () => {
+test('.gitignore is synced exactly once for each traversed directory', async () => {
     const rootHandle = new MockFileSystemDirectoryHandle('root');
     const s3Client = new MockS3Client();
 
-    // Local: ignore.toml present
-    const ignoreDir = rootHandle.addDirectory('.adoc-editor');
-    ignoreDir.addFile('ignore.toml', 'some config');
-
-    // S3 Sync should INCLUDE ignore.toml in the listing
+    rootHandle.addFile('.gitignore', '.gitignore\n');
+    const nested = rootHandle.addDirectory('nested');
+    nested.addFile('.gitignore', '*.tmp\n');
+    nested.addFile('hidden.tmp', 'hidden');
 
     const rootNode = await toSyncNodeLike(rootHandle);
     const status = await scanAndCalculateStatus(rootNode, s3Client as any, settings);
 
-    expect(status).toHaveLength(1);
-    expect(status[0].local?.key).toBe('test-prefix/.adoc-editor/ignore.toml');
+    expect(status.map(item => item.local?.key).filter(Boolean).sort()).toEqual([
+        'test-prefix/.gitignore',
+        'test-prefix/nested/.gitignore'
+    ]);
+});
+
+test('remote-only paths excluded by .gitignore produce no actions', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle.addFile('.gitignore', 'remote-only.txt\n');
+    const s3Client = new MockS3Client();
+    s3Client.addTextVersion('test-prefix/remote-only.txt', 'remote content', { uuid: UUID_REMOTE, syncVersion: 1 });
+
+    const status = await scanAndCalculateStatus(await toSyncNodeLike(rootHandle), s3Client as any, settings);
+
+    expect(status.map(item => item.relativePath(settings.prefix))).not.toContain('remote-only.txt');
+});
+
+test('ignored previously synced paths preserve local and base state without actions', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle.addFile('.gitignore', 'file.txt\n');
+    rootHandle.addFile('file.txt', 'local content');
+    await updateDirectoryUuidMap(rootHandle, { 'file.txt': UUID_1 });
+    const baseRecord = {
+        uuid: UUID_1,
+        key: 'test-prefix/file.txt',
+        version: 'v1',
+        syncVersion: 1,
+        deviceName: 'dev',
+        sha256: computeHash('local content'),
+        contentLength: 13,
+        lastModifiedLocal: new Date().toISOString(),
+        compressionMethod: '',
+        etag: 'etag'
+    };
+    await writeBaseMetadata(rootHandle, settings.prefix, baseRecord);
+    const s3Client = new MockS3Client();
+    s3Client.addTextVersion('test-prefix/file.txt', 'local content', { uuid: UUID_1, syncVersion: 1 });
+
+    const status = await scanAndCalculateStatus(await toSyncNodeLike(rootHandle), s3Client as any, settings);
+
+    expect(status.map(item => item.relativePath(settings.prefix))).toEqual(['.gitignore']);
+    expect(rootHandle.getEntry('file.txt')).toBeDefined();
+    const metadata = await (await getFileAtPath(rootHandle, `${S3Paths.baseMetaDir}.index.json`)).getFile();
+    expect(JSON.parse(await metadata.text())['file.txt']).toEqual(baseRecord);
+});
+
+test('empty .gitignore removes a previous exclusion on the next scan', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle.addFile('.gitignore', 'file.txt\n');
+    rootHandle.addFile('file.txt', 'content');
+    const s3Client = new MockS3Client();
+
+    const initialStatus = await scanAndCalculateStatus(await toSyncNodeLike(rootHandle), s3Client as any, settings);
+    expect(initialStatus.map(item => item.relativePath(settings.prefix))).toEqual(['.gitignore']);
+
+    rootHandle.addFile('.gitignore', '');
+    const status = await scanAndCalculateStatus(await toSyncNodeLike(rootHandle), s3Client as any, settings);
+    expect(status.map(item => item.relativePath(settings.prefix))).toEqual(['.gitignore', 'file.txt']);
+});
+
+test('nested rules and ignored ancestors apply to remote-only paths', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle.addFile('.gitignore', 'parent/\n!parent/child/\n');
+    const parent = rootHandle.addDirectory('parent');
+    parent.addFile('.gitignore', '!visible.txt\n');
+    const s3Client = new MockS3Client();
+    s3Client.addTextVersion('test-prefix/parent/visible.txt', 'content', { uuid: UUID_REMOTE, syncVersion: 1 });
+
+    const status = await scanAndCalculateStatus(await toSyncNodeLike(rootHandle), s3Client as any, settings);
+
+    // The parent cannot be reopened by a descendant rule because traversal was pruned.
+    expect(status.map(item => item.relativePath(settings.prefix))).not.toContain('parent/visible.txt');
+});
+
+test('UUID moves crossing an ignored boundary are deferred as a whole', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle.addFile('.gitignore', 'ignored.txt\n');
+    rootHandle.addFile('ignored.txt', 'same content');
+    await updateDirectoryUuidMap(rootHandle, { 'ignored.txt': UUID_1 });
+    const baseRecord = {
+        uuid: UUID_1,
+        key: 'test-prefix/visible.txt',
+        version: 'v1',
+        syncVersion: 1,
+        deviceName: 'dev',
+        sha256: computeHash('same content'),
+        contentLength: 12,
+        lastModifiedLocal: new Date().toISOString(),
+        compressionMethod: '',
+        etag: 'etag'
+    };
+    await writeBaseMetadata(rootHandle, settings.prefix, baseRecord);
+    const s3Client = new MockS3Client();
+    s3Client.addTextVersion('test-prefix/visible.txt', 'same content', { uuid: UUID_1, syncVersion: 1 });
+
+    const status = await scanAndCalculateStatus(await toSyncNodeLike(rootHandle), s3Client as any, settings);
+    expect(status.map(item => item.relativePath(settings.prefix))).toEqual(['.gitignore']);
+});
+
+test('metadata and nested sync roots stay outside S3 comparison', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const nested = rootHandle.addDirectory('nested');
+    nested.addFile('s3sync.toml', 'configured');
+    const nestedNode: DirNodeLike = {
+        name: 'nested',
+        kind: 'directory',
+        handle: nested,
+        children: [{ name: 's3sync.toml', kind: 'file', handle: nested.getEntry('s3sync.toml') as MockFileSystemFileHandle }],
+        hasS3SyncConfig: true
+    };
+    const rootNode: DirNodeLike = { name: 'root', kind: 'directory', handle: rootHandle, children: [nestedNode] };
+    const s3Client = new MockS3Client();
+    s3Client.addTextVersion('test-prefix/nested/remote.txt', 'nested remote', { uuid: UUID_REMOTE, syncVersion: 1 });
+    s3Client.addTextVersion('test-prefix/.git/config', 'git metadata', { uuid: UUID_LOCAL, syncVersion: 1 });
+    s3Client.addTextVersion('test-prefix/.adoc-editor/s3m/.index.json', 'internal metadata', { uuid: UUID_BASE, syncVersion: 1 });
+
+    expect(await scanAndCalculateStatus(rootNode, s3Client as any, settings)).toEqual([]);
 });
 
 test('Local Files in Subdirectories', async () => {

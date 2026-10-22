@@ -62,6 +62,7 @@ function getActionLabel(item: FileSyncStatus): string | null {
 
 export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
     const statusItems = store.syncStatusItems;
+    const scanError = store.scanError;
     const selectedItem = store.selectedItem;
     const prefix = store.s3Store.settings.prefix || '';
     const isSyncing = store.isSyncing;
@@ -72,18 +73,23 @@ export const S3SyncSidebar = observer(({ store }: { store: S3SyncStore }) => {
                 Sync Status
             </div>
             <div className={styles.itemList}>
-                {!statusItems && (
+                {scanError && (
+                    <div className={styles.emptyState} data-testid="s3sync-scan-error">
+                        {scanError}
+                    </div>
+                )}
+                {!scanError && !statusItems && (
                     <div className={styles.loadingState} data-testid='s3sync-scanning'>
                         <i className="fa-solid fa-spinner fa-spin" />
                         <span>Scanning files...</span>
                     </div>
                 )}
-                {statusItems && statusItems.length === 0 && (
+                {!scanError && statusItems && statusItems.length === 0 && (
                     <div className={styles.emptyState}>
                         All files are in sync
                     </div>
                 )}
-                {(statusItems || []).map((item, index) => {
+                {(!scanError ? statusItems || [] : []).map((item, index) => {
                     if (!item.isInteresting) {
                         return null;
                     }

@@ -6,7 +6,7 @@ import { editorStore, langIdFromFileName } from './EditorStore';
 import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
-import { shouldIgnoreDirectory, shouldIgnoreFile, generateDefaultIgnoreFileContent, resetPatternCache } from '../file_system/IgnoreSettings';
+import { DEFAULT_GITIGNORE_CONTENT, isIgnoredEntry, isMissingGitIgnore } from '../file_system/GitIgnore';
 import { DirectoryNodeModel, ExternalFileModel, FileModel, FileNodeModel, FileSystemNodeModel, FileSystemNodeModelBase, SearchResultItemModel } from "./FileSystemModels";
 import { traceLog } from "../utils/trace";
 import { S3Store } from "./S3Store";
@@ -272,7 +272,6 @@ class FileSystemStore extends EffectAwareModel {
         const rootHandle = this._rootNode?.handle;
         if (!rootHandle || !await rootHandle.isSameEntry(handle)) {
             runInAction(() => {
-                resetPatternCache();
                 this._rootNode = new DirectoryNodeModel({
                     name: handle.name,
                     path: '',
@@ -290,7 +289,6 @@ class FileSystemStore extends EffectAwareModel {
     async clearDirectory() {
         this._rootNode = null;
         this._currentFileNode = null;
-        resetPatternCache();
         this.cleanupS3Stores();
         this._collapsedPaths = new Set();
         this._searchQuery = '';
@@ -509,32 +507,24 @@ class FileSystemStore extends EffectAwareModel {
             return;
         }
         try {
-            // Check/Create .adoc-editor folder
-            let configDir;
-            try {
-                configDir = await directory.handle.getDirectoryHandle('.adoc-editor');
-            } catch {
-                configDir = await directory.handle.getDirectoryHandle('.adoc-editor', { create: true });
-            }
-
             let fileHandle;
-            // Check if ignore.toml exists
             try {
-                fileHandle = await configDir.getFileHandle('ignore.toml');
-            } catch {
-                // Ignore doesn't exist, create it
-                fileHandle = await configDir.getFileHandle('ignore.toml', { create: true });
+                fileHandle = await directory.handle.getFileHandle('.gitignore');
+            } catch (error) {
+                if (!isMissingGitIgnore(error)) throw error;
+                fileHandle = await directory.handle.getFileHandle('.gitignore', { create: true });
                 const writable = await fileHandle.createWritable();
-                await writable.write(generateDefaultIgnoreFileContent());
+                await writable.write(DEFAULT_GITIGNORE_CONTENT);
                 await writable.close();
             }
 
             // Open as external file
-            const externalModel = new ExternalFileModel(fileHandle, 'ignore.toml');
+            const externalModel = new ExternalFileModel(fileHandle, '.gitignore');
             await this.openFileInEditor(externalModel, { focusNode: false, updateHighlight: true });
 
         } catch (error) {
-            console.error('Failed to edit ignore.toml', error);
+            console.error('Failed to edit .gitignore', error);
+            await dialog.alert(`Failed to edit .gitignore in ${directory.path || directory.name}: ${error}`);
         }
     }
 
@@ -879,26 +869,27 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     @action
-    async refresh(node?: DirectoryNodeModel, focusPath?: string, openFile: boolean = false, focusTarget: 'sidebar' | 'editor' | 'none' = 'none') {
+    async refresh(node?: DirectoryNodeModel, focusPath?: string, openFile: boolean = false, focusTarget: 'sidebar' | 'editor' | 'none' = 'none'): Promise<boolean> {
         // Default to root if no node provided
-        const targetNode = node || this.rootNode;
-        if (!targetNode) return;
+        const requestedNode = node || this.rootNode;
+        const rootNode = this.rootNode;
+        if (!requestedNode || !rootNode) return false;
 
         // Verify permission if root (needed?) or simple check
         // For subdirectories, permission is inherited usually.
-        const hasPerm = await this.verifyPermission(targetNode.handle);
+        const hasPerm = await this.verifyPermission(rootNode.handle);
 
-        if (!hasPerm) return;
+        if (!hasPerm) return false;
         if (this._isRefreshing) {
-            return;
+            return false;
         }
         this._isRefreshing = true;
         try {
 
-            const tree = await this.readDirectory(targetNode);
+            const tree = await this.readDirectory(rootNode);
 
             runInAction(() => {
-                targetNode.children = tree;
+                rootNode.children = tree;
             });
 
             // Handle pending focus - RECURSIVE search from targetNode
@@ -913,7 +904,7 @@ class FileSystemStore extends EffectAwareModel {
                         }
                     }
                 }
-                nodeToFocus = findNode(targetNode);
+                nodeToFocus = findNode(rootNode);
             }
             if (nodeToFocus) {
                 runInAction(() => {
@@ -945,26 +936,40 @@ class FileSystemStore extends EffectAwareModel {
                 }
             }
 
-            if (this.currentFileNode) {
+            if (this.currentFileNode && !(this.currentFileNode instanceof ExternalFileModel)) {
                 // We need to do this because the existing currentFileNode may now no longer be in the tree
                 const fileNode = await this.findNodeByHandle(this.currentFileHandle);
                 if (fileNode) {
                     // Ensure we only reload/re-bind if the file is actually within the scope of what we refreshed.
                     // If we refreshed a subdirectory, and the file is outside, we shouldn't touch it.
-                    const isRelevant = targetNode.isRoot || fileNode.path.startsWith(targetNode.path + '/');
+                    const isRelevant = requestedNode.isRoot || fileNode.path.startsWith(requestedNode.path + '/');
+                    // The root scan replaces models even outside the requested subtree.
+                    // Rebind the handle without reloading those files or moving their highlight.
+                    runInAction(() => {
+                        this._currentFileNode = fileNode as FileNodeModel;
+                        if (isRelevant && !focusPath) {
+                            this._highlightedPath = fileNode.path;
+                        }
+                    });
                     if (isRelevant) {
-                        runInAction(() => {
-                            this._currentFileNode = fileNode as FileNodeModel;
-                            // Only move highlight if we didn't explicitly focus something else
-                            if (!focusPath) {
-                                this._highlightedPath = fileNode.path;
-                            }
-                        });
-                        // Always reload content but DON'T override highlight if we are focusing a specific path (e.g. directory refresh)
-                        await this.openFileInEditor(fileNode as FileNodeModel, { focusNode: false, updateHighlight: !focusPath });
+                        // Reload only clean files within the requested refresh scope.
+                        if (!this.dirty) {
+                            await this.openFileInEditor(fileNode as FileNodeModel, { focusNode: false, updateHighlight: !focusPath });
+                        }
                     }
+                } else if (this.currentFileNode.kind === 'file') {
+                    const old = this.currentFileNode;
+                    runInAction(() => {
+                        this._currentFileNode = new ExternalFileModel(old.handle, old.name);
+                        this._highlightedPath = null;
+                    });
                 }
             }
+            return true;
+        } catch (error) {
+            console.error('Refresh failed:', error);
+            await dialog.alert(`Refresh failed: ${error}`);
+            return false;
         }
         finally {
             runInAction(() => {
@@ -1115,7 +1120,6 @@ class FileSystemStore extends EffectAwareModel {
                 // rootNode is definitely set above
                 const perm = await this.rootNode!.handle.queryPermission({ mode: 'read' });
                 if (perm === 'granted') {
-                    resetPatternCache();
                     await this.refresh();
                     await this.restoreCollapsedPaths();
                     await this.restoreLastFile();
@@ -1190,6 +1194,22 @@ class FileSystemStore extends EffectAwareModel {
         return null;
     }
 
+    directoryNodeAtPath(path: string): DirectoryNodeModel | null {
+        const root = this.rootNode;
+        if (!root) return null;
+        if (!path || root.path === path) return root;
+        const find = (node: DirectoryNodeModel): DirectoryNodeModel | null => {
+            for (const child of node.children ?? []) {
+                if (child.kind !== 'directory') continue;
+                if (child.path === path) return child;
+                const result = find(child);
+                if (result) return result;
+            }
+            return null;
+        };
+        return find(root);
+    }
+
 
 
 
@@ -1217,7 +1237,7 @@ class FileSystemStore extends EffectAwareModel {
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
 
             if (entry.kind === 'file') {
-                if (shouldIgnoreFile(entry.name, dirNode.effIgnoreSettings)) continue;
+                if (isIgnoredEntry(dirNode.ignoreContext, currentPath, entry.name, false)) continue;
 
                 models.push(new FileNodeModel({
                     name: entry.name,
@@ -1226,7 +1246,7 @@ class FileSystemStore extends EffectAwareModel {
                     handle: entry
                 }, dirNode));
             } else if (entry.kind === 'directory') {
-                if (shouldIgnoreDirectory(entry.name, dirNode.effIgnoreSettings)) continue;
+                if (isIgnoredEntry(dirNode.ignoreContext, currentPath, entry.name, true)) continue;
 
                 // Create directory model first
                 const dirModel = new DirectoryNodeModel({

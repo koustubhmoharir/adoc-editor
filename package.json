@@ -25,6 +25,7 @@
         "@vanilla-extract/esbuild-plugin": "^2.3.21",
         "fzf": "^0.5.2",
         "idb-keyval": "^6.2.2",
+        "ignore": "^7.0.13",
         "mobx": "^6.10.0",
         "mobx-react-lite": "^4.0.0",
         "monaco-editor": "^0.45.0",

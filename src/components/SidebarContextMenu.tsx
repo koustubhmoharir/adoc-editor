@@ -93,7 +93,7 @@ export const SidebarContextMenu = observer(() => {
                         fileSystemStore.editIgnoreFile(targetNode as DirectoryNodeModel);
                     }} data-testid="ctx-edit-ignore">
                         <i className={`fas fa-cog ${styles.contextMenuIcon}`} />
-                        Edit ignore.toml
+                        Edit .gitignore
                     </button>
                     <button className={styles.contextMenuItem} onClick={targetNode.editS3SyncFile} data-testid="ctx-edit-s3sync">
                         <i className={`fas fa-cloud ${styles.contextMenuIcon}`} />

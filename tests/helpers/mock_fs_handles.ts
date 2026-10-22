@@ -1,5 +1,9 @@
 type IsMatch<K1 extends 'file' | 'directory', K2 extends 'file' | 'directory'> = K1 extends K2 ? K2 extends K1 ? true : false : false;
 
+function fileSystemError(message: string, name: 'NotFoundError' | 'TypeMismatchError') {
+    return new DOMException(message, name);
+}
+
 export class MockFileSystemHandle<K extends 'file' | 'directory'> implements FileSystemHandle {
     constructor(kind: K, name: string) { 
         this.kind = kind;
@@ -107,11 +111,11 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
                 entry = new MockFileSystemDirectoryHandle(name);
                 this._entries.set(name, entry);
             } else {
-                throw new Error(`Directory not found: ${name}`);
+                throw fileSystemError(`Directory not found: ${name}`, 'NotFoundError');
             }
         }
         if (entry.kind !== 'directory') {
-            throw new Error(`Type mismatch: ${name} is not a directory`);
+            throw fileSystemError(`Type mismatch: ${name} is not a directory`, 'TypeMismatchError');
         }
         return entry as FileSystemDirectoryHandle;
     }
@@ -123,18 +127,18 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
                 entry = new MockFileSystemFileHandle(name);
                 this._entries.set(name, entry);
             } else {
-                throw new Error(`File not found: ${name}`);
+                throw fileSystemError(`File not found: ${name}`, 'NotFoundError');
             }
         }
         if (entry.kind !== 'file') {
-            throw new Error(`Type mismatch: ${name} is not a file`);
+            throw fileSystemError(`Type mismatch: ${name} is not a file`, 'TypeMismatchError');
         }
         return entry as FileSystemFileHandle;
     }
 
     async removeEntry(name: string, _options?: FileSystemRemoveOptions): Promise<void> {
         if (!this._entries.has(name)) {
-            throw new Error(`Entry not found: ${name}`);
+            throw fileSystemError(`Entry not found: ${name}`, 'NotFoundError');
         }
         this._entries.delete(name);
     }

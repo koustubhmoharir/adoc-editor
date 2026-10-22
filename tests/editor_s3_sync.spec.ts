@@ -206,6 +206,81 @@ test('should do nothing when content is identical', async ({ page, fsSetup, s3Se
     await completeSync(page, "No actionable items selected");
 });
 
+test('downloads .gitignore and applies it on the next scan', async ({ page, fsSetup, s3Setup }) => {
+    s3Setup.seed([
+        { key: 'test-prefix/.gitignore', content: 'remote-only.txt\n', options: { uuid: 'remote-ignore-file', syncVersion: 1 } },
+        { key: 'test-prefix/remote-only.txt', content: 'hidden remote file', options: { uuid: 'remote-hidden-file', syncVersion: 1 } }
+    ]);
+
+    await loadDirectoryAndEnterSyncMode(page);
+    const ignoreItem = getSyncItemByPath(page, '.gitignore');
+    await expect(ignoreItem).toHaveAttribute('data-content-action', SyncContentAction.CopyRemoteToLocal);
+    const remoteOnlyItem = getSyncItemByPath(page, 'remote-only.txt');
+    await expect(remoteOnlyItem).toBeVisible();
+    await remoteOnlyItem.locator('input[type="checkbox"]').uncheck();
+
+    await completeSync(page);
+    expect(fsSetup.readFile('s3-project', '.gitignore')).toBe('remote-only.txt\n');
+
+    await exitSyncMode(page);
+    await loadDirectoryAndEnterSyncMode(page);
+    await expect(getSyncItemByPath(page, 'remote-only.txt')).toHaveCount(0);
+});
+
+test('shows a scan error and clears reviewed actions when .gitignore becomes unreadable', async ({ page, fsSetup, s3Setup }) => {
+    fsSetup.createFile('s3-project', '.gitignore', '');
+    fsSetup.createFile('s3-project', 'upload.txt', 'local content');
+    s3Setup.seed([]);
+
+    await loadDirectoryAndEnterSyncMode(page);
+    const uploadItem = getSyncItemByPath(page, 'upload.txt');
+    await uploadItem.locator('input[type="checkbox"]').uncheck();
+    await completeSync(page);
+    await uploadItem.click();
+    await expect(uploadItem).toHaveAttribute('data-selected', 'true');
+
+    await page.evaluate(() => {
+        const root = window.__TEST_fileSystemStore.rootNode!;
+        const handle = root.handle as any;
+        const originalGetFileHandle = handle.getFileHandle.bind(handle);
+        handle.getFileHandle = async (name: string, options?: FileSystemGetFileOptions) => {
+            handle.getFileHandle = originalGetFileHandle;
+            if (name === '.gitignore') throw new DOMException('Permission denied', 'NotAllowedError');
+            return await originalGetFileHandle(name, options);
+        };
+    });
+
+    const refreshDialog = await helpers.handleNextDialog(page);
+    await page.getByTestId('sync-go-button').click();
+    expect(await refreshDialog.getMessage()).toContain('Refresh failed');
+    await expect(page.getByTestId('s3sync-scan-error')).toContainText('Could not refresh the workspace');
+    await expect(page.getByTestId('s3sync-item')).toHaveCount(0);
+});
+
+test('nested sync root keeps workspace ancestor ignore rules', async ({ page, fsSetup, s3Setup }) => {
+    fsSetup.createFile('s3-project', '.gitignore', 'nested/remote-only.txt\n');
+    fsSetup.createFile('s3-project', 'nested/.adoc-editor/s3sync.toml', `
+bucket = "test-bucket"
+region = "us-east-1"
+identity_pool_id = "test-pool"
+authority = "test-auth"
+client_id = "test-client"
+prefix = "test-prefix/nested/"
+        `);
+    s3Setup.seed([
+        { key: 'test-prefix/nested/remote-only.txt', content: 'hidden remote file', options: { uuid: 'nested-hidden-file', syncVersion: 1 } }
+    ]);
+
+    await loadInitialDirectory(page, 's3-project');
+    const nestedItem = getDirectoryItem(page, 'nested');
+    await openContextMenu(page, nestedItem);
+    await page.getByTestId('ctx-s3-sync').click();
+    await expect(page.getByTestId('s3sync-title-bar')).toBeVisible();
+    await expect(page.getByTestId('s3sync-scanning')).not.toBeVisible();
+
+    await expect(getSyncItemByPath(page, 'remote-only.txt')).toHaveCount(0);
+});
+
 test('should delete remote file when local file is deleted', async ({ page, fsSetup, s3Setup }) => {
     fsSetup.createFile('s3-project', 'file.txt', 'Delete Me');
     fsSetup.createFile('s3-project', 'subdir/nested.txt', 'Delete Nested Me');

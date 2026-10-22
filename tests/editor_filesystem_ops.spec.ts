@@ -10,10 +10,7 @@ test.beforeEach(async ({ fsSetup }) => {
     fsSetup.createFile('dir1', 'file2.adoc', '== File 2 content');
     fsSetup.createFile('dir1', 'nested/file3.adoc', '== File 3 content');
     fsSetup.createFile('dir1', 'conflict.adoc', '== Conflict File');
-    fsSetup.createFile('dir1', '.adoc-editor/ignore.toml',
-        `
-ignore_dot_files = false
-`);
+    fsSetup.createFile('dir1', '.gitignore', '');
 });
 
 test('Enter and exit renaming via keyboard (F2, Enter)', async ({ page, fsSetup }) => {
