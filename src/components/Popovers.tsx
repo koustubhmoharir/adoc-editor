@@ -74,7 +74,6 @@ export const ButtonMenu = observer((props: ButtonMenuProps) => {
         <div
             ref={model.containerRef}
             className={styles.container}
-            // @ts-ignore
             popover="auto"
             style={model.isOpen ? undefined : { display: 'none' }}
             tabIndex={-1} // Allow focus

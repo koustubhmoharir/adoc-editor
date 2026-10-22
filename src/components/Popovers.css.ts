@@ -12,11 +12,8 @@ export const container = style({
     display: 'flex',
     flexDirection: 'column',
     minWidth: '150px',
-    // @ts-ignore
     positionAnchor: anchorName,
-    // @ts-ignore
     positionArea: "bottom span-right",
-    // @ts-ignore
     positionTryFallbacks: "flip-block, flip-inline, flip-block flip-inline",
     margin: 0,
     // Fallback or basic positioning if anchor fails (though we use popover)

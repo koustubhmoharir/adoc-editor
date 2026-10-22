@@ -17,7 +17,6 @@ export const SidebarContextMenu = observer(() => {
     return (
         <div
             ref={ref}
-            // @ts-ignore
             popover="auto"
             className={styles.contextMenu}
             style={targetNode ? undefined : { display: 'none' }}
