@@ -78,16 +78,29 @@ export class S3SyncStore {
                 return;
             }
             const settings = this.s3Store.settings;
-            // A root refresh rebuilds directory models and their ignore contexts. Resolve the
-            // selected sync root again so this scan uses the current tree generation.
-            if (!await fileSystemStore.refresh()) {
+            const noLongerVisible = () => {
+                traceLog(`Sync root '${this.directoryNode.path}' is no longer traversable under the current .gitignore rules.`);
+                runInAction(() => { this._scanError = 'This sync folder is no longer visible under the current .gitignore rules. Exit sync mode and choose a visible folder.'; });
+            };
+            // The stored node may come from a previous tree generation, so resolve the current model first.
+            const syncRoot = fileSystemStore.directoryNodeAtPath(this.directoryNode.path);
+            if (!syncRoot) {
+                noLongerVisible();
+                return;
+            }
+            // Refresh only the sync root subtree. It returns false when the root is now ignored under the
+            // refreshed ancestor rules, which is reported separately from other refresh failures.
+            if (!await fileSystemStore.refresh(syncRoot)) {
+                if (fileSystemStore.wasRefreshIgnored(syncRoot)) {
+                    noLongerVisible();
+                    return;
+                }
                 runInAction(() => { this._scanError = 'Could not refresh the workspace before scanning. Try refreshing the workspace and scan again.'; });
                 return;
             }
             const currentNode = fileSystemStore.directoryNodeAtPath(this.directoryNode.path);
             if (!currentNode) {
-                traceLog(`Sync root '${this.directoryNode.path}' is no longer traversable under the current .gitignore rules.`);
-                runInAction(() => { this._scanError = 'This sync folder is no longer visible under the current .gitignore rules. Exit sync mode and choose a visible folder.'; });
+                noLongerVisible();
                 return;
             }
             const statusItems = await scanAndCalculateStatus(currentNode, s3Client, settings);

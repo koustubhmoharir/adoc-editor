@@ -37,6 +37,9 @@ class FileSystemStore extends EffectAwareModel {
 
     @observable private accessor _isRefreshing = false;
     get isRefreshing() { return this._isRefreshing; }
+    // Set when the last refresh of a subtree was skipped because that subtree is now ignored.
+    private _ignoredRefreshNode: FileSystemNodeModel | null = null;
+    wasRefreshIgnored(node: FileSystemNodeModel) { return this._ignoredRefreshNode === node; }
 
     @observable private accessor _currentFileNode: FileModel | null = null;
     get currentFileNode() { return this._currentFileNode; }
@@ -884,15 +887,49 @@ class FileSystemStore extends EffectAwareModel {
             return false;
         }
         this._isRefreshing = true;
+        this._ignoredRefreshNode = null;
         try {
+            if (requestedNode.isRoot) {
+                const tree = await this.readDirectory(rootNode);
 
-            const tree = await this.readDirectory(rootNode);
+                runInAction(() => {
+                    rootNode.children = tree;
+                });
+            } else {
+                // Re-read ignore rules root-first along the path to the requested node. Each ancestor's direct
+                // children are then re-filtered in place. Sibling subtrees are not rescanned.
+                const ancestors: DirectoryNodeModel[] = [];
+                for (let current = requestedNode.parent; current; current = current.parent) {
+                    ancestors.unshift(current);
+                }
+                const chain: DirectoryNodeModel[] = [...ancestors, requestedNode];
+                let hidden = false;
+                for (let i = 0; i < ancestors.length && !hidden; i++) {
+                    await ancestors[i].readSettings();
+                    const next = chain[i + 1];
+                    hidden = isIgnoredEntry(ancestors[i].ignoreContext, next.path, next.name, true);
+                }
+                // If the requested node is now ignored, leave the tree unchanged and report it.
+                if (hidden) {
+                    this._ignoredRefreshNode = requestedNode;
+                    return false;
+                }
 
-            runInAction(() => {
-                rootNode.children = tree;
-            });
+                for (const ancestor of ancestors) {
+                    const children = await this.buildChildren(ancestor, ancestor.children ?? []);
+                    runInAction(() => {
+                        ancestor.children = children;
+                    });
+                }
 
-            // Handle pending focus - RECURSIVE search from targetNode
+                const tree = await this.readDirectory(requestedNode);
+
+                runInAction(() => {
+                    requestedNode.children = tree;
+                });
+            }
+
+            // Handle pending focus - RECURSIVE search from the refreshed node
             let nodeToFocus: FileSystemNodeModel | undefined = undefined;
             if (focusPath) {
                 const findNode = (n: FileSystemNodeModel): FileSystemNodeModel | undefined => {
@@ -904,7 +941,7 @@ class FileSystemStore extends EffectAwareModel {
                         }
                     }
                 }
-                nodeToFocus = findNode(rootNode);
+                nodeToFocus = findNode(requestedNode);
             }
             if (nodeToFocus) {
                 runInAction(() => {
@@ -943,8 +980,8 @@ class FileSystemStore extends EffectAwareModel {
                     // Ensure we only reload/re-bind if the file is actually within the scope of what we refreshed.
                     // If we refreshed a subdirectory, and the file is outside, we shouldn't touch it.
                     const isRelevant = requestedNode.isRoot || fileNode.path.startsWith(requestedNode.path + '/');
-                    // The root scan replaces models even outside the requested subtree.
-                    // Rebind the handle without reloading those files or moving their highlight.
+                    // Siblings outside the refreshed subtree keep their models, so this usually rebinds
+                    // to the existing node. Rebind the handle without reloading those files or moving their highlight.
                     runInAction(() => {
                         this._currentFileNode = fileNode as FileNodeModel;
                         if (isRelevant && !focusPath) {
@@ -1228,10 +1265,21 @@ class FileSystemStore extends EffectAwareModel {
     }
 
     private async readDirectory(dirNode: DirectoryNodeModel): Promise<FileSystemNodeModel[]> {
+        await dirNode.readSettings();
+        return this.buildChildren(dirNode, []);
+    }
+
+    /**
+     * Lists the direct children of dirNode using its current ignoreContext (readSettings must already have run).
+     * An existing directory model with the same name is reused with its subtree untouched; new directories are read recursively.
+     */
+    private async buildChildren(dirNode: DirectoryNodeModel, existing: readonly FileSystemNodeModel[]): Promise<FileSystemNodeModel[]> {
         const models: FileSystemNodeModel[] = [];
         const parentPath = dirNode.isRoot ? '' : dirNode.path;
-
-        await dirNode.readSettings();
+        const existingDirs = new Map<string, DirectoryNodeModel>();
+        for (const node of existing) {
+            if (node.kind === 'directory') existingDirs.set(node.name, node);
+        }
 
         for await (const entry of dirNode.handle.values()) {
             const currentPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
@@ -1247,6 +1295,12 @@ class FileSystemStore extends EffectAwareModel {
                 }, dirNode));
             } else if (entry.kind === 'directory') {
                 if (isIgnoredEntry(dirNode.ignoreContext, currentPath, entry.name, true)) continue;
+
+                const reused = existingDirs.get(entry.name);
+                if (reused) {
+                    models.push(reused);
+                    continue;
+                }
 
                 // Create directory model first
                 const dirModel = new DirectoryNodeModel({

@@ -1,7 +1,7 @@
 import { test, expect, helpers } from './fixtures.ts';
 import { createIgnoreContext, isIgnoredEntry, isIgnoredPath } from '../src/file_system/GitIgnore.ts';
 import { loadInitialDirectory, openContextMenu } from './helpers/sidebar_helpers.ts';
-import { getDirectoryItem } from './helpers/locators.ts';
+import { getDirectoryItem, getFileItem } from './helpers/locators.ts';
 
 test.beforeEach(async ({ fsSetup }) => {
     fsSetup.cleanup();
@@ -101,4 +101,33 @@ test('refresh keeps an edited .gitignore as an explicit-save external file', asy
 
     expect(await page.evaluate(() => (window as any).__TEST_fileSystemStore.currentFileNode?.kind)).toBe('external_file');
     expect(await helpers.getEditorContent(page)).toBe('unsaved rule edit');
+});
+
+test('subtree refresh applies an edited ancestor rule without rescanning sibling subtrees', async ({ page, fsSetup }) => {
+    fsSetup.createFile('workspace', 'a/.gitignore', '');
+    fsSetup.createFile('workspace', 'a/sub/hide.tmp', 'hidden');
+    fsSetup.createFile('workspace', 'a/sub/keep.txt', 'kept');
+    fsSetup.createFile('workspace', 'b/side.tmp', 'side');
+    await loadInitialDirectory(page, 'workspace');
+    await page.click('[data-dir-path="a"]');
+    await page.click('[data-dir-path="a/sub"]');
+    await page.click('[data-dir-path="b"]');
+    await expect(getFileItem(page, 'a/sub/hide.tmp')).toBeVisible();
+    await expect(getFileItem(page, 'b/side.tmp')).toBeVisible();
+
+    // Externally edit an ancestor rule (a/.gitignore) and a root rule that only affects b/.
+    fsSetup.createFile('workspace', 'a/.gitignore', '*.tmp\n');
+    fsSetup.createFile('workspace', '.gitignore', 'b/*.tmp\n');
+
+    // Refreshing a/sub applies the ancestor rule to a/sub, but b/ is not rescanned.
+    await openContextMenu(page, getDirectoryItem(page, 'a/sub'));
+    await page.getByTestId('ctx-refresh').click();
+    await expect(getFileItem(page, 'a/sub/hide.tmp')).toHaveCount(0);
+    await expect(getFileItem(page, 'a/sub/keep.txt')).toBeVisible();
+    await expect(getFileItem(page, 'b/side.tmp')).toBeVisible();
+
+    // A full refresh rebuilds the root and applies the root rule to b/.
+    await getDirectoryItem(page, '').click();
+    await page.keyboard.press('F5');
+    await expect(getFileItem(page, 'b/side.tmp')).toHaveCount(0);
 });
