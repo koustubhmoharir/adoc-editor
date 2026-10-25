@@ -1,6 +1,5 @@
 import { action } from "mobx";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import { CognitoIdentityClient } from "@aws-sdk/client-cognito-identity";
 import { fromCognitoIdentityPool } from "@aws-sdk/credential-provider-cognito-identity";
 import { AuthStore } from "./AuthStore";
 import { S3SyncSettings } from "../file_system/S3SyncSettings";
@@ -49,7 +48,7 @@ export class S3Store {
         logins[loginKey] = user.id_token || '';
 
         const credentialProvider = fromCognitoIdentityPool({
-            client: new CognitoIdentityClient({ region: this.settings.region }),
+            clientConfig: { region: this.settings.region },
             identityPoolId: this.settings.identity_pool_id,
             logins: logins
         });
