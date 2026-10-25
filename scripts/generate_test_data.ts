@@ -46,7 +46,7 @@ async function main() {
 
     console.log(`\n=== 1. Analyzing ${files.length} files ===`);
     for (const file of files) {
-        analyzeFile(file);
+        await analyzeFile(file);
     }
 
     console.log(`\n=== 2. Generating Tokens (Playwright) ===`);

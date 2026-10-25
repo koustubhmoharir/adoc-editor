@@ -1,4 +1,4 @@
-import Asciidoctor from 'asciidoctor';
+import { load } from 'asciidoctor';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,8 +21,6 @@ interface AbstractBlock {
     lines: string[];
     getParent(): AbstractBlock | undefined;
 }
-
-const asciidoctor = Asciidoctor();
 
 const FIXTURES_DIR = path.join(__dirname, '../tests/fixtures');
 
@@ -47,7 +45,7 @@ const SPECIAL_PATTERNS = {
     'attribute_ref': /\{[\w\-]+\}/g
 };
 
-function analyzeFile(filename: string) {
+async function analyzeFile(filename: string) {
     // ...
     console.log(`Analyzing ${filename}...`);
     const filePath = path.join(FIXTURES_DIR, filename);
@@ -55,7 +53,7 @@ function analyzeFile(filename: string) {
     const lines = content.split(/\r?\n/);
 
     // Load with sourcemap
-    const doc = asciidoctor.load(content, { sourcemap: true, safe: 'safe' });
+    const doc = await load(content, { sourcemap: true, safe: 'safe' });
 
     const expectations: Expectation[] = [];
 
@@ -329,15 +327,15 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     if (targetArg) {
         const fileName = path.basename(targetArg);
         if (fileName.endsWith('.adoc')) {
-            analyzeFile(fileName);
+            await analyzeFile(fileName);
         } else {
             console.error('File must end with .adoc');
         }
     } else {
-        fs.readdirSync(FIXTURES_DIR).forEach(file => {
+        for (const file of fs.readdirSync(FIXTURES_DIR)) {
             if (file.endsWith('.adoc')) {
-                analyzeFile(file);
+                await analyzeFile(file);
             }
-        });
+        }
     }
 }
