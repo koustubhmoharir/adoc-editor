@@ -1,4 +1,4 @@
-import { action, observable, runInAction } from "mobx";
+import { observable, runInAction, actionBound, observableRef } from "mobx";
 import { DirectoryNodeModel } from "./FileSystemModels";
 import { fileSystemStore } from "./FileSystemStore";
 import { S3Store } from "./S3Store";
@@ -40,12 +40,12 @@ export class S3SyncStore {
     @observable private accessor _cancelRequested: boolean = false;
     get cancelRequested() { return this._cancelRequested; }
 
-    @observable.ref private accessor _syncProgress: Readonly<{ current: number; total: number; currentPath: string; concurrencyErrors: number }> | null = null;
+    @observableRef private accessor _syncProgress: Readonly<{ current: number; total: number; currentPath: string; concurrencyErrors: number }> | null = null;
     get syncProgress() { return this._syncProgress; }
 
     private _requiresIgnoreReview = false;
 
-    @action.bound
+    @actionBound
     setSyncMode(mode: SyncMode) {
         this.syncMode = mode;
         if (this._syncStatusItems) {
@@ -56,7 +56,7 @@ export class S3SyncStore {
         }
     }
 
-    @action.bound
+    @actionBound
     async setSelectedItem(item: FileSyncStatus | null) {
         this._selectedItem = item;
         await this.diffStore.loadContent(item);
@@ -120,7 +120,7 @@ export class S3SyncStore {
         }
     }
 
-    @action.bound
+    @actionBound
     async executeSyncGo() {
         if (!this._syncStatusItems || this._isSyncing) return;
 
@@ -293,7 +293,7 @@ export class S3SyncStore {
         }
     }
 
-    @action.bound
+    @actionBound
     requestCancel() {
         this._cancelRequested = true;
     }
@@ -316,7 +316,7 @@ export class S3SyncStore {
         });
     }
 
-    @action.bound
+    @actionBound
     async deleteLocalFile(item: FileSyncStatus) {
         if (!item.local) return;
 
@@ -335,7 +335,7 @@ export class S3SyncStore {
         await this.updateItemStatus(item, null);
     }
 
-    @action.bound
+    @actionBound
     async restoreLocalFile(item: FileSyncStatus) {
         if (!item.base) return;
 
@@ -391,7 +391,7 @@ export class S3SyncStore {
         }
     }
 
-    @action.bound
+    @actionBound
     async saveLocalFile(item: FileSyncStatus, content: string) {
         if (!item.local?.handle) {
             return;
@@ -425,7 +425,7 @@ export class S3SyncStore {
         }
     }
 
-    @action.bound
+    @actionBound
     async revertLocalFile(item: FileSyncStatus) {
         if (!item.base) return;
 
@@ -435,7 +435,7 @@ export class S3SyncStore {
         return this.restoreLocalFile(item);
     }
 
-    @action.bound
+    @actionBound
     async undoLocalMove(item: FileSyncStatus) {
         if (!item.local || !item.base) return;
         if (!item.localMoved) return;

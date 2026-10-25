@@ -1,4 +1,4 @@
-import { observable, action, runInAction } from "mobx";
+import { observable, action, runInAction, actionBound } from "mobx";
 import { createRef } from "react";
 import { EffectAwareModel } from "./EffectAwareModel";
 import { dialog } from "../components/Dialog";
@@ -174,7 +174,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
         }
     }
 
-    @action.bound
+    @actionBound
     handleRenameInputKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
         if (e.key === 'Enter') {
             e.stopPropagation();
@@ -187,7 +187,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
         }
     }
 
-    @action.bound
+    @actionBound
     handleRenameInputBlur(_e: React.FocusEvent) {
         // If the window loses focus (e.g. alt-tab), we want to KEEP renaming state.
         // If the click is inside the app but outside input, we want to COMMIT.
@@ -197,7 +197,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
         }
     }
 
-    @action.bound
+    @actionBound
     handleTreeItemKeyDown(e: React.KeyboardEvent | KeyboardEvent) {
         if (this.isRenaming) return;
         if (e.key === 'F2') {
@@ -264,7 +264,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
         });
     }
 
-    @action.bound
+    @actionBound
     async handleClick(e: React.MouseEvent) {
         e.stopPropagation();
         if (!this.isRenaming) {
@@ -277,7 +277,7 @@ export abstract class FileSystemNodeModelBase<Kind extends 'file' | 'directory' 
         }
     }
 
-    @action.bound
+    @actionBound
     async handleDoubleClick(e: React.MouseEvent) {
         e.stopPropagation();
         if (!this.isRenaming) {
@@ -544,7 +544,7 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
         }
     }
 
-    @action.bound
+    @actionBound
     handleToggleClick(e: React.MouseEvent) {
         e.stopPropagation();
         // If not selected, select it as well? User request says: "Clicking it should toggle and select (if not already selected)."
@@ -554,7 +554,7 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
         fileSystemStore.toggleDirectory(this.path);
     }
 
-    @action.bound
+    @actionBound
     async editS3SyncFile() {
         if (!await fileSystemStore.confirmUnsavedChanges()) {
             return;
@@ -641,7 +641,7 @@ export class DirectoryNodeModel extends FileSystemNodeModelBase<'directory'> {
         }
     }
 
-    @action.bound
+    @actionBound
     async syncDirectory() {
         let configDir: FileSystemDirectoryHandle | undefined = undefined;
         try {

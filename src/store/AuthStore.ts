@@ -1,4 +1,4 @@
-import { action, observable, runInAction } from "mobx";
+import { action, runInAction, observableRef } from "mobx";
 import { User, UserManager } from "oidc-client-ts";
 import { dialog } from "../components/Dialog";
 
@@ -31,7 +31,7 @@ export class AuthStore {
         });
     };
 
-    @observable.ref accessor user: User | null = null;
+    @observableRef accessor user: User | null = null;
 
     private setupEvents() {
         this.userManager.events.addUserLoaded(this.userLoadedCallback);

@@ -1,4 +1,4 @@
-import { observable, action, runInAction, computed } from "mobx";
+import { observable, action, runInAction, computed, actionBound } from "mobx";
 import { isBinaryFile } from './FileSystemHelpers';
 import { get as getDbValue, set as setDbValue, clear as clearAllDbValues } from 'idb-keyval';
 import { Fzf } from 'fzf';
@@ -67,7 +67,7 @@ class FileSystemStore extends EffectAwareModel {
         this._sidebarWidth = width;
     }
 
-    @action.bound
+    @actionBound
     handleSidebarResizeStart(e: React.MouseEvent) {
         e.preventDefault();
         const startX = e.clientX;
@@ -252,7 +252,7 @@ class FileSystemStore extends EffectAwareModel {
         });
     }
 
-    @action.bound
+    @actionBound
     onContextMenuClosed() {
         if (this.contextMenuTarget) {
             this.contextMenuTarget.treeItemRef.current?.style.removeProperty('anchor-name');
@@ -260,7 +260,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    @action.bound
+    @actionBound
     async openDirectory() {
         if (!await this.confirmUnsavedChanges()) {
             return;
@@ -400,7 +400,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    @action.bound
+    @actionBound
     async focusCurrentFileInSidebar() {
         const node = this.currentFileNode;
         if (!node) return;
@@ -430,7 +430,7 @@ class FileSystemStore extends EffectAwareModel {
         await this.pushDbOperation(setDbValue('collapsedPaths', Array.from(this._collapsedPaths)), 'Failed to persist collapsed paths:');
     }
 
-    @action.bound
+    @actionBound
     async showHelp() {
         if (!await this.confirmUnsavedChanges()) {
             return;
@@ -1050,7 +1050,7 @@ class FileSystemStore extends EffectAwareModel {
         }
     }
 
-    @action.bound
+    @actionBound
     handleClearButtonClick(e: React.MouseEvent) {
         e.stopPropagation();
         if (this.searchQuery) {
@@ -1088,12 +1088,12 @@ class FileSystemStore extends EffectAwareModel {
         this.closeSearch();
     }
 
-    @action.bound
+    @actionBound
     handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
         this.setSearchQuery(e.target.value);
     }
 
-    @action.bound
+    @actionBound
     handleSearchKeyDown(e: React.KeyboardEvent) {
         if (e.key === 'Escape') {
             e.stopPropagation();

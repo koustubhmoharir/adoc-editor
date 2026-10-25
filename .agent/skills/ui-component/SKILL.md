@@ -27,7 +27,7 @@ This skill guides the creation of React UI components that adhere to the project
 
 ### Event Handling
 - **No Inline Handlers**: Do not write inline logic like `onClick={() => store.doSomething()}`.
-- **Bound Actions**: Define actions in the store using `@action.bound`.
+- **Bound Actions**: Define actions in the store using `@actionBound`.
 - **Direct Binding**: Pass the bound action directly: `onClick={store.handleClick}`.
 
 ## 2. Store / Model Structure
@@ -35,7 +35,7 @@ This skill guides the creation of React UI components that adhere to the project
 - **Explicit Decorators**: Use local standard decorators.
     - `@observable accessor value`
     - `@computed get derived()`
-    - `@action method()` or `@action.bound method()`
+    - `@action method()` or `@actionBound method()`
 - **No Auto**: Do NOT use `makeAutoObservable(this)`.
 - **Restrict accessibility**: Use object oriented features of TypeScript.
     - Use the `private` keyword along with an underscore prefix on the member name for fields, accessors, and helper methods wherever restricting accessibility is beneficial in preserving invariants of the model.
@@ -72,7 +72,7 @@ This skill guides the creation of React UI components that adhere to the project
 ### The Store (`src/store/MyFeatureStore.ts`)
 
 ```typescript
-import { observable, action, computed } from 'mobx';
+import { observable, actionBound, computed } from 'mobx';
 import { EffectAwareModel } from './EffectAwareModel';
 
 export class MyFeatureStore extends EffectAwareModel { // Extend EffectAwareModel if we need to schedule effects. Not all models need this functionality.
@@ -106,7 +106,7 @@ export class MyFeatureStore extends EffectAwareModel { // Extend EffectAwareMode
 
     // Public methods and event handlers
 
-    @action.bound
+    @actionBound
     handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (this.isValid) {
@@ -115,7 +115,7 @@ export class MyFeatureStore extends EffectAwareModel { // Extend EffectAwareMode
         }
     }
 
-    @action.bound
+    @actionBound
     showInput() {
         this._isVisible = true;
         // Schedule DOM focus after render

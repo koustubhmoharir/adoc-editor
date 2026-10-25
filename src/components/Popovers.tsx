@@ -1,7 +1,7 @@
 import { createRef, ReactNode, useEffect, useRef } from 'react';
 import { closeOnClick, useUpDownFocusNavigationInPopover } from '../hooks/useFocusNavigation';
 import * as styles from './Popovers.css';
-import { action, observable } from 'mobx';
+import { observable, actionBound } from 'mobx';
 import { EffectAwareModel } from '../store/EffectAwareModel';
 import { useScheduledEffects } from '../hooks/useScheduledEffects';
 import { observer } from 'mobx-react-lite';
@@ -30,7 +30,7 @@ class ButtonMenuModel extends EffectAwareModel {
         this._button.addEventListener('click', this.onButtonClick);
     }
 
-    @action.bound
+    @actionBound
     onButtonClick() {
         if (this._button) {
             this._button.style.setProperty('anchor-name', styles.anchorName);
@@ -43,7 +43,7 @@ class ButtonMenuModel extends EffectAwareModel {
         }
     }
 
-    @action.bound
+    @actionBound
     onClosed() {
         this._isOpen = false;
         if (this._button) {

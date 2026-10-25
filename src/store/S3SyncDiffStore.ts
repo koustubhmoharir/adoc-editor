@@ -1,4 +1,4 @@
-import { observable, action, runInAction } from 'mobx';
+import { observable, action, runInAction, actionBound, observableRef } from 'mobx';
 import * as monaco from 'monaco-editor';
 import { EffectAwareModel } from './EffectAwareModel';
 import { DiffViewMode, FileSyncStatus, getBaseFileHandle, loadRemoteFileFromCache } from './S3SyncLogic';
@@ -43,7 +43,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
     private _showSinglePane = false;
 
-    @observable.ref private accessor _singlePaneDetails: Readonly<{
+    @observableRef private accessor _singlePaneDetails: Readonly<{
         isBinary: boolean;
         editable: boolean;
         content: string | null;
@@ -55,7 +55,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
 
     private _showDiffPane = false;
 
-    @observable.ref private accessor _diffPaneDetails: Readonly<{
+    @observableRef private accessor _diffPaneDetails: Readonly<{
         isBinary: boolean;
         editable: boolean;
         originalContent: string | null;
@@ -142,7 +142,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
         });
     }
 
-    @action.bound
+    @actionBound
     private async _downloadRemoteContent() {
         if (!this.syncItem?.remote) return;
         this._isLoading = true;
@@ -314,7 +314,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
         });
     }
 
-    @action.bound
+    @actionBound
     initializeSingleEditor() {
         if (!this._singlePaneDetails || !this.singleEditorRef.current || this._singleEditor) return;
 
@@ -335,7 +335,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
         }
     }
 
-    @action.bound
+    @actionBound
     initializeDiffEditor() {
         if (!this._diffPaneDetails || !this.diffEditorRef.current || this._diffEditor) return;
 
@@ -360,7 +360,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
         }
     }
 
-    @action.bound
+    @actionBound
     dispose() {
         this._disposeSingleEditor();
         this._disposeDiffEditor();
@@ -368,7 +368,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
         this._disposers.length = 0;
     }
 
-    @action.bound
+    @actionBound
     setView(mode: DiffViewMode) {
         this._currentView = mode;
         this._showSinglePane = mode.startsWith('single-') || mode === '3way';
@@ -387,7 +387,7 @@ export class S3SyncDiffStore extends EffectAwareModel {
         this._refreshView(true);
     }
 
-    @action.bound
+    @actionBound
     setSinglePaneHeight(height: number) {
         this.singlePaneHeight = Math.max(10, Math.min(90, height));
     }

@@ -1,4 +1,4 @@
-import { observable, action } from 'mobx';
+import { observable, actionBound } from 'mobx';
 import { S3SyncStore } from './S3SyncStore';
 import { S3Store } from './S3Store';
 import { DirectoryNodeModel } from './FileSystemModels';
@@ -10,7 +10,7 @@ export class AppStore {
     @observable accessor mode: AppMode = 'editor';
     @observable accessor activeSyncStore: S3SyncStore | null = null;
 
-    @action.bound
+    @actionBound
     async enterS3SyncMode(node: DirectoryNodeModel, s3Store: S3Store) {
         const syncStore = new S3SyncStore(node, s3Store);
         this.activeSyncStore = syncStore;
@@ -18,7 +18,7 @@ export class AppStore {
         await syncStore.calculateStatus();
     }
 
-    @action.bound
+    @actionBound
     async exitS3SyncMode() {
         this.mode = 'editor';
         const syncStore = this.activeSyncStore;

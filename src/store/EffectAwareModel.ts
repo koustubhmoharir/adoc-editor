@@ -1,9 +1,9 @@
-import { action, observable } from "mobx";
+import { action, actionBound, observableRef } from "mobx";
 
 export class EffectAwareModel {
     // Queue of callbacks (non-observable as per pattern)
     private effectCallbacks: (() => void)[] = [];
-    @observable.ref private accessor trigger: object | null = null;
+    @observableRef private accessor trigger: object | null = null;
 
     @action
     scheduleEffect(callback: () => void) {
@@ -16,7 +16,7 @@ export class EffectAwareModel {
         return this.consumeEffects;
     }
 
-    @action.bound
+    @actionBound
     private consumeEffects() {
         const callbacks = this.effectCallbacks;
         this.effectCallbacks = [];

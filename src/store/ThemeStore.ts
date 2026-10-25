@@ -1,4 +1,4 @@
-import { observable, action } from "mobx";
+import { observable, actionBound } from "mobx";
 import * as monaco from 'monaco-editor';
 
 type Theme = 'light' | 'dark';
@@ -21,7 +21,7 @@ class ThemeStore {
 
     get monacoTheme() { return this.theme; }
 
-    @action.bound
+    @actionBound
     toggleTheme() {
         this.theme = this.theme === 'light' ? 'dark' : 'light';
         localStorage.setItem('app-theme', this.theme);
